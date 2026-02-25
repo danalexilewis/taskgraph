@@ -1,6 +1,10 @@
 # Task-Graph
 
-Inspired by Gastown.dev - Task Graph is for Centaur Development
+Inspired by [Beads](https://github.com/steveyegge/beads) and [Gastown.dev](https://gastown.dev) — Task Graph is for **Centaur Development** (human + agent).
+
+## Why this repo
+
+I wanted a small, local-first way to manage plans and tasks during agent-assisted coding without adopting full Beads/Gastown orchestration. Task-Graph borrows from Beads (atomic claims, structured notes, status visibility) but stays minimal: one working copy, no mayor/orchestrator, no swarms. It’s a Dolt-backed CLI that fits into Cursor workflows so agents and humans can share the same task graph and execution state.
 
 ## What this is
 
@@ -15,7 +19,7 @@ TaskGraph is a small CLI (`tg`) + Dolt-backed schema for managing **plans, tasks
 tg init
 ```
 
-3. Scaffold recommended conventions (example domain docs, skill guides, and Cursor rules):
+1. Scaffold recommended conventions (example domain docs, skill guides, and Cursor rules):
 
 ```bash
 tg setup
