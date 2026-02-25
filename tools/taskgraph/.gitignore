@@ -1,3 +1,9 @@
+# Dependencies (belt-and-suspenders if root .gitignore missed)
+node_modules/
+
+# Build output
+dist/
+
 # Leftover temp dirs (tests now use os.tmpdir(); these catch old runs or stray paths)
 tg-integration-*
 tg-e2e-*
