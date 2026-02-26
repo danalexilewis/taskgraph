@@ -2,6 +2,8 @@ import { execa } from "execa";
 import { ResultAsync } from "neverthrow";
 import { AppError, ErrorCode, buildError } from "../domain/errors";
 
+const doltPath = () => process.env.DOLT_PATH || "dolt";
+
 export function doltCommit(
   msg: string,
   repoPath: string,
@@ -12,8 +14,13 @@ export function doltCommit(
       buildError(ErrorCode.DB_COMMIT_FAILED, "Dry run commit failed"),
     );
   }
+  const dolt = doltPath();
+  const doltEnv = { ...process.env, DOLT_READ_ONLY: "false" };
   return ResultAsync.fromPromise(
-    execa("dolt", ["add", "-A"], { cwd: repoPath }),
+    execa(dolt, ["--data-dir", repoPath, "add", "-A"], {
+      cwd: repoPath,
+      env: doltEnv,
+    }),
     (e) =>
       buildError(
         ErrorCode.DB_COMMIT_FAILED,
@@ -23,9 +30,14 @@ export function doltCommit(
   )
     .andThen(() => {
       return ResultAsync.fromPromise(
-        execa("dolt", ["commit", "-m", msg, "--allow-empty"], {
-          cwd: repoPath,
-        }),
+        execa(
+          dolt,
+          ["--data-dir", repoPath, "commit", "-m", msg, "--allow-empty"],
+          {
+            cwd: repoPath,
+            env: doltEnv,
+          },
+        ),
         (e) =>
           buildError(
             ErrorCode.DB_COMMIT_FAILED,

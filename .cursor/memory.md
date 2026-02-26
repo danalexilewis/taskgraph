@@ -22,6 +22,10 @@
 
 - `event.body` may be returned as object or string by doltSql depending on driver. Handle both: `typeof raw === 'string' ? JSON.parse(raw) : raw`.
 
+## DAL writable (read-only errors)
+
+- All Dolt invocations use `--data-dir <repoPath>` so the repo is explicit (avoids wrong cwd or connecting to a server). They pass `DOLT_READ_ONLY=false` in env so Dolt treats the session as writable when the repo allows it. `commit.ts` uses `process.env.DOLT_PATH || "dolt"` for consistency with connection/migrate.
+
 ## Migration idempotency
 
 - `applyTaskDimensionsMigration` must skip when `task_domain` exists (junction migration has run and dropped domain/skill from task). Otherwise re-adding columns conflicts with existing `change_type`.
@@ -67,6 +71,10 @@
 
 - **Rebuild when src/ changes:** An on-stop hook (`.cursor/hooks/rebuild-if-src-changed.js`) runs at end of turn. If `git status` shows any changes under `src/`, it runs `pnpm build` so `dist/` is not stale for the next session or for integration tests. Rule: we rebuild when changes are detected in src at the end of a session/operation sequence; the hook implements that.
 - New hooks go in `.cursor/hooks/` and are registered in `.cursor/hooks.json`. Use the create-hook skill (`.cursor/skills/create-hook/SKILL.md`) to add or document hooks.
+
+## Plan re-import (Dolt read-only)
+
+- During bulk plan import, Dolt can report "cannot update manifest: database is read only", causing partial imports. If that happens, prefer **restoring from Dolt history** (or git): the DB is versioned in git (.taskgraph/dolt is committed). Use `dolt log -n 50` to find a commit before the loss (e.g. "plan-import: upsert tasks and edges" after the last plan create), then `dolt checkout <commit> -b restore_xxx`, `dolt checkout main`, `dolt reset --hard restore_xxx`, `dolt branch -d restore_xxx` to make that state main.
 
 ## tg export markdown
 

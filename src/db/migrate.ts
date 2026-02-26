@@ -137,35 +137,40 @@ export function applyNoDeleteTriggersMigration(
   repoPath: string,
   noCommit: boolean = false,
 ): ResultAsync<void, AppError> {
-  return noDeleteTriggersMigrationApplied(repoPath).andThen((alreadyApplied) => {
-    if (alreadyApplied) return ResultAsync.fromSafePromise(Promise.resolve());
+  return noDeleteTriggersMigrationApplied(repoPath).andThen(
+    (alreadyApplied) => {
+      if (alreadyApplied) return ResultAsync.fromSafePromise(Promise.resolve());
 
-    return ensureSentinelTable(repoPath).andThen(() => {
-      const tables = ["plan", "task", "edge", "event"] as const;
-      let chain: ResultAsync<void, AppError> =
-        ResultAsync.fromSafePromise(Promise.resolve(undefined));
-      for (const table of tables) {
-        const triggerName = `no_delete_${table}`;
-        chain = chain.andThen(() =>
-          triggerExists(repoPath, triggerName).andThen((exists) => {
-            if (exists) return ResultAsync.fromSafePromise(Promise.resolve());
-            const createTrigger = `CREATE TRIGGER \`${triggerName}\` BEFORE DELETE ON \`${table}\` FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = '${NO_DELETE_MESSAGE}'`;
-            return doltSql(createTrigger, repoPath).orElse(() => ok([])).map(() => undefined);
-          }),
+      return ensureSentinelTable(repoPath).andThen(() => {
+        const tables = ["plan", "task", "edge", "event"] as const;
+        let chain: ResultAsync<void, AppError> = ResultAsync.fromSafePromise(
+          Promise.resolve(undefined),
         );
-      }
-      return chain
-        .andThen(() => markNoDeleteTriggersApplied(repoPath))
-        .andThen(() =>
-          doltCommit(
-            "db: add BEFORE DELETE triggers (no hard deletes)",
-            repoPath,
-            noCommit,
-          ),
-        )
-        .map(() => undefined);
-    });
-  });
+        for (const table of tables) {
+          const triggerName = `no_delete_${table}`;
+          chain = chain.andThen(() =>
+            triggerExists(repoPath, triggerName).andThen((exists) => {
+              if (exists) return ResultAsync.fromSafePromise(Promise.resolve());
+              const createTrigger = `CREATE TRIGGER \`${triggerName}\` BEFORE DELETE ON \`${table}\` FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = '${NO_DELETE_MESSAGE}'`;
+              return doltSql(createTrigger, repoPath)
+                .orElse(() => ok([]))
+                .map(() => undefined);
+            }),
+          );
+        }
+        return chain
+          .andThen(() => markNoDeleteTriggersApplied(repoPath))
+          .andThen(() =>
+            doltCommit(
+              "db: add BEFORE DELETE triggers (no hard deletes)",
+              repoPath,
+              noCommit,
+            ),
+          )
+          .map(() => undefined);
+      });
+    },
+  );
 }
 
 function ensureSentinelTable(repoPath: string): ResultAsync<void, AppError> {
@@ -255,11 +260,16 @@ export function applyMigrations(
         const tempSqlFile = `${repoPath}/temp_migration.sql`;
         fs.writeFileSync(tempSqlFile, statement);
         const res = await ResultAsync.fromPromise(
-          execa(process.env.DOLT_PATH || "dolt", ["sql"], {
-            cwd: repoPath,
-            shell: true,
-            input: fs.readFileSync(tempSqlFile, "utf8"),
-          }),
+          execa(
+            process.env.DOLT_PATH || "dolt",
+            ["--data-dir", repoPath, "sql"],
+            {
+              cwd: repoPath,
+              shell: true,
+              input: fs.readFileSync(tempSqlFile, "utf8"),
+              env: { ...process.env, DOLT_READ_ONLY: "false" },
+            },
+          ),
           (e) =>
             buildError(
               ErrorCode.DB_QUERY_FAILED,

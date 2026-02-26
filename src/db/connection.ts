@@ -6,6 +6,13 @@ const PROTECTED_TABLES = ["plan", "task", "edge", "event"];
 const destructivePattern =
   /\b(DELETE\s+FROM|DROP\s+TABLE|TRUNCATE\s+TABLE?)\s+[`]?(\w+)[`]?/i;
 
+const doltPath = () => process.env.DOLT_PATH || "dolt";
+
+/**
+ * Run SQL against the Dolt repo. Uses --data-dir so the repo is explicit
+ * (avoids connecting to a running server or wrong cwd). Passes DOLT_READ_ONLY=false
+ * so Dolt treats the session as writable when the repo allows it.
+ */
 export function doltSql(
   query: string,
   repoPath: string,
@@ -20,9 +27,17 @@ export function doltSql(
     );
   }
   return ResultAsync.fromPromise(
-    execa(process.env.DOLT_PATH || "dolt", ["sql", "-q", query, "-r", "json"], {
-      cwd: repoPath,
-    }),
+    execa(
+      doltPath(),
+      ["--data-dir", repoPath, "sql", "-q", query, "-r", "json"],
+      {
+        cwd: repoPath,
+        env: {
+          ...process.env,
+          DOLT_READ_ONLY: "false",
+        },
+      },
+    ),
     (e) =>
       buildError(
         ErrorCode.DB_QUERY_FAILED,
