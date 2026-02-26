@@ -4,30 +4,51 @@ overview: Cross-plan risk assessment (assess-risk skill). Rates entropy, surface
 ---
 
 **Source:** `pnpm tg crossplan summary --json` + plan files under `plans/` (2026-02-26).
+**Reviewed:** 2026-02-26 — corrected against actual DB state and codebase.
+
+---
+
+## Inventory
+
+**25 plans in DB.** 12 fully done, 1 empty, **12 have outstanding todo tasks** (66 total). The report focuses on the 10 active todo plans plus notes on DB-stale plans.
+
+| Status                  | Plans                                                                                                                                                                                                                                                                     |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **All tasks done (12)** | Sharpen Orchestrator, Cursor Plan Import, Cursor Sub-Agent Specialization, Export Markdown, Plan Import Robustness, Project Rules, Publish to npm, Restructure package, Rich Planning, Task Dimensions, tg plan list, Agent Sync                                          |
+| **All tasks todo (10)** | Short Hash (8), Context Budget (7), Dolt Branch (7), External Gates (6), Git Worktree (6), TaskGraph MCP (6), Two-Stage Review (6), Task Templates (6), Dolt Replication (5), Persistent Agent Stats (4)                                                                  |
+| **Code done, DB stale** | Meta-Planning Skills (5 todo in DB but crossplan.ts, assess-risk skill, pattern-tasks skill, docs, and tests all exist in codebase — needs `tg done --force`); No Hard Deletes & DAL (plan not in DB at all, but cancel.ts, connection guards, triggers, tests all exist) |
+| **Multi-Agent Centaur** | 1 task done, 0 todo — effectively complete                                                                                                                                                                                                                                |
+| **Empty**               | update docs (0 tasks)                                                                                                                                                                                                                                                     |
+
+**Plan files not in DB** (never imported or lost during restore): Cursor Agent CLI Dispatch, Deps/Import/Stale/Onboarding, Post-Execution Reporting, plus older fix/build plans (Docs Tests Neverthrow, Fix Failing Tests, Fix Neverthrow TS Errors, Fix Remaining tsc Errors, Fix Test Dolt Integration, Fix Test File Errors, Query Builder Audit, Thin SQL Query Builder, Task Graph Implementation, run_dolt_backed_tests, resolve_type_errors_taskgraph). Not assessed.
 
 ---
 
 ## Summary
 
-| Plan / Scope                           | Entropy | Surface Area | Backwards Compat | Reversibility | Complexity Concentration | Testing Surface | Performance Risk | Blast Radius | Overall  |
-| -------------------------------------- | ------- | ------------ | ---------------- | ------------- | ------------------------ | --------------- | ---------------- | ------------ | -------- |
-| Short Hash Task IDs                    | H       | H            | M                | M             | **H**                    | M               | L                | M            | **H**    |
-| Dolt Branch Per Agent                  | M       | M            | L                | M             | **H**                    | M               | L                | M            | **M–H**  |
-| Git Worktree Isolation                 | M       | M            | L                | M             | **H**                    | M               | L                | M            | **M–H**  |
-| Context Budget and Compaction          | M       | M            | L                | L             | **M**                    | M               | L                | L            | M        |
-| External Gates                         | M       | M            | L                | M             | **M**                    | M               | L                | M            | M        |
-| Two-Stage Review                       | L       | M            | L                | L             | **M**                    | M               | L                | M            | M        |
-| TaskGraph MCP Server                   | M       | M            | L                | L             | **M**                    | M               | L                | M            | M        |
-| Persistent Agent Stats                 | L       | M            | L                | L             | **M**                    | M               | L                | L            | M        |
-| Dolt Replication                       | M       | M            | L                | M             | **M**                    | M               | L                | L            | M        |
-| Task Templates (Formulas)              | M       | M            | L                | M             | M                        | M               | L                | L            | M        |
-| Sharpen Orchestrator Compliance        | L       | M            | L                | L             | **M**                    | L               | L                | M            | L (done) |
-| Multi-Agent Centaur Support            | L       | M            | L                | L             | **M**                    | L               | L                | M            | M        |
-| Meta-Planning Skills                   | L       | M            | L                | L             | M                        | M               | L                | L            | L (done) |
-| Restructure package / npm layout       | M       | H            | **H**            | M             | M                        | M               | L                | M            | M–H      |
-| Rich Planning / Plan Import Robustness | M       | M            | L                | L             | M                        | M               | L                | L            | M        |
+| Plan / Scope                    | Entropy | Surface Area | Backwards Compat | Reversibility | Complexity Concentration | Testing Surface | Performance Risk | Blast Radius | Overall |
+| ------------------------------- | ------- | ------------ | ---------------- | ------------- | ------------------------ | --------------- | ---------------- | ------------ | ------- |
+| Short Hash Task IDs (8 todo)    | H       | H            | M                | M             | **H**                    | M               | L                | M            | **H**   |
+| Dolt Branch Per Agent (7)       | M       | M            | L                | M             | **H**                    | M               | M                | M            | **M-H** |
+| Git Worktree Isolation (6)      | M       | M            | L                | M             | **H**                    | M               | L                | M            | **M-H** |
+| External Gates (6)              | M       | M            | L                | M             | **M**                    | M               | L                | M            | M       |
+| Context Budget & Compaction (7) | M       | M            | L                | L             | **M**                    | M               | L                | L            | M       |
+| Two-Stage Review (6)            | L       | L            | L                | L             | **M**                    | L               | L                | M            | **L-M** |
+| TaskGraph MCP Server (6)        | M       | M            | L                | L             | **M**                    | M               | L                | M            | M       |
+| Persistent Agent Stats (4)      | L       | L            | L                | L             | L                        | M               | L                | L            | **L**   |
+| Dolt Replication (5)            | M       | M            | L                | M             | **M**                    | M               | L                | L            | M       |
+| Task Templates (Formulas) (6)   | M       | M            | L                | M             | M                        | M               | L                | L            | M       |
 
 _L = Low, M = Medium, H = High. **Bold** = key driver for overall risk._
+
+### Changes from initial auto-generated assessment
+
+- **Two-Stage Review** downgraded from M to **L-M**: it only touches agent markdown and dispatch rules, no production code. Entropy and Surface Area both L.
+- **Persistent Agent Stats** downgraded from M to **L**: it's a new self-contained command (stats.ts), touches only index.ts and docs. No schema changes, no shared code.
+- **Dolt Branch Per Agent** Performance Risk upgraded L to **M**: adding branch/merge to start/done is on the critical path of every task lifecycle.
+- **Restructure package, Rich Planning, Sharpen Orchestrator, Meta-Planning Skills** removed from active risk table — their work is done (even if DB state is stale). They no longer contribute active risk.
+- **Multi-Agent Centaur** removed (1 task, already done).
+- Added **Inventory** section so status is clear vs the DB.
 
 ---
 
@@ -35,81 +56,86 @@ _L = Low, M = Medium, H = High. **Bold** = key driver for overall risk._
 
 ### File overlaps
 
-- **docs/cli-reference.md** — 10 plans touch it (Context Budget, Task Templates, Git Worktree, TaskGraph MCP, Persistent Agent Stats, External Gates, Multi-Agent, Meta-Planning, Short Hash, Dolt Replication). Highest concentration; doc-only but merge churn and consistency risk.
-- **src/cli/index.ts** — 6 plans (Git Worktree, TaskGraph MCP, Persistent Agent Stats, External Gates, Meta-Planning Skills, Dolt Replication). Command registration and wiring; sequential ordering recommended to avoid merge conflicts.
-- **src/cli/start.ts** and **src/cli/done.ts** — 3 plans each: **Git Worktree Isolation**, **Dolt Branch Per Agent**, **Short Hash Task IDs**. These three plans all extend the start/done lifecycle. Running them in parallel on the same branch will create conflicts; run one to completion before the next.
-- **.cursor/rules/subagent-dispatch.mdc** — 3 plans: **Sharpen Orchestrator Compliance** (done), **Git Worktree Isolation**, **Two-Stage Review**. Git Worktree adds worktree dispatch; Two-Stage adds two-stage review flow. Order: complete any remaining Sharpen sync, then Two-Stage (review flow), then Git Worktree (dispatch rule update) so worktree changes sit on top of the new review flow.
-- **src/cli/context.ts** — 2 plans: **Context Budget and Compaction**, **Short Hash Task IDs**. Context Budget adds token estimation/compaction; Short Hash adds hash_id display. Either order is feasible; Context Budget is self-contained, Short Hash touches many more files.
-- **src/db/migrate.ts** and **src/domain/types.ts** — 2 plans each: **External Gates**, **Short Hash Task IDs**. Schema and type changes; run one plan’s migrations and type changes before the other to keep migrations and types consistent.
-- **.taskgraph/config.json** — 3 plans: Context Budget, Dolt Branch, Dolt Replication. Additive config keys; lower conflict risk if keys are distinct.
+- **docs/cli-reference.md** — 10 plans touch it. Highest concentration; doc-only but merge churn and consistency risk.
+- **src/cli/index.ts** — 6 plans (Git Worktree, TaskGraph MCP, Persistent Agent Stats, External Gates, Meta-Planning Skills, Dolt Replication). Command registration; sequential ordering recommended.
+- **src/cli/start.ts** and **src/cli/done.ts** — 3 plans: **Git Worktree Isolation**, **Dolt Branch Per Agent**, **Short Hash Task IDs**. These must not run in parallel.
+- **.cursor/rules/subagent-dispatch.mdc** — 2 remaining todo plans: **Git Worktree Isolation**, **Two-Stage Review**. Do Two-Stage first (review flow), then Git Worktree (dispatch additions).
+- **src/cli/context.ts** — 2 plans: **Context Budget and Compaction**, **Short Hash Task IDs**. Either order works; Context Budget is self-contained.
+- **src/db/migrate.ts** and **src/domain/types.ts** — 2 plans: **External Gates**, **Short Hash Task IDs**. Serialize migrations.
+- **.taskgraph/config.json** — 3 plans: Context Budget, Dolt Branch, Dolt Replication. Additive keys; low conflict.
 
 ### Domain/skill clusters
 
-- **cli** — 12 plans, 26 tasks. Most plans add or extend CLI commands; batching “add new command” work (e.g. gate, stats, sync) can reduce context switching.
-- **documentation-sync** — 11 plans. Many tasks are “update cli-reference” or “document X”; consider doing doc passes after related code is stable.
-- **cli-command-implementation** — 10 plans. Shared patterns (resolveTaskId, readConfig, register command); Short Hash’s resolver will benefit Dolt Branch and Git Worktree if Short Hash is done first (all need task ID handling).
-- **integration-testing** — 10 plans. Each plan adds or extends integration tests; test layout and Dolt test repo usage are shared.
+- **cli** — 12 plans, 26 tasks. Batch "add new command" work to reduce context switching.
+- **documentation-sync** — 11 plans. Do doc passes after related code is stable.
+- **cli-command-implementation** — 10 plans. Short Hash's resolver benefits all subsequent CLI work.
+- **integration-testing** — 10 plans. Each plan should use isolated Dolt repos in tests.
 
 ### Impact on Complexity Concentration and ordering
 
-- **Short Hash Task IDs** has the widest touch surface (context, start, done, migrate, types, utils, show, status, block, note, split, schema, cli-reference) and overlaps with Context Budget (context.ts), Dolt Branch and Git Worktree (start/done). It also introduces the resolver used by other CLI work. Doing **Short Hash first** reduces future merge points and gives other plans a stable task-id contract.
-- **start/done stack**: Dolt Branch and Git Worktree both add optional behavior to start/done (branch vs worktree). They are mutually compatible in concept but both modify the same files. Run **Dolt Branch Per Agent** then **Git Worktree Isolation** (or the reverse), but not in parallel.
-- **subagent-dispatch.mdc**: Two-Stage Review and Git Worktree both change the dispatch rule. **Two-Stage Review** first (review flow), then **Git Worktree** (worktree in dispatch) keeps a single logical change to the rule.
-- **index.ts** and **cli-reference.md**: Spread work so that no two plans are editing the same command or same doc section in parallel; use small, focused PRs or task ordering so one plan’s index/doc changes land before the next.
+- **Short Hash Task IDs** has the widest touch surface (13+ files). Doing it first reduces future merge conflicts and gives other plans the `resolveTaskId` utility.
+- **start/done stack**: Dolt Branch and Git Worktree both modify start.ts/done.ts. Run one to completion before the other.
+- **subagent-dispatch.mdc**: Two-Stage Review first (review flow changes), then Git Worktree (worktree dispatch).
+- **index.ts and cli-reference.md**: Serialize command registration and doc updates across plans.
 
 ---
 
 ## Overall Risk
 
-**Overall risk: Medium–High**, with a few plans at **High** (Short Hash Task IDs) or **M–H** (Dolt Branch, Git Worktree) due to **complexity concentration** on shared files (start/done, context, index, subagent-dispatch) and, for Restructure, **backwards compatibility** (package layout, entrypoints). Entropy and surface area are mostly Medium across plans. Reversibility is generally good (feature flags, additive config, optional flags). The main drivers are: (1) **multiple plans touching start.ts/done.ts and subagent-dispatch.mdc**, (2) **Short Hash’s broad CLI and schema surface**, and (3) **docs/cli-reference.md and src/cli/index.ts** shared by many plans. Mitigations: enforce **execution order** for plans that share files, do **Short Hash early** to establish the task-id resolver and reduce later conflicts, and batch **documentation** updates after code stabilizes.
+**Overall risk: Medium**, trending Medium-High for the start/done stack. Short Hash Task IDs is the **highest individual risk** (H) due to broad CLI and schema surface. Dolt Branch and Git Worktree are **M-H** because they share start.ts/done.ts with each other and Short Hash. The remaining 7 plans are solidly Medium or lower — most are additive (new commands, new files) with no breaking changes.
+
+Completed plans (Restructure, Rich Planning, Task Dimensions, etc.) no longer contribute active risk.
 
 ---
 
 ## Mitigation Strategies
 
-- **Short Hash Task IDs**: Implement resolver and schema/migration first; then update CLI commands in a single pass. Run integration tests after all command updates. Consider feature-flag or config to toggle short-hash display until stable.
-- **Dolt Branch / Git Worktree**: Run one plan fully (all tasks) before starting the other. Prefer Dolt Branch first (DB-level isolation) then Git Worktree (filesystem isolation), or vice versa by product priority; avoid parallel edits to start.ts/done.ts.
-- **Two-Stage Review vs Git Worktree**: Complete Two-Stage Review (spec/quality agents + dispatch rule) before Git Worktree’s dispatch-rule changes so worktree instructions are added to the final flow.
-- **Context Budget vs Short Hash**: Either order is acceptable; Context Budget is localized to context and config. If doing Short Hash first, ensure context.ts changes for Short Hash (display hash_id) don’t block Context Budget’s compaction logic.
-- **External Gates vs Short Hash**: Run schema/migrate and types for one plan before the other; e.g. External Gates (new gate table) then Short Hash (task hash_id), or Short Hash first if it’s the higher priority.
-- **index.ts and cli-reference.md**: Serialize “add command” and “add doc section” work across plans; use clear, small commits so conflicts are easy to resolve.
-- **Restructure package / npm layout**: Treat as a dedicated change window; run full test suite and smoke tests after restructure; document breaking changes and migration for consumers.
-- **Testing**: Each plan that adds integration tests should run in isolation (fresh Dolt repo or temp dir) to avoid cross-test pollution; keep shared test helpers in sync.
+- **Short Hash Task IDs**: Implement resolver and schema/migration first; update CLI commands in a single pass. Run integration tests after all command updates. Consider config toggle for short-hash display until stable.
+- **Dolt Branch / Git Worktree**: Run one plan fully before starting the other. Avoid parallel edits to start.ts/done.ts.
+- **Two-Stage Review before Git Worktree**: Complete Two-Stage Review (spec/quality agents + dispatch rule) before Git Worktree's dispatch changes.
+- **External Gates vs Short Hash**: Serialize migrations and type changes — run one plan's schema work before the other.
+- **index.ts and cli-reference.md**: Serialize command additions; use small commits for easy conflict resolution.
+- **Testing**: Each plan's integration tests should use isolated Dolt repos to avoid cross-test pollution.
 
 ---
 
 ## Key Risks to Monitor
 
-1. **Merge conflicts on start.ts, done.ts, and subagent-dispatch.mdc** — Multiple plans modify these; enforce ordering and avoid parallel work on the same file.
-2. **Short Hash collision and resolver behavior** — Hash space and ambiguity handling; monitor integration tests and any user reports of wrong task resolved.
-3. **Dolt Branch merge conflicts and orphan branches** — Monitor merge success rate and add cleanup/visibility (e.g. tg status for stale branches) as planned.
-4. **docs/cli-reference.md accuracy** — Many plans update it; ensure one owner or a final pass so options and commands stay consistent.
-5. **Restructure package layout** — Entrypoints and imports; verify `tg` and `tg-mcp` (or equivalent) and consuming repos after restructure.
+1. **Merge conflicts on start.ts, done.ts, and subagent-dispatch.mdc** — 3 plans and 2 plans respectively; enforce ordering.
+2. **Short Hash collision and resolver behavior** — Hash space (6 hex chars = 16M values) and ambiguity handling.
+3. **Dolt Branch merge conflicts and orphan branches** — Monitor merge success; add cleanup visibility.
+4. **docs/cli-reference.md consistency** — Many plans update it; do a final consistency pass.
+5. **DB state drift** — Meta-Planning Skills and No Hard Deletes are done in code but stale/missing in DB. Fix with `tg done --force` and re-import.
 
 ---
 
 ## Prioritized Risk Summary & Recommended Execution Order
 
-1. **Foundation / low conflict**
-   - **Meta-Planning Skills** — Done; no action.
-   - **Sharpen Orchestrator Compliance** — Done; sync template if not already.
-   - **Two-Stage Review** — Localized to agents and dispatch rule; do before other dispatch/rule changes. Delivers clear spec vs quality feedback.
+### Immediate: fix DB state
 
-2. **High concentration (serialize)**
-   - **Short Hash Task IDs** — Do early. Establishes resolver and hash_id column; many other plans benefit from stable task-id handling. Reduces future conflicts on context, start, done, and CLI commands.
-   - **Dolt Branch Per Agent** — Then do this (or Git Worktree, but not both in parallel). Completes start/done branching story.
-   - **Git Worktree Isolation** — After Dolt Branch (or after Short Hash if skipping Dolt Branch). Update subagent-dispatch after Two-Stage is in place.
+- **Meta-Planning Skills**: Mark 5 tasks done (`tg done <id> --force --evidence "completed previously"`). Code, skills, and tests all exist.
+- **No Hard Deletes & DAL**: Re-import from `plans/26-02-26_no_hard_deletes_dal.md` and mark all 7 tasks done. Code exists and is tested.
 
-3. **Medium concentration (order by dependency)**
-   - **External Gates** — Schema and CLI; can run after or alongside other “new command” work; avoid parallel migration/type changes with Short Hash.
-   - **Context Budget and Compaction** — Can run in parallel with plans that don’t touch context.ts; if Short Hash is in progress, coordinate context.ts changes.
-   - **TaskGraph MCP Server** — New surface (src/mcp/); register in index after other index changes if possible to avoid repeated merge.
-   - **Persistent Agent Stats** — New command; depends on review event convention (Two-Stage helps). Can follow Two-Stage Review.
-   - **Dolt Replication** — New sync command and config; lower conflict risk if done after config-heavy plans (Context Budget, Dolt Branch).
+### Phase 1: Foundation / low conflict
 
-4. **Documentation and restructure**
-   - **Task Templates (Formulas)**, **Plan Import Robustness**, **Export Markdown / tg status**, **tg plan list**, **Rich Planning** — Order by product priority; batch doc updates (cli-reference, schema) where possible.
-   - **Restructure package — src at root, standard npm layout** — Run when ready for a dedicated breaking-change window; run after or before other plans by release strategy.
-   - **Multi-Agent Centaur Support**, **Agent Sync**, **Project Rules**, **Cursor Plan Import** — Rule and doc changes; coordinate with Sharpen/Two-Stage so agent and rule set stay consistent.
+- **Two-Stage Review** (6 tasks, L-M risk) — Agent markdown and dispatch rule only. No production code. Do before Git Worktree's dispatch changes.
+- **Persistent Agent Stats** (4 tasks, L risk) — Self-contained new command. Can run in parallel with Two-Stage Review (no file overlap).
 
-**Suggested next runnable (from tg status):** Short Hash Task IDs (“Create hash-id generation module”, “Update schema.md and cli-reference.md with hash ID documentation”) is consistent with doing Short Hash early. If you prefer to reduce risk on start/done first, consider Dolt Branch or Git Worktree as the first plan instead, then Short Hash.
+### Phase 2: High concentration (serialize)
+
+- **Short Hash Task IDs** (8 tasks, H risk) — Do early. Establishes resolver and hash_id column. Reduces future conflicts on context, start, done, and CLI commands.
+- **Dolt Branch Per Agent** (7 tasks, M-H risk) — After Short Hash. Completes start/done branching story. Not in parallel with Git Worktree.
+- **Git Worktree Isolation** (6 tasks, M-H risk) — After Dolt Branch and Two-Stage Review. Subagent-dispatch changes sit on top of the new review flow.
+
+### Phase 3: Medium risk, independent
+
+- **External Gates** (6 tasks, M) — Schema and CLI. Avoid parallel migration work with Short Hash.
+- **Context Budget and Compaction** (7 tasks, M) — Self-contained (context.ts, config, token-estimate). Can run after or alongside plans that don't touch context.ts.
+- **TaskGraph MCP Server** (6 tasks, M) — New surface (src/mcp/). Register in index after other command additions if possible.
+- **Dolt Replication** (5 tasks, M) — New sync command and config. Lower conflict if done after Dolt Branch (config overlap).
+- **Task Templates (Formulas)** (6 tasks, M) — New command and schema. Independent of most other plans.
+
+### Phase 4: Cleanup
+
+- Batch **doc updates** across cli-reference.md and schema.md after code is stable.
+- Cancel or archive remaining empty/stale plans (update docs).
