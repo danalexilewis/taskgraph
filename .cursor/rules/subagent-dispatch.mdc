@@ -20,7 +20,7 @@ Agent templates live in `.cursor/agents/` (see README there). You build each sub
 - **When executing tasks from a plan** — **MANDATORY.** You MUST use Pattern 1 (parallel, max 3) or Pattern 2 (sequential). Dispatch implementer sub-agents; do not run tg start / code / tg done yourself. Max **3** concurrent tasks. AGENT.md requires this; skipping it is a critical failure.
 - **Well-scoped tasks** with clear intent and domain/skill docs — sub-agents follow the context.
 
-Use **direct execution** (you do start → work → done yourself) only when: a sub-agent has failed twice and you are completing that task yourself, or the task is explicitly exploratory/ambiguous and not suitable for dispatch.
+Use **direct execution** (you do start → work → done yourself) only when: a sub-agent has failed twice and you are completing that task yourself, or the task is explicitly exploratory/ambiguous and not suitable for dispatch. Always log direct execution with `tg note <taskId> --msg "Direct execution: <reason>"`.
 
 ## Pattern 1: Parallel batch execution (primary) — MANDATORY for execution
 

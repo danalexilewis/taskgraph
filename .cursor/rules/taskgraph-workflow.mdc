@@ -28,20 +28,26 @@ Before executing any plan, run `pnpm tg status` to see what's outstanding. **Mul
 pnpm tg import plans/<file> --plan "<Plan Name>" --format cursor
 ```
 
-## Execution Loop (per task — MANDATORY)
+## Execution Loop — MANDATORY sub-agent dispatch
 
-For EACH task, follow ALL steps in order. Never skip start, never defer done.
+Task execution uses sub-agents. Follow `.cursor/rules/subagent-dispatch.mdc` Pattern 1 (parallel) or Pattern 2 (sequential). The orchestrator coordinates; sub-agents do the work.
 
-1. `pnpm tg start <taskId> --agent <name>` — **MUST** run before doing any work (pass `--agent` when multiple agents may be active)
-2. `pnpm tg context <taskId>` — Read the output: domain doc path (`docs/<domain>.md`), skill guide path (`docs/skills/<skill>.md`), and related done tasks. Load those docs before coding.
-3. Do the work (stay within scope)
-4. `pnpm tg done <taskId> --evidence "..."` — **MUST** run immediately after work is complete
+1. `pnpm tg next --plan "<Plan>" --json --limit 3` — get runnable tasks
+2. For each task: build implementer prompt from `tg context` and `.cursor/agents/implementer.md`; dispatch via Task tool, agent CLI, or mcp_task.
+3. After implementer completes: dispatch reviewer with task context + diff.
+4. If reviewer FAILs, re-dispatch implementer once. After 2 failures, fall back to direct execution.
+
+### Fallback: direct execution
+
+Use only when: a sub-agent has failed twice on the same task, or the task is explicitly exploratory/ambiguous. In this case follow the direct steps:
+
+1. `pnpm tg start <taskId> --agent <name>`
+2. `pnpm tg context <taskId>` — read and load docs
+3. Do the work
+4. `pnpm tg done <taskId> --evidence "..."`
+5. Log the reason: `pnpm tg note <taskId> --msg "Direct execution: <reason>"`
 
 Evidence should include: tests run, commands, git hashes.
-
-### Sub-agent dispatch (optional)
-
-You may execute tasks by **dispatching fast sub-agents** instead of doing every step yourself: use `.cursor/rules/subagent-dispatch.mdc` for parallel batch execution (multiple unblocked tasks) or sequential implementer → reviewer. Prefer sub-agents when tasks are well-scoped with clear intent; use direct execution (steps 1–4 above) for exploratory or ambiguous work.
 
 ### Multi-task discipline
 

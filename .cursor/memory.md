@@ -61,5 +61,9 @@
 ## Learning mode
 
 - Toggle: `"learningMode": true` in `.taskgraph/config.json`. Orchestrator reads this before running the review protocol.
+
+## tg export markdown
+
+- Export overwrites the plan file with frontmatter (todos + statuses) only; the original fileTree, risks, body, and `<original_prompt>` are not preserved. Restore them manually if the plan file should remain a full artifact.
 - Review triggers after implementer, explorer, or planner-analyst completes — not after reviewer.
 - Learnings go in each agent's `## Learnings` section, injected as `{{LEARNINGS}}` placeholder. Consolidate into prompt template when >10 entries.

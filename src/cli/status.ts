@@ -60,6 +60,17 @@ export function statusCommand(program: Command) {
           ? `SELECT COUNT(DISTINCT p.plan_id) AS count FROM \`plan\` p JOIN \`task\` t ON t.plan_id = p.plan_id ${planFilter || "WHERE 1=1"} ${dimFilter}`
           : `SELECT COUNT(*) AS count FROM \`plan\` ${planWhere}`;
         const statusCountsSql = `SELECT t.status, COUNT(*) AS count FROM \`task\` t JOIN \`plan\` p ON t.plan_id = p.plan_id ${planFilter || "WHERE 1=1"} ${dimFilter} GROUP BY t.status`;
+        const actionableCountSql = `
+          SELECT COUNT(*) AS count FROM \`task\` t
+          JOIN \`plan\` p ON t.plan_id = p.plan_id
+          WHERE t.status = 'todo'
+          AND (SELECT COUNT(*) FROM \`edge\` e
+               JOIN \`task\` bt ON e.from_task_id = bt.task_id
+               WHERE e.to_task_id = t.task_id AND e.type = 'blocks'
+               AND bt.status NOT IN ('done','canceled')) = 0
+          ${options.plan ? (isUUID ? `AND p.plan_id = '${sqlEscape(options.plan)}'` : `AND p.title = '${sqlEscape(options.plan)}'`) : ""}
+          ${dimFilter}
+        `;
         const nextSql = `
           SELECT t.task_id, t.title, p.title as plan_title
           FROM \`task\` t
@@ -100,27 +111,33 @@ export function statusCommand(program: Command) {
                 statusCounts[r.status] = r.count;
               });
               return q
-                .raw<{
-                  task_id: string;
-                  title: string;
-                  plan_title: string;
-                }>(nextSql)
-                .andThen((nextTasks) =>
-                  q
+                .raw<{ count: number }>(actionableCountSql)
+                .andThen((actionableRes) => {
+                  const actionableCount = actionableRes[0]?.count ?? 0;
+                  return q
                     .raw<{
                       task_id: string;
                       title: string;
                       plan_title: string;
-                      body: string;
-                      created_at: string;
-                    }>(activeWorkSql)
-                    .map((activeWork) => ({
-                      plansCount,
-                      statusCounts,
-                      nextTasks,
-                      activeWork,
-                    })),
-                );
+                    }>(nextSql)
+                    .andThen((nextTasks) =>
+                      q
+                        .raw<{
+                          task_id: string;
+                          title: string;
+                          plan_title: string;
+                          body: string;
+                          created_at: string;
+                        }>(activeWorkSql)
+                        .map((activeWork) => ({
+                          plansCount,
+                          statusCounts,
+                          actionableCount,
+                          nextTasks,
+                          activeWork,
+                        })),
+                    );
+                });
             });
         });
       });
@@ -130,6 +147,7 @@ export function statusCommand(program: Command) {
           const d = data as {
             plansCount: number;
             statusCounts: Record<string, number>;
+            actionableCount: number;
             nextTasks: Array<{
               task_id: string;
               title: string;
@@ -145,6 +163,13 @@ export function statusCommand(program: Command) {
           };
           if (!rootOpts(cmd).json) {
             console.log(`Plans: ${d.plansCount}`);
+            const todo = d.statusCounts["todo"] ?? 0;
+            const doing = d.statusCounts["doing"] ?? 0;
+            const blocked = d.statusCounts["blocked"] ?? 0;
+            const notDone = todo + doing + blocked;
+            console.log(
+              `Tasks: ${notDone} not done (${doing} in progress, ${blocked} blocked, ${d.actionableCount} actionable)`,
+            );
             const statusOrder = [
               "todo",
               "doing",
@@ -176,7 +201,24 @@ export function statusCommand(program: Command) {
               });
             }
           } else {
-            console.log(JSON.stringify(d, null, 2));
+            const todo = d.statusCounts["todo"] ?? 0;
+            const doing = d.statusCounts["doing"] ?? 0;
+            const blocked = d.statusCounts["blocked"] ?? 0;
+            console.log(
+              JSON.stringify(
+                {
+                  ...d,
+                  summary: {
+                    not_done: todo + doing + blocked,
+                    in_progress: doing,
+                    blocked,
+                    actionable: d.actionableCount,
+                  },
+                },
+                null,
+                2,
+              ),
+            );
           }
         },
         (error: AppError) => {

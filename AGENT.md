@@ -14,7 +14,7 @@ Plan creation and review
 
 Agent operating loop
 
-**Task execution uses sub-agents. Do not do the work yourself.** You MUST dispatch implementer (and reviewer) sub-agents per `.cursor/rules/subagent-dispatch.mdc`. Max 3 tasks in flight at a time. Direct execution (you code) only after a sub-agent fails twice or the task is explicitly exploratory/ambiguous.
+**Task execution uses sub-agents. Do not do the work yourself.** You MUST dispatch implementer (and reviewer) sub-agents per `.cursor/rules/subagent-dispatch.mdc`. Max 3 tasks in flight at a time. Direct execution (you code) only after a sub-agent fails twice or the task is explicitly exploratory/ambiguous. When using direct execution, log the reason: `tg note <taskId> --msg "Direct execution: <reason>"`.
 
 - Always begin with: tg status to orient — surface stale tasks, plan state, and other agents' active work (if any).
 - Then: tg next --plan "<Plan>" --limit 3 (or tg next --limit 3). Get up to 3 runnable tasks. Follow Pattern 1 (parallel, max 3) or Pattern 2 (sequential) in subagent-dispatch.mdc.
@@ -26,6 +26,16 @@ Per-task discipline
 
 - Complete start→work→done for EACH task individually.
 - Never batch-skip transitions (e.g., doing all work then marking all done).
+
+Before completing your response (compliance check)
+
+If this response involved planning or execution, verify before responding:
+
+- **Planning**: Did I dispatch the planner-analyst before writing the plan?
+- **Execution**: Did I dispatch implementer sub-agents (not code myself)?
+- **Direct execution**: Is the reason valid (2 failures or exploratory)? Did I log with `tg note`?
+- **Plan structure**: Does the plan have ≥2 unblocked tasks (parallel-ready)?
+  If any check fails, fix it before completing your response.
 
 Recovery (out-of-sync tasks)
 

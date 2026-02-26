@@ -6,9 +6,9 @@ The Task Graph Command Line Interface (`tg`) provides a comprehensive set of com
 
 All `tg` commands support the following global options:
 
--   `--json`: Output machine-readable JSON instead of human-readable text. Useful for scripting.
--   `--no-commit`: Perform a dry run; do not commit changes to the Dolt repository. (Applies only to commands that modify data.)
--   `--commit-msg <msg>`: Override the default commit message for data-modifying commands.
+- `--json`: Output machine-readable JSON instead of human-readable text. Useful for scripting.
+- `--no-commit`: Perform a dry run; do not commit changes to the Dolt repository. (Applies only to commands that modify data.)
+- `--commit-msg <msg>`: Override the default commit message for data-modifying commands.
 
 ## Commands
 
@@ -21,13 +21,16 @@ tg init
 ```
 
 **Options:**
--   `--no-commit`: Do not commit changes to Dolt.
+
+- `--no-commit`: Do not commit changes to Dolt.
 
 **Output:**
--   Repository path.
--   Instructions on how to run a Dolt SQL server (if applicable).
+
+- Repository path.
+- Instructions on how to run a Dolt SQL server (if applicable).
 
 **Example:**
+
 ```bash
 tg init
 # Output:
@@ -52,11 +55,13 @@ tg setup
 ```
 
 **Options:**
--   `--no-docs`: Do not scaffold `docs/` and `docs/skills/`.
--   `--no-cursor`: Do not scaffold `.cursor/` (rules + memory).
--   `--force`: Overwrite existing files (default is to skip).
+
+- `--no-docs`: Do not scaffold `docs/` and `docs/skills/`.
+- `--no-cursor`: Do not scaffold `.cursor/` (rules + memory).
+- `--force`: Overwrite existing files (default is to skip).
 
 **Example:**
+
 ```bash
 tg setup --force
 ```
@@ -70,13 +75,16 @@ tg plan new "<title>"
 ```
 
 **Arguments:**
--   `<title>`: The title of the new plan.
+
+- `<title>`: The title of the new plan.
 
 **Options:**
--   `--intent <intent>`: A detailed intent or goal of the plan.
--   `--source <path>`: Path to the source Cursor Plan document (e.g., `plans/feature-x.md`).
+
+- `--intent <intent>`: A detailed intent or goal of the plan.
+- `--source <path>`: Path to the source Cursor Plan document (e.g., `plans/feature-x.md`).
 
 **Example:**
+
 ```bash
 tg plan new "User Onboarding Flow" --intent "Streamline the process for new users signing up."
 # Output:
@@ -94,13 +102,16 @@ tg plan ls
 ```
 
 **Output (human-readable):**
--   One line per plan: `plan_id  title  (status)`
--   Ordered by `created_at` DESC (newest first)
+
+- One line per plan: `plan_id  title  (status)`
+- Ordered by `created_at` DESC (newest first)
 
 **Options:**
--   `--json`: Output as JSON array of `{ plan_id, title, status, created_at }`.
+
+- `--json`: Output as JSON array of `{ plan_id, title, status, created_at }`.
 
 **Example:**
+
 ```bash
 tg plan list
 # Output:
@@ -118,15 +129,18 @@ tg task new "<title>" --plan <planId>
 ```
 
 **Arguments:**
--   `<title>`: The title of the new task.
+
+- `<title>`: The title of the new task.
 
 **Options:**
--   `--plan <planId>`: **(Required)** The ID of the parent plan.
--   `--feature <featureKey>`: A key for portfolio analysis (e.g., `auth`, `billing`).
--   `--area <area>`: The functional area of the task (e.g., `frontend`, `backend`, `db`, `infra`).
--   `--acceptance <json>`: A JSON array of acceptance criteria checks for the task.
+
+- `--plan <planId>`: **(Required)** The ID of the parent plan.
+- `--feature <featureKey>`: A key for portfolio analysis (e.g., `auth`, `billing`).
+- `--area <area>`: The functional area of the task (e.g., `frontend`, `backend`, `db`, `infra`).
+- `--acceptance <json>`: A JSON array of acceptance criteria checks for the task.
 
 **Example:**
+
 ```bash
 tg task new "Develop Signup Form" --plan a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11 --feature onboarding --area frontend --acceptance '["Form renders", "Submits data"]'
 # Output:
@@ -142,14 +156,17 @@ tg edge add <fromTaskId> blocks|relates <toTaskId>
 ```
 
 **Arguments:**
--   `<fromTaskId>`: The ID of the blocking or relating task.
--   `<type>`: The type of edge, either `blocks` (indicating a hard dependency) or `relates` (indicating a softer relationship).
--   `<toTaskId>`: The ID of the blocked or related task.
+
+- `<fromTaskId>`: The ID of the blocking or relating task.
+- `<type>`: The type of edge, either `blocks` (indicating a hard dependency) or `relates` (indicating a softer relationship).
+- `<toTaskId>`: The ID of the blocked or related task.
 
 **Options:**
--   `--reason <reason>`: A reason for establishing this dependency.
+
+- `--reason <reason>`: A reason for establishing this dependency.
 
 **Example:**
+
 ```bash
 tg edge add b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11 blocks c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11 --reason "Frontend needs API"
 # Output:
@@ -165,16 +182,19 @@ tg next
 ```
 
 **Options:**
--   `--plan <planId|title>`: Optional filter by plan ID or title.
--   `--domain <domain>`: Filter by task domain (maps to `docs/<domain>.md`).
--   `--skill <skill>`: Filter by task skill (maps to `docs/skills/<skill>.md`).
--   `--change-type <type>`: Filter by change type: `create`, `modify`, `refactor`, `fix`, `investigate`, `test`, `document`.
--   `--limit <limit>`: Limit the number of tasks returned (default: 10).
+
+- `--plan <planId|title>`: Optional filter by plan ID or title.
+- `--domain <domain>`: Filter by task domain (maps to `docs/<domain>.md`).
+- `--skill <skill>`: Filter by task skill (maps to `docs/skills/<skill>.md`).
+- `--change-type <type>`: Filter by change type: `create`, `modify`, `refactor`, `fix`, `investigate`, `test`, `document`.
+- `--limit <limit>`: Limit the number of tasks returned (default: 10).
 
 **Output fields (human-readable):**
--   `task_id`, `title`, `plan title`, `risk`, `estimate`, `blockers count`.
+
+- `task_id`, `title`, `plan title`, `risk`, `estimate`, `blockers count`.
 
 **Example:**
+
 ```bash
 tg next --plan "User Onboarding Flow"
 # Output:
@@ -191,13 +211,16 @@ tg note <taskId> --msg "<text>" [--agent <name>]
 ```
 
 **Arguments:**
--   `<taskId>`: The ID of the task to annotate.
+
+- `<taskId>`: The ID of the task to annotate.
 
 **Options:**
--   `--msg <text>`: **(Required)** The note message.
--   `--agent <name>`: Agent identifier (default: "default").
+
+- `--msg <text>`: **(Required)** The note message.
+- `--agent <name>`: Agent identifier (default: "default").
 
 **Example:**
+
 ```bash
 tg note b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11 --msg "Schema in flux, support both until migration lands" --agent alice
 # Output:
@@ -213,9 +236,11 @@ tg show <taskId>
 ```
 
 **Arguments:**
--   `<taskId>`: The ID of the task to display.
+
+- `<taskId>`: The ID of the task to display.
 
 **Example:**
+
 ```bash
 tg show b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11
 # Output:
@@ -250,13 +275,16 @@ tg start <taskId> [--agent <name>] [--force]
 ```
 
 **Arguments:**
--   `<taskId>`: The ID of the task to start.
+
+- `<taskId>`: The ID of the task to start.
 
 **Options:**
--   `--agent <name>`: Agent identifier for multi-agent visibility. Recorded in the started event body.
--   `--force`: Override claim when task is already being worked by another agent (human override).
+
+- `--agent <name>`: Agent identifier for multi-agent visibility. Recorded in the started event body.
+- `--force`: Override claim when task is already being worked by another agent (human override).
 
 **Example:**
+
 ```bash
 tg start b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11 --agent alice
 # Output:
@@ -272,14 +300,17 @@ tg done <taskId> --evidence "<text>"
 ```
 
 **Arguments:**
--   `<taskId>`: The ID of the task to mark as done.
+
+- `<taskId>`: The ID of the task to mark as done.
 
 **Options:**
--   `--evidence <text>`: **(Required)** A description of the evidence of completion (e.g., tests run, commands output summary, git commit hash).
--   `--checks <json>`: An optional JSON array of acceptance checks that were verified.
--   `--force`: Force the task to `done` status even if it's not currently `doing` (discouraged).
+
+- `--evidence <text>`: **(Required)** A description of the evidence of completion (e.g., tests run, commands output summary, git commit hash).
+- `--checks <json>`: An optional JSON array of acceptance checks that were verified.
+- `--force`: Force the task to `done` status even if it's not currently `doing` (discouraged).
 
 **Example:**
+
 ```bash
 tg done b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11 --evidence "All frontend components implemented and reviewed, tests passed." --checks '["UI looks good", "API integrated"]'
 # Output:
@@ -295,13 +326,16 @@ tg block <taskId> --on <blockerTaskId>
 ```
 
 **Arguments:**
--   `<taskId>`: The ID of the task that will be blocked.
+
+- `<taskId>`: The ID of the task that will be blocked.
 
 **Options:**
--   `--on <blockerTaskId>`: **(Required)** The ID of the task that is currently blocking `<taskId>`.
--   `--reason <reason>`: The reason why `<taskId>` is blocked by `<blockerTaskId>`.
+
+- `--on <blockerTaskId>`: **(Required)** The ID of the task that is currently blocking `<taskId>`.
+- `--reason <reason>`: The reason why `<taskId>` is blocked by `<blockerTaskId>`.
 
 **Example:**
+
 ```bash
 tg block d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11 --on c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11 --reason "Requires API to be deployed"
 # Output:
@@ -317,14 +351,17 @@ tg split <taskId> --into "<title1>|<title2>|..."
 ```
 
 **Arguments:**
--   `<taskId>`: The ID of the task to split.
+
+- `<taskId>`: The ID of the task to split.
 
 **Options:**
--   `--into <titles>`: **(Required)** A pipe-separated list of titles for the new subtasks (e.g., `"Subtask A|Subtask B"`).
--   `--keep-original`: If `true` (default), the original task remains as a parent `umbrella` task. If `false`, the original task is set to `canceled`.
--   `--link-direction <direction>`: Direction of the new 'relates' edges. `original-to-new` (default) creates edges from the original task to the new subtasks. `new-to-original` creates edges from the new subtasks to the original task.
+
+- `--into <titles>`: **(Required)** A pipe-separated list of titles for the new subtasks (e.g., `"Subtask A|Subtask B"`).
+- `--keep-original`: If `true` (default), the original task remains as a parent `umbrella` task. If `false`, the original task is set to `canceled`.
+- `--link-direction <direction>`: Direction of the new 'relates' edges. `original-to-new` (default) creates edges from the original task to the new subtasks. `new-to-original` creates edges from the new subtasks to the original task.
 
 **Example:**
+
 ```bash
 tg split b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11 --into "Subtask A|Subtask B" --keep-original false
 # Output:
@@ -342,10 +379,12 @@ tg export mermaid
 ```
 
 **Options:**
--   `--plan <planId>`: Filter the graph to include tasks only from a specific plan ID.
--   `--feature <featureKey>`: Filter the graph to include tasks only related to a specific feature key.
+
+- `--plan <planId>`: Filter the graph to include tasks only from a specific plan ID.
+- `--feature <featureKey>`: Filter the graph to include tasks only related to a specific feature key.
 
 **Example:**
+
 ```bash
 tg export mermaid --plan a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11
 # Output:
@@ -364,10 +403,12 @@ tg export dot
 ```
 
 **Options:**
--   `--plan <planId>`: Filter the graph to include tasks only from a specific plan ID.
--   `--feature <featureKey>`: Filter the graph to include tasks only related to a specific feature key.
+
+- `--plan <planId>`: Filter the graph to include tasks only from a specific plan ID.
+- `--feature <featureKey>`: Filter the graph to include tasks only related to a specific feature key.
 
 **Example:**
+
 ```bash
 tg export dot --feature auth
 # Output:
@@ -389,12 +430,14 @@ tg export markdown --plan <planId> [--out <path>]
 ```
 
 **Options:**
--   `--plan <planId>`: **(Required)** Plan ID to export.
--   `--out <path>`: Write to file instead of stdout.
+
+- `--plan <planId>`: **(Required)** Plan ID to export.
+- `--out <path>`: Write to file instead of stdout.
 
 **Output:**
--   YAML frontmatter with `name`, `overview`, `todos` (id, content, status, blockedBy).
--   Suitable for re-import via `tg import --format cursor`.
+
+- YAML frontmatter with `name`, `overview`, `todos` (id, content, status, blockedBy).
+- Suitable for re-import via `tg import --format cursor`.
 
 ### `tg context <taskId>`
 
@@ -405,10 +448,12 @@ tg context <taskId>
 ```
 
 **Arguments:**
--   `<taskId>`: The ID of the task.
+
+- `<taskId>`: The ID of the task.
 
 **Options:**
--   `--json`: Output as JSON: `domains`, `skills` (arrays), `domain_docs`, `skill_docs` (paths), `related_done_by_domain`, `related_done_by_skill`, and when present: `suggested_changes`, `file_tree`, `risks` (plan-level).
+
+- `--json`: Output as JSON: `domains`, `skills` (arrays), `domain_docs`, `skill_docs` (paths), `related_done_by_domain`, `related_done_by_skill`, and when present: `suggested_changes`, `file_tree`, `risks` (plan-level).
 
 **Output (human):** Task title and ID; change type; domain doc path(s) (`docs/<domain>.md`); skill guide path(s) (`docs/skills/<skill>.md`); up to 5 related done tasks by domain; up to 5 by skill. If the task has `suggested_changes`, the plan has `file_tree`, or the plan has `risks`, those are printed as well.
 
@@ -421,17 +466,22 @@ tg status [--plan <planId>] [--domain <domain>] [--skill <skill>] [--change-type
 ```
 
 **Options:**
--   `--plan <planId>`: Filter by plan ID or title.
--   `--domain <domain>`: Filter by task domain.
--   `--skill <skill>`: Filter by task skill.
--   `--change-type <type>`: Filter by change type.
--   `--json`: Output as JSON object.
+
+- `--plan <planId>`: Filter by plan ID or title.
+- `--domain <domain>`: Filter by task domain.
+- `--skill <skill>`: Filter by task skill.
+- `--change-type <type>`: Filter by change type.
+- `--json`: Output as JSON object.
 
 **Output (human):**
--   Plans: count
--   Task counts by status: todo, doing, blocked, done
--   Active work: doing tasks with agent_id, plan title, started_at (when multiple agents may be active)
--   Next runnable: up to 2 tasks with ID, title, plan
+
+- Plans: count
+- Tasks: summary line with counts **not done**, **in progress**, **blocked**, **actionable** (e.g. `Tasks: 12 not done (3 in progress, 2 blocked, 4 actionable)`)
+- Task counts by status: todo, doing, blocked, done, canceled (each only if &gt; 0)
+- Active work: doing tasks with agent_id, plan title, started_at (when multiple agents may be active)
+- Next runnable: up to 2 tasks with ID, title, plan
+
+With `--json`, the payload includes a `summary` object: `not_done`, `in_progress`, `blocked`, `actionable`.
 
 ### `tg portfolio overlaps`
 
@@ -442,13 +492,16 @@ tg portfolio overlaps
 ```
 
 **Options:**
--   `--min <count>`: Minimum number of features for a task to be considered overlapping (default: 2).
+
+- `--min <count>`: Minimum number of features for a task to be considered overlapping (default: 2).
 
 **Output:**
--   Lists tasks explicitly linked by `relates` edges across features.
--   Highlights areas where tasks from multiple features reside.
+
+- Lists tasks explicitly linked by `relates` edges across features.
+- Highlights areas where tasks from multiple features reside.
 
 **Example:**
+
 ```bash
 tg portfolio overlaps --min 3
 # Output:
@@ -468,10 +521,12 @@ tg portfolio hotspots
 ```
 
 **Output:**
--   Counts of tasks grouped by `area`.
--   Lists tasks that are associated with more than one `feature_key`.
+
+- Counts of tasks grouped by `area`.
+- Lists tasks that are associated with more than one `feature_key`.
 
 **Example:**
+
 ```bash
 tg portfolio hotspots
 # Output:
@@ -492,13 +547,16 @@ tg import <filePath> --plan "<planTitleOrId>" [--format cursor|legacy]
 ```
 
 **Arguments:**
--   `<filePath>`: The path to the markdown plan file (e.g., `plans/feature-auth.md`).
+
+- `<filePath>`: The path to the markdown plan file (e.g., `plans/feature-auth.md`).
 
 **Options:**
--   `--plan <planTitleOrId>`: **(Required)** The title or ID of the plan to associate the imported tasks with. If a plan with the given title/ID does not exist, a new one will be created.
--   `--format <format>`: Plan format. `cursor` for Cursor plans (YAML frontmatter with todos); `legacy` for TASK:/TITLE:/BLOCKED_BY: format (default).
+
+- `--plan <planTitleOrId>`: **(Required)** The title or ID of the plan to associate the imported tasks with. If a plan with the given title/ID does not exist, a new one will be created.
+- `--format <format>`: Plan format. `cursor` for Cursor plans (YAML frontmatter with todos); `legacy` for TASK:/TITLE:/BLOCKED_BY: format (default).
 
 **Example:**
+
 ```bash
 tg import plans/new-feature.md --plan "New Feature Development"
 # Output:

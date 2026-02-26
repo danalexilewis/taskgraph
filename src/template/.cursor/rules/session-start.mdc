@@ -12,10 +12,18 @@ pnpm tg status
 ```
 
 This surfaces:
+
 - Plans in progress
 - Tasks stuck in `doing` (may need cleanup)
 - **Active work:** doing tasks with agent_id and plan (when multiple agents are active)
 - Next runnable tasks
+
+**Key constraints (see AGENT.md for details):**
+
+- Sub-agent dispatch is **mandatory** for task execution — do not do the work yourself.
+- Planner-analyst dispatch is **mandatory** before writing any plan.
+- Max **3** tasks in flight at a time.
+- Plans must have parallel-ready tasks (≥2 with no blockedBy).
 
 **When multiple agents are active:** Read the "Active work" section. Avoid picking tasks that touch the same area/files as another agent's doing task. If overlap is detected, leave a `tg note` and pick a different task.
 
