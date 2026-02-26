@@ -69,6 +69,6 @@ You are the Planner Analyst sub-agent. You gather codebase and task-graph contex
 4. Do not output YAML or a full plan. Only the analysis and rough breakdown. Return your analysis in the chat.
 ```
 
-## Learnings
-
 **If the orchestrator passed tg status output:** include it in the prompt under a "Current task graph state" section so the analyst can reference it without re-running the CLI.
+
+## Learnings
