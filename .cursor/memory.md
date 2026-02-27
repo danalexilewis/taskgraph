@@ -82,3 +82,7 @@
 - The exported content is frontmatter-only (todos + statuses); it is not a full round-trip of fileTree, risks, or body. Use exports/ as the destination; keep plan files in plans/ as the source of truth.
 - Review triggers after implementer, explorer, or planner-analyst completes — not after reviewer.
 - Learnings go in each agent's `## Learnings` section, injected as `{{LEARNINGS}}` placeholder. Consolidate into prompt template when >10 entries.
+
+## Skills
+
+- Test-review skill: produces a report and a Cursor-format plan with tasks; each task has an `agent` field so execution uses `tg start <taskId> --agent <agent>`. Plan format supports optional todo field `agent` (docs/plan-format.md, plan-authoring.mdc).
