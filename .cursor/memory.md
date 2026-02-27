@@ -83,6 +83,13 @@
 - Review triggers after implementer, explorer, or planner-analyst completes — not after reviewer.
 - Learnings go in each agent's `## Learnings` section, injected as `{{LEARNINGS}}` placeholder. Consolidate into prompt template when >10 entries.
 
+## Visual tree format (user preference)
+
+- **Always use `├──` / `└──` tree drawing** for file trees and dependency graphs in plans. Flat indented lists are harder to scan.
+- **Dependency graphs**: Group tasks into execution waves (parallel start, after X, after Y). Show what can run concurrently vs what is gated. Include in the markdown body of every plan.
+- **File trees**: Use the same tree connectors in YAML `fileTree` fields. Group by directory.
+- **Mermaid**: Still use for data flows, state machines, and supplementary views. Complements but does not replace the tree-style graphs.
+
 ## Skills
 
 - Test-review skill: produces a report and a Cursor-format plan with tasks; each task has an `agent` field so execution uses `tg start <taskId> --agent <agent>`. Plan format supports optional todo field `agent` (docs/plan-format.md, plan-authoring.mdc).

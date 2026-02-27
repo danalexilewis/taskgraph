@@ -52,19 +52,22 @@ Base fields (see [Plan Import](plan-import.md)): `id`, `content`, `status`, `blo
 
 ### fileTree
 
-Plain-text tree of files touched by the plan. Annotations like `(create)` or `(modify)` are optional but help readers.
+Visual tree of files touched by the plan using `├──` / `└──` connectors. Annotations like `(create)` or `(modify)` are optional but help readers. Group by directory; the tree format is more scannable than flat indented lists.
 
 ```yaml
 fileTree: |
   docs/
-    plan-format.md           (create)
+  └── plan-format.md               (create)
   src/
-    db/migrate.ts            (modify)
-    domain/types.ts          (modify)
-    plan-import/parser.ts    (modify)
+  ├── db/
+  │   └── migrate.ts               (modify)
+  ├── domain/
+  │   └── types.ts                 (modify)
+  └── plan-import/
+      └── parser.ts                (modify)
   __tests__/
-    integration/
-      rich-plan.test.ts      (create)
+  └── integration/
+      └── rich-plan.test.ts        (create)
 ```
 
 ### risks
@@ -134,11 +137,29 @@ The content **after** the closing `---` of the frontmatter is the **narrative la
 ### Recommended Sections
 
 1. **Analysis** — Why this approach; what was explored or rejected.
-2. **Proposed Changes** — Detailed code snippets, file paths, key logic (especially for complex changes).
-3. **Mermaid Diagrams** — Data flows, state machines, dependency graphs.
-4. **Risks** — Expanded discussion beyond the YAML `risks` list.
-5. **Testing Strategy** — How tests will be structured and what they cover.
-6. **Open Questions** — Unresolved items that may affect execution.
+2. **Dependency Graph** — Visual tree showing execution waves (what runs in parallel, what is gated). Required for all plans with dependencies. See example below.
+3. **Proposed Changes** — Detailed code snippets, file paths, key logic (especially for complex changes).
+4. **Mermaid Diagrams** — Data flows, state machines, or supplementary dependency views. Complements the tree graph.
+5. **Risks** — Expanded discussion beyond the YAML `risks` list.
+6. **Testing Strategy** — How tests will be structured and what they cover.
+7. **Open Questions** — Unresolved items that may affect execution.
+
+### Dependency Graph (tree format)
+
+Show execution order using `├──` / `└──` connectors. Group tasks into waves based on what can run concurrently vs what is blocked. This is the quick-scan execution plan that humans and orchestrators read first.
+
+```
+Parallel start (2 unblocked):
+  ├── add-migration (schema changes)
+  └── write-format-spec (docs)
+
+After add-migration:
+  ├── update-parser
+  └── update-importer
+
+After all above:
+  └── integration-tests
+```
 
 ### Original Prompt
 
@@ -158,12 +179,15 @@ This preserves intent that may not be fully reflected in the structured fields.
 
 ```yaml
 ---
-name: Rich Planning — Example
+name: Rich Planning - Example
 overview: Add file_tree and risks to plans so agents see scope and risks in tg context.
 
 fileTree: |
-  docs/plan-format.md    (create)
-  db/migrate.ts          (modify)
+  docs/
+  └── plan-format.md              (create)
+  src/
+  └── db/
+      └── migrate.ts              (modify)
 
 risks:
   - description: New columns might break existing queries
@@ -194,6 +218,14 @@ isProject: false
 
 This plan adds two optional plan-level fields so that imported plans can carry
 file trees and risk registers into Dolt and agents can see them via `tg context`.
+
+## Dependency graph
+
+Parallel start (1 unblocked):
+  └── example-format-spec (docs)
+
+After example-format-spec:
+  └── example-migration (schema)
 
 ## Open Questions
 

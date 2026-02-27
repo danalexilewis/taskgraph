@@ -30,17 +30,63 @@ Plan filenames MUST include a date prefix so they sort chronologically. Use this
 
 Every plan MUST align with the enhanced format in docs/plan-format.md:
 
-| Element              | Required       | Description                                                                                                                                                            |
-| -------------------- | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **fileTree**         | yes            | Plan-level. Tree of files the plan touches, with `(create)` / `(modify)`. Stored on plan, shown in `tg context`.                                                       |
-| **risks**            | yes            | Plan-level array of `{ description, severity, mitigation }`. `severity`: `low`, `medium`, `high`.                                                                      |
-| **tests**            | yes            | Plan-level array of strings describing tests to add.                                                                                                                   |
-| **intent**           | yes (per todo) | Detailed description of what the task involves and why. Stored on task, shown in `tg context`.                                                                         |
-| **suggestedChanges** | when helpful   | Per todo. Directional code snippets or pointers for the agent; not prescriptive.                                                                                       |
-| **Markdown body**    | yes            | Below the closing `---`: Analysis, proposed changes, mermaid (e.g. dependency graph), risks/testing/open questions. End with `<original_prompt>...</original_prompt>`. |
+| Element              | Required       | Description                                                                                                                                                      |
+| -------------------- | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **fileTree**         | yes            | Plan-level. Visual tree of files the plan touches, with `(create)` / `(modify)`. Stored on plan, shown in `tg context`.                                          |
+| **risks**            | yes            | Plan-level array of `{ description, severity, mitigation }`. `severity`: `low`, `medium`, `high`.                                                                |
+| **tests**            | yes            | Plan-level array of strings describing tests to add.                                                                                                             |
+| **intent**           | yes (per todo) | Detailed description of what the task involves and why. Stored on task, shown in `tg context`.                                                                   |
+| **suggestedChanges** | when helpful   | Per todo. Directional code snippets or pointers for the agent; not prescriptive.                                                                                 |
+| **Markdown body**    | yes            | Below the closing `---`: Analysis, proposed changes, dependency graph, mermaid, risks/testing/open questions. End with `<original_prompt>...</original_prompt>`. |
 
-- **Mermaid**: Use for data flows, state machines, dependency graphs, or any logic that benefits from a diagram.
+- **Dependency graph** (required in body): Show the execution order using a visual tree. Group tasks by wave (what can run in parallel vs what is blocked). See format below.
+- **Mermaid**: Use for data flows, state machines, or any logic that benefits from a diagram. Can supplement the dependency graph.
 - **suggestedChanges**: Add when a task touches a specific file/function; a short snippet speeds the agent up.
+
+## Visual trees
+
+Use `├──` / `└──` tree drawing for both **file trees** and **dependency graphs**. This format is more scannable than flat lists or indented bullets.
+
+### fileTree (YAML frontmatter)
+
+```yaml
+fileTree: |
+  src/
+  ├── db/
+  │   └── migrate.ts            (modify)
+  ├── domain/
+  │   └── types.ts              (modify)
+  └── plan-import/
+      ├── parser.ts             (modify)
+      └── importer.ts           (modify)
+  __tests__/
+  └── integration/
+      └── rich-plan.test.ts     (create)
+```
+
+### Dependency graph (markdown body)
+
+Show execution waves — what can run in parallel and what is gated. Use tree connectors within each wave.
+
+```
+Parallel start (3 unblocked):
+  ├── create-registry-rule
+  ├── schema-migration (migrate.ts + types.ts)
+  └── update-docs (plan-format.md + authoring rule)
+
+After schema-migration:
+  ├── update-parser
+  ├── update-importer
+  └── update-context-cmd
+
+After registry + context-cmd:
+  └── update-dispatch-rule
+
+After parser + importer + context-cmd:
+  └── integration-tests
+```
+
+Include this graph in the markdown body of every plan. It complements mermaid (which is better for data flows and state machines) — the tree graph is the quick-scan execution plan.
 
 ## YAML Frontmatter Structure
 
@@ -50,8 +96,11 @@ name: Plan Name
 overview: |
   Multi-line overview; can include why and scope.
 fileTree: |
-  path/to/file.ts    (modify)
-  path/to/new.ts     (create)
+  src/
+  ├── db/
+  │   └── migrate.ts            (modify)
+  └── domain/
+      └── types.ts              (modify)
 risks:
   - description: What could go wrong
     severity: medium
@@ -74,7 +123,7 @@ isProject: false
 ---
 ```
 
-Below the closing `---`, add the markdown body: **Analysis**, **Proposed changes** (or Mermaid), **Open questions**, and end with `<original_prompt>...</original_prompt>`.
+Below the closing `---`, add the markdown body: **Analysis**, **Dependency graph** (tree format), **Proposed changes** (or Mermaid), **Open questions**, and end with `<original_prompt>...</original_prompt>`.
 
 ## Todo Fields
 
