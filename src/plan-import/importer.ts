@@ -14,7 +14,8 @@ interface ParsedTask {
   blockedBy: string[];
   acceptance: string[];
   status?: "todo" | "done";
-  domains?: string[];
+  agent?: string;
+  docs?: string[];
   skills?: string[];
   changeType?:
     | "create"
@@ -77,6 +78,7 @@ export function upsertTasksAndEdges(
                   title: parsedTask.title,
                   feature_key: parsedTask.feature ?? null,
                   area: parsedTask.area ?? null,
+                  agent: parsedTask.agent ?? null,
                   change_type: parsedTask.changeType ?? null,
                   intent: parsedTask.intent ?? null,
                   suggested_changes: parsedTask.suggestedChanges ?? null,
@@ -110,6 +112,7 @@ export function upsertTasksAndEdges(
                 title: parsedTask.title,
                 feature_key: parsedTask.feature ?? null,
                 area: parsedTask.area ?? null,
+                agent: parsedTask.agent ?? null,
                 change_type: parsedTask.changeType ?? null,
                 intent: parsedTask.intent ?? null,
                 suggested_changes: parsedTask.suggestedChanges ?? null,
@@ -148,21 +151,21 @@ export function upsertTasksAndEdges(
             // Register for edge resolution (blocker keys may reference tasks just inserted)
             externalKeyToTaskId.set(parsedTask.stableKey, taskId);
 
-            // Sync task_domain and task_skill junction tables
-            // Junction sync: delete existing task_domain rows for this task before re-inserting; whitelisted in doltSql guard (not core data).
-            const delDomainResult = await q.raw(
-              `DELETE FROM \`task_domain\` WHERE task_id = '${sqlEscape(taskId)}'`,
+            // Sync task_doc and task_skill junction tables
+            // Junction sync: delete existing task_doc rows for this task before re-inserting; whitelisted in doltSql guard (not core data).
+            const delDocResult = await q.raw(
+              `DELETE FROM \`task_doc\` WHERE task_id = '${sqlEscape(taskId)}'`,
             );
-            if (delDomainResult.isErr()) throw delDomainResult.error;
+            if (delDocResult.isErr()) throw delDocResult.error;
             // Junction sync: delete existing task_skill rows for this task before re-inserting; whitelisted in doltSql guard (not core data).
             const delSkillResult = await q.raw(
               `DELETE FROM \`task_skill\` WHERE task_id = '${sqlEscape(taskId)}'`,
             );
             if (delSkillResult.isErr()) throw delSkillResult.error;
-            for (const domain of parsedTask.domains ?? []) {
-              const ins = await q.insert("task_domain", {
+            for (const doc of parsedTask.docs ?? []) {
+              const ins = await q.insert("task_doc", {
                 task_id: taskId,
-                domain,
+                doc,
               });
               if (ins.isErr()) throw ins.error;
             }

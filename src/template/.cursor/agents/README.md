@@ -74,7 +74,7 @@ Placeholders commonly used:
 | `{{CONTEXT_JSON}}`      | Output of `tg context <taskId> --json`   | JSON object       |
 | `{{TITLE}}`             | context.title                            | Task title string |
 | `{{INTENT}}`            | context / task intent                    | Multi-line intent |
-| `{{DOMAIN_DOCS}}`       | context.domain_docs                      | Paths to read     |
+| `{{DOC_PATHS}}`       | context.domain_docs                      | Paths to read     |
 | `{{SKILL_DOCS}}`        | context.skill_docs                       | Paths to read     |
 | `{{SUGGESTED_CHANGES}}` | context.suggested_changes                | Optional snippet  |
 | `{{EXPLORER_OUTPUT}}`   | Optional; output from explorer sub-agent | Structured text   |

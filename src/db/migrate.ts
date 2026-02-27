@@ -53,27 +53,31 @@ export function applyPlanRichFieldsMigration(
   });
 }
 
-/** Add domain, skill, change_type columns to task table if missing (idempotent). */
+/** Add domain, skill, change_type columns to task table if missing (idempotent).
+ * Skips if junction tables (task_domain or task_doc) already exist — those supersede inline columns. */
 export function applyTaskDimensionsMigration(
   repoPath: string,
   noCommit: boolean = false,
 ): ResultAsync<void, AppError> {
   return tableExists(repoPath, "task_domain").andThen((hasJunction) => {
-    if (hasJunction) return ResultAsync.fromSafePromise(Promise.resolve()); // Already migrated to junction tables
-    return taskColumnExists(repoPath, "domain").andThen((hasDomain) => {
-      if (hasDomain) return ResultAsync.fromSafePromise(Promise.resolve());
-      const alter =
-        "ALTER TABLE `task` ADD COLUMN `domain` VARCHAR(64) NULL, ADD COLUMN `skill` VARCHAR(64) NULL, ADD COLUMN `change_type` ENUM('create','modify','refactor','fix','investigate','test','document') NULL";
-      return doltSql(alter, repoPath)
-        .map(() => undefined)
-        .andThen(() =>
-          doltCommit(
-            "db: add task dimensions (domain, skill, change_type)",
-            repoPath,
-            noCommit,
-          ),
-        )
-        .map(() => undefined);
+    if (hasJunction) return ResultAsync.fromSafePromise(Promise.resolve());
+    return tableExists(repoPath, "task_doc").andThen((hasDocTable) => {
+      if (hasDocTable) return ResultAsync.fromSafePromise(Promise.resolve());
+      return taskColumnExists(repoPath, "domain").andThen((hasDomain) => {
+        if (hasDomain) return ResultAsync.fromSafePromise(Promise.resolve());
+        const alter =
+          "ALTER TABLE `task` ADD COLUMN `domain` VARCHAR(64) NULL, ADD COLUMN `skill` VARCHAR(64) NULL, ADD COLUMN `change_type` ENUM('create','modify','refactor','fix','investigate','test','document') NULL";
+        return doltSql(alter, repoPath)
+          .map(() => undefined)
+          .andThen(() =>
+            doltCommit(
+              "db: add task dimensions (domain, skill, change_type)",
+              repoPath,
+              noCommit,
+            ),
+          )
+          .map(() => undefined);
+      });
     });
   });
 }
@@ -193,45 +197,106 @@ export function applyTaskDomainSkillJunctionMigration(
 ): ResultAsync<void, AppError> {
   return tableExists(repoPath, "task_domain").andThen((exists) => {
     if (exists) return ResultAsync.fromSafePromise(Promise.resolve());
-    return doltSql(
-      `CREATE TABLE \`task_domain\` (task_id CHAR(36) NOT NULL, domain VARCHAR(64) NOT NULL, PRIMARY KEY (task_id, domain), FOREIGN KEY (task_id) REFERENCES \`task\`(task_id))`,
-      repoPath,
-    )
-      .andThen(() =>
-        doltSql(
-          `CREATE TABLE \`task_skill\` (task_id CHAR(36) NOT NULL, skill VARCHAR(64) NOT NULL, PRIMARY KEY (task_id, skill), FOREIGN KEY (task_id) REFERENCES \`task\`(task_id))`,
-          repoPath,
-        ),
+    return tableExists(repoPath, "task_doc").andThen((hasDocTable) => {
+      if (hasDocTable) return ResultAsync.fromSafePromise(Promise.resolve());
+      return doltSql(
+        `CREATE TABLE \`task_domain\` (task_id CHAR(36) NOT NULL, domain VARCHAR(64) NOT NULL, PRIMARY KEY (task_id, domain), FOREIGN KEY (task_id) REFERENCES \`task\`(task_id))`,
+        repoPath,
       )
-      .andThen(() =>
-        taskColumnExists(repoPath, "domain").andThen((hasDomain) => {
-          if (!hasDomain) return ResultAsync.fromSafePromise(Promise.resolve());
-          return doltSql(
-            "INSERT INTO `task_domain` (task_id, domain) SELECT task_id, domain FROM `task` WHERE domain IS NOT NULL",
+        .andThen(() =>
+          doltSql(
+            `CREATE TABLE \`task_skill\` (task_id CHAR(36) NOT NULL, skill VARCHAR(64) NOT NULL, PRIMARY KEY (task_id, skill), FOREIGN KEY (task_id) REFERENCES \`task\`(task_id))`,
             repoPath,
-          ).andThen(() =>
-            doltSql(
-              "INSERT INTO `task_skill` (task_id, skill) SELECT task_id, skill FROM `task` WHERE skill IS NOT NULL",
+          ),
+        )
+        .andThen(() =>
+          taskColumnExists(repoPath, "domain").andThen((hasDomain) => {
+            if (!hasDomain)
+              return ResultAsync.fromSafePromise(Promise.resolve());
+            return doltSql(
+              "INSERT INTO `task_domain` (task_id, domain) SELECT task_id, domain FROM `task` WHERE domain IS NOT NULL",
               repoPath,
-            ),
-          );
-        }),
-      )
-      .andThen(() =>
-        taskColumnExists(repoPath, "domain").andThen((hasDomain) => {
-          if (!hasDomain) return ResultAsync.fromSafePromise(Promise.resolve());
-          return doltSql(
-            "ALTER TABLE `task` DROP COLUMN `domain`, DROP COLUMN `skill`",
+            ).andThen(() =>
+              doltSql(
+                "INSERT INTO `task_skill` (task_id, skill) SELECT task_id, skill FROM `task` WHERE skill IS NOT NULL",
+                repoPath,
+              ),
+            );
+          }),
+        )
+        .andThen(() =>
+          taskColumnExists(repoPath, "domain").andThen((hasDomain) => {
+            if (!hasDomain)
+              return ResultAsync.fromSafePromise(Promise.resolve());
+            return doltSql(
+              "ALTER TABLE `task` DROP COLUMN `domain`, DROP COLUMN `skill`",
+              repoPath,
+            );
+          }),
+        )
+        .andThen(() =>
+          doltCommit(
+            "db: task_domain/task_skill junction tables; drop task.domain/task.skill",
             repoPath,
-          );
-        }),
-      )
-      .andThen(() =>
-        doltCommit(
-          "db: task_domain/task_skill junction tables; drop task.domain/task.skill",
+            noCommit,
+          ),
+        )
+        .map(() => undefined);
+    });
+  });
+}
+
+/** Rename task_domain → task_doc (idempotent). Runs after junction migration. */
+export function applyDomainToDocRenameMigration(
+  repoPath: string,
+  noCommit: boolean = false,
+): ResultAsync<void, AppError> {
+  return tableExists(repoPath, "task_doc").andThen((hasTaskDoc) => {
+    if (hasTaskDoc) return ResultAsync.fromSafePromise(Promise.resolve());
+    return tableExists(repoPath, "task_domain").andThen((hasTaskDomain) => {
+      if (!hasTaskDomain) {
+        // Fresh install — create task_doc directly
+        return doltSql(
+          `CREATE TABLE \`task_doc\` (task_id CHAR(36) NOT NULL, doc VARCHAR(64) NOT NULL, PRIMARY KEY (task_id, doc), FOREIGN KEY (task_id) REFERENCES \`task\`(task_id))`,
           repoPath,
-          noCommit,
-        ),
+        )
+          .andThen(() =>
+            doltCommit("db: create task_doc table (fresh)", repoPath, noCommit),
+          )
+          .map(() => undefined);
+      }
+      // Upgrade path — copy data from task_domain into task_doc, then drop task_domain
+      return doltSql(
+        `CREATE TABLE \`task_doc\` (task_id CHAR(36) NOT NULL, doc VARCHAR(64) NOT NULL, PRIMARY KEY (task_id, doc), FOREIGN KEY (task_id) REFERENCES \`task\`(task_id))`,
+        repoPath,
+      )
+        .andThen(() =>
+          doltSql(
+            "INSERT INTO `task_doc` (task_id, doc) SELECT task_id, domain FROM `task_domain`",
+            repoPath,
+          ),
+        )
+        .andThen(() => doltSql("DROP TABLE `task_domain`", repoPath))
+        .andThen(() =>
+          doltCommit("db: rename task_domain to task_doc", repoPath, noCommit),
+        )
+        .map(() => undefined);
+    });
+  });
+}
+
+/** Add agent column to task table if missing (idempotent). */
+export function applyTaskAgentMigration(
+  repoPath: string,
+  noCommit: boolean = false,
+): ResultAsync<void, AppError> {
+  return taskColumnExists(repoPath, "agent").andThen((hasCol) => {
+    if (hasCol) return ResultAsync.fromSafePromise(Promise.resolve());
+    const alter = "ALTER TABLE `task` ADD COLUMN `agent` VARCHAR(64) NULL";
+    return doltSql(alter, repoPath)
+      .map(() => undefined)
+      .andThen(() =>
+        doltCommit("db: add task agent column", repoPath, noCommit),
       )
       .map(() => undefined);
   });
@@ -246,6 +311,8 @@ export function ensureMigrations(
     .andThen(() => applyTaskDimensionsMigration(repoPath, noCommit))
     .andThen(() => applyTaskSuggestedChangesMigration(repoPath, noCommit))
     .andThen(() => applyTaskDomainSkillJunctionMigration(repoPath, noCommit))
+    .andThen(() => applyDomainToDocRenameMigration(repoPath, noCommit))
+    .andThen(() => applyTaskAgentMigration(repoPath, noCommit))
     .andThen(() => applyNoDeleteTriggersMigration(repoPath, noCommit))
     .map(() => undefined);
 }

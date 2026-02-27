@@ -72,16 +72,16 @@ export function showCommand(program: Command) {
             const events = eventsResult.isOk() ? eventsResult.value : [];
             const noteEvents = events.filter((e) => e.kind === "note");
 
-            const domainsResult = await q.select<{ domain: string }>(
-              "task_domain",
-              { columns: ["domain"], where: { task_id: taskId } },
-            );
+            const domainsResult = await q.select<{ doc: string }>("task_doc", {
+              columns: ["doc"],
+              where: { task_id: taskId },
+            });
             const skillsResult = await q.select<{ skill: string }>(
               "task_skill",
               { columns: ["skill"], where: { task_id: taskId } },
             );
             const domains = domainsResult.isOk()
-              ? domainsResult.value.map((r) => r.domain)
+              ? domainsResult.value.map((r) => r.doc)
               : [];
             const skills = skillsResult.isOk()
               ? skillsResult.value.map((r) => r.skill)

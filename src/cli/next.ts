@@ -52,7 +52,7 @@ export function nextCommand(program: Command) {
         }
         let domainFilter = "";
         if (options.domain) {
-          domainFilter = `AND EXISTS (SELECT 1 FROM \`task_domain\` td WHERE td.task_id = t.task_id AND td.domain = '${sqlEscape(options.domain)}')`;
+          domainFilter = `AND EXISTS (SELECT 1 FROM \`task_doc\` td WHERE td.task_id = t.task_id AND td.doc = '${sqlEscape(options.domain)}')`;
         }
         let skillFilter = "";
         if (options.skill) {

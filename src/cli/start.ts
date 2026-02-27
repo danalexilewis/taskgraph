@@ -155,8 +155,10 @@ export function startCommand(program: Command) {
           console.log(
             JSON.stringify(
               results.map((r) =>
-                "error" in r ? { id: r.id, error: r.error } : { id: r.id, status: r.status },
-            ),
+                "error" in r
+                  ? { id: r.id, error: r.error }
+                  : { id: r.id, status: r.status },
+              ),
             ),
           );
         }
@@ -171,7 +173,9 @@ export function startCommand(program: Command) {
         console.log(
           JSON.stringify(
             results.map((r) =>
-              "error" in r ? { id: r.id, error: r.error } : { id: r.id, status: r.status },
+              "error" in r
+                ? { id: r.id, error: r.error }
+                : { id: r.id, status: r.status },
             ),
           ),
         );

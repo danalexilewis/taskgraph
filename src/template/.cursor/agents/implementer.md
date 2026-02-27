@@ -18,7 +18,7 @@ The orchestrator must pass:
   - `{{TITLE}}` — task title
   - `{{INTENT}}` — detailed intent
   - `{{CHANGE_TYPE}}` — create, modify, refactor, fix, investigate, test, document
-  - `{{DOMAIN_DOCS}}` — paths to read (e.g. docs/backend.md)
+  - `{{DOC_PATHS}}` — paths to read (e.g. docs/backend.md)
   - `{{SKILL_DOCS}}` — paths to skill guides (e.g. docs/skills/plan-authoring.md)
   - `{{SUGGESTED_CHANGES}}` — optional snippet or pointer
   - `{{FILE_TREE}}` — plan-level file tree if present
@@ -48,8 +48,8 @@ You have been given task context below. Read any domain docs and skill guides li
 - Intent: {{INTENT}}
 - Change type: {{CHANGE_TYPE}}
 
-**Domain docs to read:**
-{{DOMAIN_DOCS}}
+**Docs to read:**
+{{DOC_PATHS}}
 
 **Skill guides to read:**
 {{SKILL_DOCS}}

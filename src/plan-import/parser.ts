@@ -12,8 +12,8 @@ export interface ParsedTask {
   acceptance: string[];
   /** Mapped from Cursor todo status: completed→done, pending/other→todo */
   status?: "todo" | "done";
-  /** Maps to docs/<domain>.md; multiple allowed. */
-  domains?: string[];
+  /** Maps to docs/<doc>.md; multiple allowed. Renamed from domains. */
+  docs?: string[];
   /** Maps to docs/skills/<skill>.md; multiple allowed. */
   skills?: string[];
   /** How to approach the work: create, modify, refactor, fix, investigate, test, document */
@@ -29,6 +29,8 @@ export interface ParsedTask {
   intent?: string;
   /** Suggested code changes; maps to task.suggested_changes */
   suggestedChanges?: string;
+  /** Sub-agent to execute this task; maps to task.agent */
+  agent?: string;
 }
 
 export interface ParsedPlan {
@@ -110,7 +112,18 @@ export function parsePlanMarkdown(
           .split(",")
           .map((s) => s.trim())
           .filter(Boolean);
-        currentTask.domains = [...(currentTask.domains || []), ...parts];
+        currentTask.docs = [...(currentTask.docs || []), ...parts];
+        inAcceptanceBlock = false;
+      } else if (currentTask && trimmedLine.startsWith("DOCS:")) {
+        const parts = trimmedLine
+          .substring("DOCS:".length)
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+        currentTask.docs = [...(currentTask.docs || []), ...parts];
+        inAcceptanceBlock = false;
+      } else if (currentTask && trimmedLine.startsWith("AGENT:")) {
+        currentTask.agent = trimmedLine.substring("AGENT:".length).trim();
         inAcceptanceBlock = false;
       } else if (currentTask && trimmedLine.startsWith("SKILL:")) {
         const parts = trimmedLine
@@ -169,11 +182,14 @@ interface CursorTodo {
   content: string;
   status?: string;
   blockedBy?: string[];
+  docs?: string | string[];
+  /** @deprecated Use docs for new plans; kept for backward compatibility. */
   domain?: string | string[];
   skill?: string | string[];
   changeType?: string;
   intent?: string;
   suggestedChanges?: string;
+  agent?: string;
 }
 
 interface CursorFrontmatter {
@@ -261,13 +277,14 @@ export function parseCursorPlan(
           t.changeType != null && isChangeType(t.changeType)
             ? t.changeType
             : undefined;
-        const domains =
-          t.domain === undefined
+        const rawDocs = t.docs ?? t.domain;
+        const docs =
+          rawDocs === undefined
             ? undefined
-            : Array.isArray(t.domain)
-              ? t.domain.filter((x): x is string => typeof x === "string")
-              : typeof t.domain === "string"
-                ? [t.domain]
+            : Array.isArray(rawDocs)
+              ? rawDocs.filter((x): x is string => typeof x === "string")
+              : typeof rawDocs === "string"
+                ? [rawDocs]
                 : undefined;
         const skills =
           t.skill === undefined
@@ -283,7 +300,7 @@ export function parseCursorPlan(
           blockedBy: Array.isArray(t.blockedBy) ? t.blockedBy : [],
           acceptance: [],
           status,
-          domains: domains?.length ? domains : undefined,
+          docs: docs?.length ? docs : undefined,
           skills: skills?.length ? skills : undefined,
           changeType,
           intent: typeof t.intent === "string" ? t.intent : undefined,
@@ -291,6 +308,7 @@ export function parseCursorPlan(
             typeof t.suggestedChanges === "string"
               ? t.suggestedChanges
               : undefined,
+          agent: typeof t.agent === "string" ? t.agent : undefined,
         };
       });
 

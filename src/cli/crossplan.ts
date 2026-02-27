@@ -21,7 +21,9 @@ export function parseFileTree(fileTree: string | null): string[] {
 export function crossplanCommand(program: Command) {
   const crossplan = program
     .command("crossplan")
-    .description("Cross-plan analysis: domains, skills, file overlaps, and proposed edges");
+    .description(
+      "Cross-plan analysis: domains, skills, file overlaps, and proposed edges",
+    );
 
   crossplan
     .command("domains")
@@ -35,12 +37,19 @@ export function crossplanCommand(program: Command) {
         if (rootOpts(cmd).json) {
           console.log(JSON.stringify(data, null, 2));
         } else {
-          (data as { domain: string; plan_count: number; task_count: number; plan_titles: string[] }[]).forEach(
-            (r) => {
-              console.log(`${r.domain}: ${r.plan_count} plans, ${r.task_count} tasks`);
-              console.log(`  Plans: ${r.plan_titles.join(", ")}`);
-            },
-          );
+          (
+            data as {
+              domain: string;
+              plan_count: number;
+              task_count: number;
+              plan_titles: string[];
+            }[]
+          ).forEach((r) => {
+            console.log(
+              `${r.domain}: ${r.plan_count} plans, ${r.task_count} tasks`,
+            );
+            console.log(`  Plans: ${r.plan_titles.join(", ")}`);
+          });
         }
       });
     });
@@ -57,12 +66,19 @@ export function crossplanCommand(program: Command) {
         if (rootOpts(cmd).json) {
           console.log(JSON.stringify(data, null, 2));
         } else {
-          (data as { skill: string; plan_count: number; task_count: number; plan_titles: string[] }[]).forEach(
-            (r) => {
-              console.log(`${r.skill}: ${r.plan_count} plans, ${r.task_count} tasks`);
-              console.log(`  Plans: ${r.plan_titles.join(", ")}`);
-            },
-          );
+          (
+            data as {
+              skill: string;
+              plan_count: number;
+              task_count: number;
+              plan_titles: string[];
+            }[]
+          ).forEach((r) => {
+            console.log(
+              `${r.skill}: ${r.plan_count} plans, ${r.task_count} tasks`,
+            );
+            console.log(`  Plans: ${r.plan_titles.join(", ")}`);
+          });
         }
       });
     });
@@ -95,7 +111,9 @@ export function crossplanCommand(program: Command) {
 
   crossplan
     .command("edges")
-    .description("Propose cross-plan edges (blocks from file overlap, relates from domain overlap)")
+    .description(
+      "Propose cross-plan edges (blocks from file overlap, relates from domain overlap)",
+    )
     .option("--dry-run", "Show proposals without writing to Dolt", false)
     .option("--json", "Output as JSON")
     .action(async (options, cmd) => {
@@ -107,12 +125,30 @@ export function crossplanCommand(program: Command) {
         if (rootOpts(cmd).json) {
           console.log(JSON.stringify(data, null, 2));
         } else {
-          const d = data as { proposed: { type: string; from_task_id: string; to_task_id: string; reason?: string }[]; added?: { from_task_id: string; to_task_id: string; type: string }[] };
+          const d = data as {
+            proposed: {
+              type: string;
+              from_task_id: string;
+              to_task_id: string;
+              reason?: string;
+            }[];
+            added?: {
+              from_task_id: string;
+              to_task_id: string;
+              type: string;
+            }[];
+          };
           console.log("Proposed edges:");
-          d.proposed.forEach((e) => console.log(`  ${e.type}: ${e.from_task_id} -> ${e.to_task_id}${e.reason ? ` (${e.reason})` : ""}`));
+          d.proposed.forEach((e) =>
+            console.log(
+              `  ${e.type}: ${e.from_task_id} -> ${e.to_task_id}${e.reason ? ` (${e.reason})` : ""}`,
+            ),
+          );
           if (d.added && d.added.length > 0) {
             console.log("Added to DB:");
-            d.added.forEach((e) => console.log(`  ${e.type}: ${e.from_task_id} -> ${e.to_task_id}`));
+            d.added.forEach((e) =>
+              console.log(`  ${e.type}: ${e.from_task_id} -> ${e.to_task_id}`),
+            );
           }
         }
       });
@@ -120,7 +156,9 @@ export function crossplanCommand(program: Command) {
 
   crossplan
     .command("summary")
-    .description("All cross-plan analysis in one output: domains, skills, files, proposed edges")
+    .description(
+      "All cross-plan analysis in one output: domains, skills, files, proposed edges",
+    )
     .option("--json", "Output as JSON")
     .action(async (options, cmd) => {
       const result = readConfig().asyncAndThen((config: Config) =>
@@ -164,25 +202,35 @@ function runDomains(
 ): ResultAsync<unknown, AppError> {
   const q = query(config.doltRepoPath);
   const sql = `
-    SELECT td.domain,
+    SELECT td.doc AS domain,
            COUNT(DISTINCT t.plan_id) AS plan_count,
            COUNT(DISTINCT t.task_id) AS task_count,
            GROUP_CONCAT(DISTINCT p.title ORDER BY p.title) AS plan_titles
-    FROM \`task_domain\` td
+    FROM \`task_doc\` td
     JOIN \`task\` t ON td.task_id = t.task_id
     JOIN \`plan\` p ON t.plan_id = p.plan_id
-    GROUP BY td.domain
+    GROUP BY td.doc
     HAVING plan_count > 1
     ORDER BY plan_count DESC, task_count DESC
   `;
-  return q.raw<{ domain: string; plan_count: number; task_count: number; plan_titles: string }>(sql).map((rows) =>
-    rows.map((r) => ({
-      domain: r.domain,
-      plan_count: r.plan_count,
-      task_count: r.task_count,
-      plan_titles: (r.plan_titles ?? "").split(",").map((s) => s.trim()).filter(Boolean),
-    })),
-  );
+  return q
+    .raw<{
+      domain: string;
+      plan_count: number;
+      task_count: number;
+      plan_titles: string;
+    }>(sql)
+    .map((rows) =>
+      rows.map((r) => ({
+        domain: r.domain,
+        plan_count: r.plan_count,
+        task_count: r.task_count,
+        plan_titles: (r.plan_titles ?? "")
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean),
+      })),
+    );
 }
 
 function runSkills(
@@ -202,14 +250,24 @@ function runSkills(
     HAVING plan_count > 1
     ORDER BY plan_count DESC, task_count DESC
   `;
-  return q.raw<{ skill: string; plan_count: number; task_count: number; plan_titles: string }>(sql).map((rows) =>
-    rows.map((r) => ({
-      skill: r.skill,
-      plan_count: r.plan_count,
-      task_count: r.task_count,
-      plan_titles: (r.plan_titles ?? "").split(",").map((s) => s.trim()).filter(Boolean),
-    })),
-  );
+  return q
+    .raw<{
+      skill: string;
+      plan_count: number;
+      task_count: number;
+      plan_titles: string;
+    }>(sql)
+    .map((rows) =>
+      rows.map((r) => ({
+        skill: r.skill,
+        plan_count: r.plan_count,
+        task_count: r.task_count,
+        plan_titles: (r.plan_titles ?? "")
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean),
+      })),
+    );
 }
 
 function runFiles(
@@ -218,11 +276,17 @@ function runFiles(
 ): ResultAsync<unknown, AppError> {
   const q = query(config.doltRepoPath);
   return q
-    .select<{ plan_id: string; title: string; file_tree: string | null }>("plan", {
-      columns: ["plan_id", "title", "file_tree"],
-    })
+    .select<{ plan_id: string; title: string; file_tree: string | null }>(
+      "plan",
+      {
+        columns: ["plan_id", "title", "file_tree"],
+      },
+    )
     .map((plans) => {
-      const fileToPlans = new Map<string, { plan_count: number; plan_titles: string[] }>();
+      const fileToPlans = new Map<
+        string,
+        { plan_count: number; plan_titles: string[] }
+      >();
       for (const plan of plans) {
         const files = parseFileTree(plan.file_tree);
         const seen = new Set<string>();
@@ -240,7 +304,11 @@ function runFiles(
       }
       return Array.from(fileToPlans.entries())
         .filter(([, v]) => v.plan_count > 1)
-        .map(([file, v]) => ({ file, plan_count: v.plan_count, plan_titles: v.plan_titles }))
+        .map(([file, v]) => ({
+          file,
+          plan_count: v.plan_count,
+          plan_titles: v.plan_titles,
+        }))
         .sort((a, b) => b.plan_count - a.plan_count);
     });
 }
@@ -257,21 +325,39 @@ function runEdges(
   dryRun: boolean,
   _json: boolean,
   cmd: Command,
-): ResultAsync<{ proposed: ProposedEdge[]; added: { from_task_id: string; to_task_id: string; type: string }[] }, AppError> {
+): ResultAsync<
+  {
+    proposed: ProposedEdge[];
+    added: { from_task_id: string; to_task_id: string; type: string }[];
+  },
+  AppError
+> {
   const q = query(config.doltRepoPath);
   return ResultAsync.fromPromise(
-    (async (): Promise<Result<{ proposed: ProposedEdge[]; added: { from_task_id: string; to_task_id: string; type: string }[] }, AppError>> => {
+    (async (): Promise<
+      Result<
+        {
+          proposed: ProposedEdge[];
+          added: { from_task_id: string; to_task_id: string; type: string }[];
+        },
+        AppError
+      >
+    > => {
       const proposed: ProposedEdge[] = [];
 
       const domainSql = `
-    SELECT td1.task_id AS from_id, td2.task_id AS to_id, td1.domain
-    FROM \`task_domain\` td1
-    JOIN \`task_domain\` td2 ON td1.domain = td2.domain AND td1.task_id < td2.task_id
+    SELECT td1.task_id AS from_id, td2.task_id AS to_id, td1.doc AS domain
+    FROM \`task_doc\` td1
+    JOIN \`task_doc\` td2 ON td1.doc = td2.doc AND td1.task_id < td2.task_id
     JOIN \`task\` t1 ON td1.task_id = t1.task_id
     JOIN \`task\` t2 ON td2.task_id = t2.task_id
     WHERE t1.plan_id != t2.plan_id
   `;
-      const domainRows = await q.raw<{ from_id: string; to_id: string; domain: string }>(domainSql);
+      const domainRows = await q.raw<{
+        from_id: string;
+        to_id: string;
+        domain: string;
+      }>(domainSql);
       if (domainRows.isErr()) return err(domainRows.error);
       for (const r of domainRows.value) {
         proposed.push({
@@ -282,7 +368,11 @@ function runEdges(
         });
       }
 
-      const planRows = await q.select<{ plan_id: string; title: string; file_tree: string | null }>("plan", {
+      const planRows = await q.select<{
+        plan_id: string;
+        title: string;
+        file_tree: string | null;
+      }>("plan", {
         columns: ["plan_id", "title", "file_tree"],
       });
       if (planRows.isErr()) return err(planRows.error);
@@ -301,7 +391,8 @@ function runEdges(
       if (taskByPlanRes.isErr()) return err(taskByPlanRes.error);
       const planToFirstTask = new Map<string, string>();
       for (const row of taskByPlanRes.value) {
-        if (!planToFirstTask.has(row.plan_id)) planToFirstTask.set(row.plan_id, row.task_id);
+        if (!planToFirstTask.has(row.plan_id))
+          planToFirstTask.set(row.plan_id, row.task_id);
       }
       const seenBlocks = new Set<string>();
       for (const [, planIds] of fileToPlanIds) {
@@ -331,8 +422,14 @@ function runEdges(
         return ok({ proposed, added: [] });
       }
 
-      const added: { from_task_id: string; to_task_id: string; type: string }[] = [];
-      const existingEdgesRes = await q.select<Edge>("edge", { where: { type: "blocks" } });
+      const added: {
+        from_task_id: string;
+        to_task_id: string;
+        type: string;
+      }[] = [];
+      const existingEdgesRes = await q.select<Edge>("edge", {
+        where: { type: "blocks" },
+      });
       if (existingEdgesRes.isErr()) return err(existingEdgesRes.error);
       const existingBlocks = [...existingEdgesRes.value];
 
@@ -409,9 +506,12 @@ function runSummary(
       const [domainsRes, skillsRes, plansRes] = await Promise.all([
         runDomains(config, true),
         runSkills(config, true),
-        q.select<{ plan_id: string; title: string; file_tree: string | null }>("plan", {
-          columns: ["plan_id", "title", "file_tree"],
-        }),
+        q.select<{ plan_id: string; title: string; file_tree: string | null }>(
+          "plan",
+          {
+            columns: ["plan_id", "title", "file_tree"],
+          },
+        ),
       ]);
       const domains = domainsRes.isOk() ? domainsRes.value : [];
       const skills = skillsRes.isOk() ? skillsRes.value : [];
@@ -426,10 +526,16 @@ function runSummary(
       }
       const files = Array.from(fileToPlans.entries())
         .filter(([, titles]) => titles.length > 1)
-        .map(([file, plan_titles]) => ({ file, plan_count: plan_titles.length, plan_titles }));
+        .map(([file, plan_titles]) => ({
+          file,
+          plan_count: plan_titles.length,
+          plan_titles,
+        }));
 
       const edgesRes = await runEdges(config, true, true, cmd);
-      const edges = edgesRes.isOk() ? (edgesRes.value as { proposed: ProposedEdge[] }).proposed : [];
+      const edges = edgesRes.isOk()
+        ? (edgesRes.value as { proposed: ProposedEdge[] }).proposed
+        : [];
 
       return ok({
         domains,

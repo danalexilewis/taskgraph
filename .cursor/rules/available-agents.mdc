@@ -1,0 +1,36 @@
+---
+description: Registry of available sub-agents with their types and descriptions
+alwaysApply: true
+---
+
+# Available Sub-Agents
+
+## generalPurpose
+General-purpose agent for researching complex questions, searching for code, and executing multi-step tasks.
+
+## explore
+Fast agent specialized for exploring codebases, supporting quick, medium, and very thorough exploration levels.
+
+## shell
+Command execution specialist for running bash commands, git operations, and other terminal tasks.
+
+## browser-use
+Browser automation specialist for performing UI interactions, web testing, and browser profiling.
+
+## planner-analyst
+Pre-plan analysis agent for gathering codebase context before plan creation (`.cursor/agents/planner-analyst.md`).
+
+## implementer
+Implementation agent that executes tasks (`tg start` → work → `tg done`). Template at `.cursor/agents/implementer.md`.
+
+## reviewer
+Quality-check sub-agent that evaluates implementations against specifications (`.cursor/agents/reviewer.md`).
+
+## test-quality-auditor
+Sub-agent that audits test quality and suggests improvements (`.cursor/agents/test-quality-auditor.md`).
+
+## test-infra-mapper
+Sub-agent that maps and documents test infrastructure (`.cursor/agents/test-infra-mapper.md`).
+
+## test-coverage-scanner
+Sub-agent that scans test coverage and highlights gaps (`.cursor/agents/test-coverage-scanner.md`).

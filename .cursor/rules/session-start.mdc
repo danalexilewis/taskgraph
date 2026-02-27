@@ -22,7 +22,7 @@ This surfaces:
 
 - Sub-agent dispatch is **mandatory** for task execution — do not do the work yourself.
 - Planner-analyst dispatch is **mandatory** before writing any plan.
-- Max **3** tasks in flight at a time.
+- Max **5** tasks in flight at a time.
 - Plans must have parallel-ready tasks (≥2 with no blockedBy).
 
 **When multiple agents are active:** Read the "Active work" section. Avoid picking tasks that touch the same area/files as another agent's doing task. If overlap is detected, leave a `tg note` and pick a different task.

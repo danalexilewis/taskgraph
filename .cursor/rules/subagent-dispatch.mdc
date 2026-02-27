@@ -5,7 +5,7 @@ alwaysApply: false
 
 # Sub-Agent Dispatch
 
-**Execution and planning both use sub-agents.** You MUST dispatch sub-agents when executing tasks from a plan — do not do the work yourself. Max **3** tasks in flight at a time. The orchestrator coordinates; sub-agents do bounded work with full context injected. **Dispatch** is the same prompt and workflow; choose the mechanism by what is available (see below).
+**Execution and planning both use sub-agents.** You MUST dispatch sub-agents when executing tasks from a plan — do not do the work yourself. Max **5** tasks in flight at a time. The orchestrator coordinates; sub-agents do bounded work with full context injected. **Dispatch** is the same prompt and workflow; choose the mechanism by what is available (see below).
 
 Agent templates live in `.cursor/agents/` (see README there). You build each sub-agent prompt by interpolating `tg context <taskId> --json` output into the template placeholders.
 
@@ -26,13 +26,13 @@ Use **direct execution** (you do start → work → done yourself) only when: a 
 
 When executing a plan with multiple unblocked tasks, you MUST use this pattern. **Max 3 concurrent.**
 
-1. Run `pnpm tg next --plan "<Plan>" --json --limit 3` to get up to 3 runnable tasks.
+1. Run `pnpm tg next --plan "<Plan>" --json --limit 5` to get up to 5 runnable tasks.
 2. **File conflict check**: If tasks might touch the same files (e.g. same path in `file_tree` or `suggested_changes`), do not parallelize those together — run them sequentially or batch only independent ones.
 3. For each task in the batch, run `pnpm tg context <taskId> --json` and capture the JSON.
-4. Read `.cursor/agents/implementer.md`. Build the implementer prompt by replacing placeholders (`{{TASK_ID}}`, `{{AGENT_NAME}}`, `{{TITLE}}`, `{{INTENT}}`, `{{DOMAIN_DOCS}}`, `{{SKILL_DOCS}}`, `{{SUGGESTED_CHANGES}}`, `{{FILE_TREE}}`, `{{RISKS}}`, `{{RELATED_DONE}}`, `{{EXPLORER_OUTPUT}}`) with values from the context JSON. Use agent names `implementer-1`, `implementer-2`, `implementer-3` so `tg status` shows distinct workers.
-5. **Dispatch** up to **3** sub-agents **concurrently**: use the Task tool, agent CLI, or mcp_task (see Dispatch mechanisms above). Same built prompt and a short description (e.g. "Implement task: <title>").
+4. Inspect the `agent` field from the context JSON: if set, select the corresponding agent template (`.cursor/agents/{{AGENT}}.md`); otherwise default to `.cursor/agents/implementer.md`. Build the sub-agent prompt by replacing placeholders (`{{TASK_ID}}`, `{{AGENT_NAME}}`, `{{TITLE}}`, `{{INTENT}}`, `{{DOC_PATHS}}`, `{{SKILL_DOCS}}`, `{{SUGGESTED_CHANGES}}`, `{{FILE_TREE}}`, `{{RISKS}}`, `{{RELATED_DONE}}`, `{{EXPLORER_OUTPUT}}`) with values from the context JSON. Refer to the agent registry rule at `.cursor/rules/available-agents.mdc` for valid agent names. Use unique agent names (e.g. implementer-1, explorer-1, reviewer-1) so `tg status` shows distinct workers.
+5. **Dispatch** up to **5** sub-agents **concurrently**: use the Task tool, agent CLI, or mcp_task (see Dispatch mechanisms above). Same built prompt and a short description (e.g. "Implement task: <title>").
 6. Wait for all to complete. For each completed task, if you have the implementer's diff, dispatch the **reviewer** (read `.cursor/agents/reviewer.md`, build prompt with task context + diff; use Task tool, agent CLI, or mcp_task). If reviewer returns FAIL, re-dispatch the implementer once with the feedback; after 2 failures, do that task yourself (direct execution).
-7. Run `pnpm tg next --plan "<Plan>" --json --limit 3` again. If more runnable tasks exist, go to step 3. Otherwise continue with any remaining work or finish the plan.
+7. Run `pnpm tg next --plan "<Plan>" --json --limit 5` again. If more runnable tasks exist, go to step 3. Otherwise continue with any remaining work or finish the plan.
 
 ## Pattern 2: Sequential single-task execution — MANDATORY when only one runnable
 
@@ -111,6 +111,6 @@ Place this after the main instructions and before any task-specific context. The
 
 ## Building prompts from context JSON
 
-`pnpm tg context <taskId> --json` returns an object with: `task_id`, `title`, `domains`, `skills`, `change_type`, `suggested_changes`, `file_tree`, `risks`, `domain_docs`, `skill_docs`, `related_done_by_domain`, `related_done_by_skill`. Map these to the placeholders in each agent template (see `.cursor/agents/README.md`). For the reviewer you also need the implementer's git diff (e.g. `git diff` or `git show` after the implementer's run).
+`pnpm tg context <taskId> --json` returns an object with: `task_id`, `title`, `agent`, `docs`, `skills`, `change_type`, `suggested_changes`, `file_tree`, `risks`, `doc_paths`, `skill_docs`, `related_done_by_domain`, `related_done_by_skill`. Map these to the placeholders in each agent template (see `.cursor/agents/README.md`). For the reviewer you also need the implementer's git diff (e.g. `git diff` or `git show` after the implementer's run).
 
 Additionally, for every agent: read the agent file's `## Learnings` section (if non-empty) and inject it as `{{LEARNINGS}}`. See Learning Mode above.

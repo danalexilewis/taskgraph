@@ -137,6 +137,23 @@ INTENT: No tasks here.
     unlinkSync(testFilePath);
   });
 
+  it("should parse DOMAIN: lines into docs field", () => {
+    const markdownContent = `
+TASK: domain-task
+TITLE: Task with domains
+DOMAIN: schema, cli
+ACCEPTANCE:
+- First check
+`;
+    writeFileSync(testFilePath, markdownContent);
+    const result = parsePlanMarkdown(testFilePath);
+    expect(result.isOk()).toBe(true);
+    const { tasks } = result._unsafeUnwrap();
+    expect(tasks.length).toBe(1);
+    expect(tasks[0].docs).toEqual(["schema", "cli"]);
+    unlinkSync(testFilePath);
+  });
+
   it("should correctly parse acceptance list with multiple items", () => {
     const markdownContent = `
 TASK: accept-task
@@ -233,6 +250,40 @@ isProject: false
     const result = parseCursorPlan("/non/existent/path/to/file.md");
     expect(result.isErr()).toBe(true);
     expect(result._unsafeUnwrapErr().code).toBe(ErrorCode.FILE_READ_FAILED);
+  });
+
+  it("should parse agent, docs, and domain (backward compat) on todos", () => {
+    const content = `---
+name: Agent and Docs Plan
+overview: "Plan with agent, docs, domain."
+todos:
+  - id: task-docs
+    content: "Task with docs"
+    docs: [schema, cli]
+    agent: explorer
+    status: pending
+  - id: task-domain
+    content: "Task with domain (backward compat)"
+    domain: cli
+    status: pending
+  - id: task-both
+    content: "Task with both - docs wins"
+    docs: schema
+    domain: cli
+    status: pending
+---
+`;
+    writeFileSync(testFilePath, content);
+    const result = parseCursorPlan(testFilePath);
+    expect(result.isOk()).toBe(true);
+    const { tasks } = result._unsafeUnwrap();
+    expect(tasks.length).toBe(3);
+    expect(tasks[0].docs).toEqual(["schema", "cli"]);
+    expect(tasks[0].agent).toBe("explorer");
+    expect(tasks[1].docs).toEqual(["cli"]);
+    expect(tasks[1].agent).toBeUndefined();
+    expect(tasks[2].docs).toEqual(["schema"]);
+    unlinkSync(testFilePath);
   });
 
   it("should handle empty todos array", () => {

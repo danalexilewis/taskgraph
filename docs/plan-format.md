@@ -37,10 +37,11 @@ All new fields are **optional**. Existing plans without these fields continue to
 
 ### Todo (Task) Fields
 
-Base fields (see [Plan Import](plan-import.md)): `id`, `content`, `status`, `blockedBy`, `domain`, `skill`, `changeType`.
+Base fields (see [Plan Import](plan-import.md)): `id`, `content`, `status`, `blockedBy`, `docs`, `agent`, `skill`, `changeType`.
 
 | Field              | Type   | Stored in Dolt           | Description                                                                                              |
 | ------------------ | ------ | ------------------------ | -------------------------------------------------------------------------------------------------------- |
+| `agent`            | string | `task.agent`             | Single slug or array specifying the agent or sub-agent to execute this task. |
 | `intent`           | string | `task.intent`            | Detailed description of what this task involves and why. Can reference files, functions, or constraints. |
 | `suggestedChanges` | string | `task.suggested_changes` | Proposed code snippets or diffs as a starting point for the agent. Directional, not prescriptive.        |
 
@@ -200,7 +201,8 @@ tests:
 todos:
   - id: example-format-spec
     content: Write docs/plan-format.md with enhanced format spec.
-    domain: plan-import
+    docs: plan-import
+  agent: implementer
     skill: rule-authoring
     changeType: create
   - id: example-migration

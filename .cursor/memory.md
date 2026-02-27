@@ -6,7 +6,7 @@
 
 ## tg context
 
-- Context command reads domain/skill from **task_domain** and **task_skill** junction tables (when present). Repos that have run the full migration suite use these; older repos may have `task.domain` / `task.skill` columns instead.
+- Context command reads doc/skill from **task_doc** and **task_skill** junction tables (when present). Output fields: `docs`, `doc_paths`, `agent`, `related_done_by_doc`, `related_done_by_skill`. Older repos may have `task_domain` (pre-rename) or `task.domain` / `task.skill` columns.
 
 ## Using tg in another repo
 
@@ -93,3 +93,4 @@
 ## Skills
 
 - Test-review skill: produces a report and a Cursor-format plan with tasks; each task has an `agent` field so execution uses `tg start <taskId> --agent <agent>`. Plan format supports optional todo field `agent` (docs/plan-format.md, plan-authoring.mdc).
+- **[2026-02-27]** Updated sub-agent dispatch rule and agent templates to reference `agent` field and rename `domain_docs` to `doc_paths`.

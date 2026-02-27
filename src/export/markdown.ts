@@ -53,23 +53,27 @@ export function generateMarkdown(
           .andThen((tasks) => {
             const taskIds = tasks.map((t) => t.task_id);
             return q
-              .raw<{ task_id: string; domain: string }>(
+              .raw<{ task_id: string; doc: string }>(
                 taskIds.length > 0
-                  ? `SELECT task_id, domain FROM \`task_domain\` WHERE task_id IN (${taskIds.map((id) => `'${sqlEscape(id)}'`).join(",")})`
-                  : "SELECT task_id, domain FROM `task_domain` WHERE 1=0",
+                  ? `SELECT task_id, doc FROM \`task_doc\` WHERE task_id IN (${taskIds.map((id) => `'${sqlEscape(id)}'`).join(",")})`
+                  : "SELECT task_id, doc FROM `task_doc` WHERE 1=0",
               )
-              .andThen((domainRows) =>
+              .andThen((docRows) =>
                 q
                   .raw<{
                     task_id: string;
                     skill: string;
-                  }>(taskIds.length > 0 ? `SELECT task_id, skill FROM \`task_skill\` WHERE task_id IN (${taskIds.map((id) => `'${sqlEscape(id)}'`).join(",")})` : "SELECT task_id, skill FROM `task_skill` WHERE 1=0")
+                  }>(
+                    taskIds.length > 0
+                      ? `SELECT task_id, skill FROM \`task_skill\` WHERE task_id IN (${taskIds.map((id) => `'${sqlEscape(id)}'`).join(",")})`
+                      : "SELECT task_id, skill FROM `task_skill` WHERE 1=0",
+                  )
                   .map((skillRows) => {
-                    const domainsByTask = new Map<string, string[]>();
-                    domainRows.forEach((r) => {
-                      const arr = domainsByTask.get(r.task_id) ?? [];
-                      arr.push(r.domain);
-                      domainsByTask.set(r.task_id, arr);
+                    const docsByTask = new Map<string, string[]>();
+                    docRows.forEach((r) => {
+                      const arr = docsByTask.get(r.task_id) ?? [];
+                      arr.push(r.doc);
+                      docsByTask.set(r.task_id, arr);
                     });
                     const skillsByTask = new Map<string, string[]>();
                     skillRows.forEach((r) => {
@@ -77,10 +81,10 @@ export function generateMarkdown(
                       arr.push(r.skill);
                       skillsByTask.set(r.task_id, arr);
                     });
-                    return { domainsByTask, skillsByTask };
+                    return { docsByTask, skillsByTask };
                   }),
               )
-              .andThen(({ domainsByTask, skillsByTask }) =>
+              .andThen(({ docsByTask, skillsByTask }) =>
                 q
                   .raw<EdgeRow>(
                     "SELECT from_task_id, to_task_id, type FROM `edge` WHERE type = 'blocks'",
@@ -116,15 +120,14 @@ export function generateMarkdown(
                           t.status === "done" ? "completed" : "pending";
                         const blockedBy =
                           blockedByMap.get(t.external_key!) ?? [];
-                        const domains = domainsByTask.get(t.task_id);
+                        const docs = docsByTask.get(t.task_id);
                         const skills = skillsByTask.get(t.task_id);
                         return {
                           id: t.external_key!,
                           content: t.title,
                           status,
                           ...(blockedBy.length > 0 && { blockedBy }),
-                          ...(domains &&
-                            domains.length > 0 && { domain: domains }),
+                          ...(docs && docs.length > 0 && { docs: docs }),
                           ...(skills && skills.length > 0 && { skill: skills }),
                         };
                       });

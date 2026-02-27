@@ -102,12 +102,12 @@ export const TaskSchema = z.object({
 });
 export type Task = z.infer<typeof TaskSchema>;
 
-/** Junction: task_id + domain (task can have many domains). */
-export const TaskDomainSchema = z.object({
+/** Junction: task_id + doc (task can have many docs). */
+export const TaskDocSchema = z.object({
   task_id: z.string().uuid(),
-  domain: z.string().max(64),
+  doc: z.string().max(64),
 });
-export type TaskDomain = z.infer<typeof TaskDomainSchema>;
+export type TaskDoc = z.infer<typeof TaskDocSchema>;
 
 /** Junction: task_id + skill (task can have many skills). */
 export const TaskSkillSchema = z.object({

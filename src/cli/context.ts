@@ -9,7 +9,7 @@ export function contextCommand(program: Command) {
   program
     .command("context")
     .description(
-      "Output domain doc paths, skill guide paths, and related done tasks for a task (run before starting work)",
+      "Output doc paths, skill guide paths, and related done tasks for a task (run before starting work)",
     )
     .argument("<taskId>", "Task ID")
     .action(async (taskId, options, cmd) => {
@@ -22,6 +22,7 @@ export function contextCommand(program: Command) {
             change_type: string | null;
             plan_id: string;
             suggested_changes: string | null;
+            agent: string | null;
           }>("task", {
             columns: [
               "task_id",
@@ -29,6 +30,7 @@ export function contextCommand(program: Command) {
               "change_type",
               "plan_id",
               "suggested_changes",
+              "agent",
             ],
             where: { task_id: taskId },
           })
@@ -62,11 +64,11 @@ export function contextCommand(program: Command) {
                   }
                 }
                 return q
-                  .select<{ domain: string }>("task_domain", {
-                    columns: ["domain"],
+                  .select<{ doc: string }>("task_doc", {
+                    columns: ["doc"],
                     where: { task_id: taskId },
                   })
-                  .andThen((domainRows) =>
+                  .andThen((docRows) =>
                     q
                       .select<{ skill: string }>("task_skill", {
                         columns: ["skill"],
@@ -76,28 +78,28 @@ export function contextCommand(program: Command) {
                         task,
                         file_tree,
                         risks,
-                        domains: domainRows.map((r) => r.domain),
+                        docs: docRows.map((r) => r.doc),
                         skills: skillRows.map((r) => r.skill),
                       })),
                   );
               });
           })
-          .andThen(({ task, file_tree, risks, domains, skills }) => {
-            const domain_docs = domains.map((d) => `docs/${d}.md`);
+          .andThen(({ task, file_tree, risks, docs, skills }) => {
+            const doc_paths = docs.map((d) => `docs/${d}.md`);
             const skill_docs = skills.map((s) => `docs/skills/${s}.md`);
 
-            const relatedByDomainSql =
-              domains.length > 0
-                ? `SELECT DISTINCT t.task_id, t.title, t.plan_id FROM \`task\` t JOIN \`task_domain\` td ON t.task_id = td.task_id WHERE t.status = 'done' AND t.task_id != '${sqlEscape(taskId)}' AND td.domain IN (${domains.map((d) => `'${sqlEscape(d)}'`).join(",")}) ORDER BY t.updated_at DESC LIMIT 5`
+            const relatedByDocSql =
+              docs.length > 0
+                ? `SELECT DISTINCT t.task_id, t.title, t.plan_id FROM \`task\` t JOIN \`task_doc\` td ON t.task_id = td.task_id WHERE t.status = 'done' AND t.task_id != '${sqlEscape(taskId)}' AND td.doc IN (${docs.map((d) => `'${sqlEscape(d)}'`).join(",")}) ORDER BY t.updated_at DESC LIMIT 5`
                 : null;
             const relatedBySkillSql =
               skills.length > 0
                 ? `SELECT DISTINCT t.task_id, t.title, t.plan_id FROM \`task\` t JOIN \`task_skill\` ts ON t.task_id = ts.task_id WHERE t.status = 'done' AND t.task_id != '${sqlEscape(taskId)}' AND ts.skill IN (${skills.map((s) => `'${sqlEscape(s)}'`).join(",")}) ORDER BY t.updated_at DESC LIMIT 5`
                 : null;
 
-            const runDomain = relatedByDomainSql
+            const runDoc = relatedByDocSql
               ? q.raw<{ task_id: string; title: string; plan_id: string }>(
-                  relatedByDomainSql,
+                  relatedByDocSql,
                 )
               : ResultAsync.fromSafePromise(Promise.resolve([]));
             const runSkill = relatedBySkillSql
@@ -106,19 +108,20 @@ export function contextCommand(program: Command) {
                 )
               : ResultAsync.fromSafePromise(Promise.resolve([]));
 
-            return runDomain.andThen((relatedByDomain) =>
+            return runDoc.andThen((relatedByDoc) =>
               runSkill.map((relatedBySkill) => ({
                 task_id: task.task_id,
                 title: task.title,
-                domains,
+                agent: task.agent ?? null,
+                docs,
                 skills,
                 change_type: task.change_type ?? null,
                 suggested_changes: task.suggested_changes ?? null,
                 file_tree,
                 risks,
-                domain_docs,
+                doc_paths,
                 skill_docs,
-                related_done_by_domain: relatedByDomain,
+                related_done_by_doc: relatedByDoc,
                 related_done_by_skill: relatedBySkill,
               })),
             );
@@ -130,15 +133,16 @@ export function contextCommand(program: Command) {
           const d = data as {
             task_id: string;
             title: string;
-            domains: string[];
+            agent: string | null;
+            docs: string[];
             skills: string[];
             change_type: string | null;
             suggested_changes: string | null;
             file_tree: string | null;
             risks: unknown;
-            domain_docs: string[];
+            doc_paths: string[];
             skill_docs: string[];
-            related_done_by_domain: Array<{
+            related_done_by_doc: Array<{
               task_id: string;
               title: string;
               plan_id: string;
@@ -154,8 +158,9 @@ export function contextCommand(program: Command) {
             return;
           }
           console.log(`Task: ${d.title} (${d.task_id})`);
+          if (d.agent) console.log(`Agent: ${d.agent}`);
           if (d.change_type) console.log(`Change type: ${d.change_type}`);
-          d.domain_docs.forEach((doc) => console.log(`Domain doc: ${doc}`));
+          d.doc_paths.forEach((path) => console.log(`Doc: ${path}`));
           d.skill_docs.forEach((doc) => console.log(`Skill guide: ${doc}`));
           if (d.suggested_changes) {
             console.log(`Suggested changes:`);
@@ -178,9 +183,9 @@ export function contextCommand(program: Command) {
                 ),
             );
           }
-          if (d.related_done_by_domain.length > 0) {
-            console.log(`Related done (same domain):`);
-            d.related_done_by_domain.forEach((t) =>
+          if (d.related_done_by_doc.length > 0) {
+            console.log(`Related done (same doc):`);
+            d.related_done_by_doc.forEach((t) =>
               console.log(`  ${t.task_id}  ${t.title}`),
             );
           }

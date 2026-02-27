@@ -50,9 +50,9 @@ export function splitCommand(program: Command) {
             }
             const originalTask = originalTasks[0];
 
-            const originalDomainsResult = await q.select<{ domain: string }>(
-              "task_domain",
-              { columns: ["domain"], where: { task_id: taskId } },
+            const originalDomainsResult = await q.select<{ doc: string }>(
+              "task_doc",
+              { columns: ["doc"], where: { task_id: taskId } },
             );
             const originalSkillsResult = await q.select<{ skill: string }>(
               "task_skill",
@@ -139,10 +139,10 @@ export function splitCommand(program: Command) {
                   insertNewTaskEventResult.error,
                 );
 
-              for (const { domain } of originalDomains) {
-                const dr = await q.insert("task_domain", {
+              for (const { doc } of originalDomains) {
+                const dr = await q.insert("task_doc", {
                   task_id: newTask.task_id,
-                  domain,
+                  doc,
                 });
                 if (dr.isErr()) throw dr.error;
               }

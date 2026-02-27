@@ -37,7 +37,7 @@ pnpm tg import plans/<file> --plan "<Plan Name>" --format cursor
 
 Task execution uses sub-agents. Follow `.cursor/rules/subagent-dispatch.mdc` Pattern 1 (parallel) or Pattern 2 (sequential). The orchestrator coordinates; sub-agents do the work.
 
-1. `pnpm tg next --plan "<Plan>" --json --limit 3` — get runnable tasks
+1. `pnpm tg next --plan "<Plan>" --json --limit 5` — get runnable tasks
 2. For each task: build implementer prompt from `tg context` and `.cursor/agents/implementer.md`; dispatch via Task tool, agent CLI, or mcp_task.
 3. After implementer completes: dispatch reviewer with task context + diff.
 4. If reviewer FAILs, re-dispatch implementer once. After 2 failures, fall back to direct execution.

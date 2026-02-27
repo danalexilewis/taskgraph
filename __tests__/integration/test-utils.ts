@@ -8,6 +8,8 @@ import {
   applyTaskDomainSkillJunctionMigration,
   applyPlanRichFieldsMigration,
   applyTaskSuggestedChangesMigration,
+  applyDomainToDocRenameMigration,
+  applyTaskAgentMigration,
 } from "../../src/db/migrate";
 import { writeConfig } from "../../src/cli/utils";
 import { Config } from "../../src/cli/utils";
@@ -43,6 +45,8 @@ export async function setupIntegrationTest(): Promise<IntegrationTestContext> {
   (await applyMigrations(doltRepoPath))._unsafeUnwrap();
   (await applyTaskDimensionsMigration(doltRepoPath))._unsafeUnwrap();
   (await applyTaskDomainSkillJunctionMigration(doltRepoPath))._unsafeUnwrap();
+  (await applyDomainToDocRenameMigration(doltRepoPath))._unsafeUnwrap();
+  (await applyTaskAgentMigration(doltRepoPath))._unsafeUnwrap();
   (await applyPlanRichFieldsMigration(doltRepoPath))._unsafeUnwrap();
   (await applyTaskSuggestedChangesMigration(doltRepoPath))._unsafeUnwrap();
 

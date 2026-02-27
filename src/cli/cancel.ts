@@ -27,7 +27,8 @@ async function cancelOne(
 ): Promise<ResultAsync<CancelOneResult, AppError>> {
   const currentTimestamp = now();
   const q = query(config.doltRepoPath);
-  const typeHint = options.type === "plan" || options.type === "task" ? options.type : "auto";
+  const typeHint =
+    options.type === "plan" || options.type === "task" ? options.type : "auto";
 
   return ResultAsync.fromPromise(
     (async (): Promise<CancelOneResult> => {
@@ -50,7 +51,11 @@ async function cancelOne(
           cmd.parent?.opts().noCommit,
         );
         if (commitResult.isErr()) throw commitResult.error;
-        return { type: "plan" as const, id: plan.plan_id, status: "abandoned" as const };
+        return {
+          type: "plan" as const,
+          id: plan.plan_id,
+          status: "abandoned" as const,
+        };
       };
 
       if (typeHint === "plan" || typeHint === "auto") {
@@ -69,7 +74,10 @@ async function cancelOne(
         if (byTitle.value.length > 0) return tryCancelPlan(byTitle.value[0]);
 
         if (typeHint === "plan") {
-          throw buildError(ErrorCode.PLAN_NOT_FOUND, `Plan with ID or title '${id}' not found.`);
+          throw buildError(
+            ErrorCode.PLAN_NOT_FOUND,
+            `Plan with ID or title '${id}' not found.`,
+          );
         }
       }
 
@@ -81,7 +89,10 @@ async function cancelOne(
         if (taskResult.isErr()) throw taskResult.error;
         if (taskResult.value.length > 0) {
           const task = taskResult.value[0];
-          const transitionResult = checkValidTransition(task.status, "canceled");
+          const transitionResult = checkValidTransition(
+            task.status,
+            "canceled",
+          );
           if (transitionResult.isErr()) throw transitionResult.error;
 
           const updateResult = await q.update(
@@ -109,11 +120,18 @@ async function cancelOne(
             cmd.parent?.opts().noCommit,
           );
           if (commitResult.isErr()) throw commitResult.error;
-          return { type: "task" as const, id: task.task_id, status: "canceled" };
+          return {
+            type: "task" as const,
+            id: task.task_id,
+            status: "canceled",
+          };
         }
       }
 
-      throw buildError(ErrorCode.PLAN_NOT_FOUND, `Plan or task '${id}' not found.`);
+      throw buildError(
+        ErrorCode.PLAN_NOT_FOUND,
+        `Plan or task '${id}' not found.`,
+      );
     })(),
     (e) => e as AppError,
   );
@@ -123,8 +141,15 @@ export function cancelCommand(program: Command) {
   program
     .command("cancel")
     .description("Soft-delete a plan (abandoned) or task (canceled)")
-    .argument("<ids...>", "One or more plan or task IDs (space- or comma-separated)")
-    .option("--type <type>", "Resolve as plan or task (default: auto-detect)", "auto")
+    .argument(
+      "<ids...>",
+      "One or more plan or task IDs (space- or comma-separated)",
+    )
+    .option(
+      "--type <type>",
+      "Resolve as plan or task (default: auto-detect)",
+      "auto",
+    )
     .option("--reason <reason>", "Reason for canceling")
     .action(async (ids: string[], options, cmd) => {
       const configResult = await readConfig();
@@ -144,7 +169,8 @@ export function cancelCommand(program: Command) {
       for (const id of idList) {
         const one = await cancelOne(id, config, options, cmd);
         one.match(
-          (data) => results.push({ id: data.id, type: data.type, status: data.status }),
+          (data) =>
+            results.push({ id: data.id, type: data.type, status: data.status }),
           (error) => results.push({ id, error: error.message }),
         );
       }
@@ -164,7 +190,11 @@ export function cancelCommand(program: Command) {
 
       if (!cmd.parent?.opts().json) {
         for (const r of results) {
-          const row = r as { id: string; type?: "plan" | "task"; status?: string };
+          const row = r as {
+            id: string;
+            type?: "plan" | "task";
+            status?: string;
+          };
           const label = row.type === "plan" ? "Plan" : "Task";
           console.log(`${label} ${row.id} ${row.status}.`);
         }

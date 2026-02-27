@@ -43,7 +43,7 @@ export function statusCommand(program: Command) {
         }
         const dimFilter =
           (options.domain
-            ? ` AND EXISTS (SELECT 1 FROM \`task_domain\` td WHERE td.task_id = t.task_id AND td.domain = '${sqlEscape(options.domain)}')`
+            ? ` AND EXISTS (SELECT 1 FROM \`task_doc\` td WHERE td.task_id = t.task_id AND td.doc = '${sqlEscape(options.domain)}')`
             : "") +
           (options.skill
             ? ` AND EXISTS (SELECT 1 FROM \`task_skill\` ts WHERE ts.task_id = t.task_id AND ts.skill = '${sqlEscape(options.skill)}')`
@@ -55,7 +55,9 @@ export function statusCommand(program: Command) {
         const excludeCanceledAbandoned = options.all
           ? ""
           : " AND t.status != 'canceled' AND p.status != 'abandoned' ";
-        const planAbandonedFilter = options.all ? "" : " AND `status` != 'abandoned' ";
+        const planAbandonedFilter = options.all
+          ? ""
+          : " AND `status` != 'abandoned' ";
 
         const planFilter = options.plan
           ? isUUID

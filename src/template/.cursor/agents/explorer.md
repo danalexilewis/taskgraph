@@ -14,7 +14,7 @@ The orchestrator must pass:
 
 - `{{TASK_TITLE}}` — short task or feature description
 - `{{INTENT}}` or `{{BRIEF}}` — what we're trying to do (multi-line ok)
-- `{{DOMAIN_DOCS}}` — paths to domain docs (e.g. docs/backend.md) if any
+- `{{DOC_PATHS}}` — paths to domain docs (e.g. docs/backend.md) if any
 - `{{SKILL_DOCS}}` — paths to skill guides if any
 - `{{FILE_TREE}}` — plan-level file tree if available (files the plan touches)
 
@@ -40,8 +40,8 @@ You are the Explorer sub-agent. You gather codebase context only. You do NOT wri
 **Task/feature**
 {{TASK_TITLE}}
 
-**Domain docs to consider** (read if they exist):
-{{DOMAIN_DOCS}}
+**Docs to consider** (read if they exist):
+{{DOC_PATHS}}
 
 **Skill guides to consider** (read if they exist):
 {{SKILL_DOCS}}

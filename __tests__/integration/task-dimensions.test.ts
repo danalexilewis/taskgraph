@@ -83,16 +83,16 @@ todos:
     );
     expect(exitCode).toBe(0);
     const data = JSON.parse(stdout) as {
-      domains: string[];
+      docs: string[];
       skills: string[];
       change_type: string | null;
-      domain_docs: string[];
+      doc_paths: string[];
       skill_docs: string[];
     };
-    expect(data.domains).toContain("schema");
+    expect(data.docs).toContain("schema");
     expect(data.skills).toContain("sql-migration");
     expect(data.change_type).toBe("modify");
-    expect(data.domain_docs).toContain("docs/schema.md");
+    expect(data.doc_paths).toContain("docs/schema.md");
     expect(data.skill_docs).toContain("docs/skills/sql-migration.md");
   });
 
@@ -118,7 +118,7 @@ todos:
     expect(stdout).not.toContain("Schema task");
   });
 
-  it("should return related_done_by_domain and related_done_by_skill in tg context", async () => {
+  it("should return related_done_by_doc and related_done_by_skill in tg context", async () => {
     if (!context) throw new Error("Context not initialized");
     const { exitCode, stdout } = await runTgCli(
       `context ${taskIdWithDimensions} --json`,
@@ -126,14 +126,14 @@ todos:
     );
     expect(exitCode).toBe(0);
     const data = JSON.parse(stdout) as {
-      related_done_by_domain: Array<{ task_id: string; title: string }>;
+      related_done_by_doc: Array<{ task_id: string; title: string }>;
       related_done_by_skill: Array<{ task_id: string; title: string }>;
     };
-    expect(Array.isArray(data.related_done_by_domain)).toBe(true);
+    expect(Array.isArray(data.related_done_by_doc)).toBe(true);
     expect(Array.isArray(data.related_done_by_skill)).toBe(true);
-    // dim-done is done and has domain schema, skill sql-migration; may appear in related
+    // dim-done is done and has doc schema, skill sql-migration; may appear in related
     expect(
-      data.related_done_by_domain.some((t) => t.title.includes("done")),
+      data.related_done_by_doc.some((t) => t.title.includes("done")),
     ).toBe(true);
     expect(
       data.related_done_by_skill.some((t) => t.title.includes("done")),

@@ -69,17 +69,17 @@ function portfolioOverlapsCommand(): Command {
           HAVING feature_key_count >= ${minFeatures};
         `;
 
-        return q.raw<OverlapResult[]>(relatesOverlapsQuery).andThen(
-          (relatesOverlapsResult) => {
+        return q
+          .raw<OverlapResult[]>(relatesOverlapsQuery)
+          .andThen((relatesOverlapsResult) => {
             const relatesOverlaps = relatesOverlapsResult;
-            return q.raw<HotspotResult[]>(areaHotspotQuery).map(
-              (areaHotspotsResult) => {
+            return q
+              .raw<HotspotResult[]>(areaHotspotQuery)
+              .map((areaHotspotsResult) => {
                 const areaHotspots = areaHotspotsResult;
                 return { relatesOverlaps, areaHotspots };
-              },
-            );
-          },
-        );
+              });
+          });
       });
 
       result.match(
@@ -173,18 +173,17 @@ function portfolioHotspotsCommand(): Command {
           HAVING COUNT(DISTINCT feature_key) > 1;
         `;
 
-        return q.raw<TasksPerAreaResult[]>(tasksPerAreaQuery).andThen(
-          (tasksPerAreaResult) => {
+        return q
+          .raw<TasksPerAreaResult[]>(tasksPerAreaQuery)
+          .andThen((tasksPerAreaResult) => {
             const tasksPerArea = tasksPerAreaResult;
-            return q.raw<MultiFeatureTaskResult[]>(multiFeatureTasksQuery).map(
-              (multiFeatureTasksResult) => {
-                const multiFeatureTasks =
-                  multiFeatureTasksResult;
+            return q
+              .raw<MultiFeatureTaskResult[]>(multiFeatureTasksQuery)
+              .map((multiFeatureTasksResult) => {
+                const multiFeatureTasks = multiFeatureTasksResult;
                 return { tasksPerArea, multiFeatureTasks };
-              },
-            );
-          },
-        );
+              });
+          });
       });
 
       result.match(
