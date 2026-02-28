@@ -1,3 +1,10 @@
+---
+triggers:
+  files: ["src/cli/**"]
+  change_types: ["create", "modify"]
+  keywords: ["command", "subcommand", "CLI", "tg"]
+---
+
 # Skill: CLI command implementation
 
 ## Purpose
@@ -21,17 +28,3 @@ Add or extend a `tg` subcommand in a way that matches existing patterns: config,
 7. Register the command in `cli/index.ts` (import and call `xyzCommand(program)`).
 8. Run `pnpm run build` and test manually.
 9. Update `docs/cli-reference.md` with the new command/options.
-
-## Gotchas
-
-- Never interpolate user input into SQL without `sqlEscape`. Use `sqlEscape` from `db/escape.ts`.
-- CLI runs from `dist/`; changes require `pnpm run build` at repo root.
-- Use `q.raw(sql)` when you need custom SQL; use `q.select`/`q.insert`/`q.update` when the query builder fits.
-- For new task columns, update `split.ts` and any other code that constructs or inserts tasks (domain types, importer, etc.).
-
-## Definition of done
-
-- Command works for both human and `--json` output.
-- User-controlled inputs are escaped in SQL.
-- Command is documented in `docs/cli-reference.md`.
-- Build passes; manual and/or integration tests pass.

@@ -1,12 +1,12 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import * as fs from "fs";
-import * as path from "path";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { doltSql } from "../../src/db/connection";
 import {
+  runTgCli,
   setupIntegrationTest,
   teardownIntegrationTest,
-  runTgCli,
 } from "./test-utils";
-import { doltSql } from "../../src/db/connection";
 
 describe("Rich plan import integration", () => {
   let context: Awaited<ReturnType<typeof setupIntegrationTest>> | undefined;
@@ -63,17 +63,21 @@ todos:
     }>;
     const plan = plans.find((p) => p.title === "Rich Test Plan");
     expect(plan).toBeDefined();
-    planId = plan!.plan_id;
+    planId = plan?.plan_id;
 
     const { stdout: nextStdout } = await runTgCli(
-      `next --plan ${planId} --limit 5`,
+      `next --plan ${planId} --limit 5 --json`,
       context.tempDir,
     );
-    const match = nextStdout.match(
-      /ID: ([0-9a-f-]{36}), Title: Task with suggested changes/,
+    const nextTasks = JSON.parse(nextStdout) as Array<{
+      task_id: string;
+      title: string;
+    }>;
+    const suggestedTask = nextTasks.find(
+      (t) => t.title === "Task with suggested changes",
     );
-    expect(match).toBeDefined();
-    taskIdWithSuggested = match![1];
+    expect(suggestedTask).toBeDefined();
+    taskIdWithSuggested = suggestedTask!.task_id;
   }, 60000);
 
   afterAll(() => {

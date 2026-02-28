@@ -60,7 +60,7 @@ Example:
 
 ## How dispatch works
 
-1. Orchestrator runs `tg next --json --limit 4` to get unblocked tasks.
+1. Orchestrator runs `tg next --json --limit 20` to get unblocked tasks.
 2. For each task, orchestrator runs `tg context <taskId> --json` and optionally runs the explorer.
 3. Orchestrator reads the appropriate agent template (e.g. `implementer.md`), replaces placeholders with the task's context.
 4. Orchestrator calls the Task tool: `Task(description="...", prompt=<interpolated prompt>, model="fast")`.
@@ -74,7 +74,7 @@ Placeholders commonly used:
 | `{{CONTEXT_JSON}}`      | Output of `tg context <taskId> --json`   | JSON object       |
 | `{{TITLE}}`             | context.title                            | Task title string |
 | `{{INTENT}}`            | context / task intent                    | Multi-line intent |
-| `{{DOC_PATHS}}`       | context.domain_docs                      | Paths to read     |
+| `{{DOC_PATHS}}`         | context.domain_docs                      | Paths to read     |
 | `{{SKILL_DOCS}}`        | context.skill_docs                       | Paths to read     |
 | `{{SUGGESTED_CHANGES}}` | context.suggested_changes                | Optional snippet  |
 | `{{EXPLORER_OUTPUT}}`   | Optional; output from explorer sub-agent | Structured text   |

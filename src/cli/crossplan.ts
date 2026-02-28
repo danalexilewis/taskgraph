@@ -1,12 +1,19 @@
-import { Command } from "commander";
-import { readConfig, Config, rootOpts } from "./utils";
-import { Result, ResultAsync, err, errAsync, ok, okAsync } from "neverthrow";
-import { AppError } from "../domain/errors";
-import { query } from "../db/query";
-import { sqlEscape } from "../db/escape";
+import type { Command } from "commander";
+import {
+  err,
+  errAsync,
+  ok,
+  okAsync,
+  type Result,
+  ResultAsync,
+} from "neverthrow";
 import { doltCommit } from "../db/commit";
+import { query } from "../db/query";
+import { syncBlockedStatusForTask } from "../domain/blocked-status";
+import type { AppError } from "../domain/errors";
 import { checkNoBlockerCycle } from "../domain/invariants";
 import type { Edge } from "../domain/types";
+import { type Config, readConfig, rootOpts } from "./utils";
 
 /** Parse plan file_tree into normalized file paths (no trailing slash, no (create)/(modify) suffix). */
 export function parseFileTree(fileTree: string | null): string[] {
@@ -139,16 +146,16 @@ export function crossplanCommand(program: Command) {
             }[];
           };
           console.log("Proposed edges:");
-          d.proposed.forEach((e) =>
+          d.proposed.forEach((e) => {
             console.log(
               `  ${e.type}: ${e.from_task_id} -> ${e.to_task_id}${e.reason ? ` (${e.reason})` : ""}`,
-            ),
-          );
+            );
+          });
           if (d.added && d.added.length > 0) {
             console.log("Added to DB:");
-            d.added.forEach((e) =>
-              console.log(`  ${e.type}: ${e.from_task_id} -> ${e.to_task_id}`),
-            );
+            d.added.forEach((e) => {
+              console.log(`  ${e.type}: ${e.from_task_id} -> ${e.to_task_id}`);
+            });
           }
         }
       });
@@ -465,6 +472,17 @@ function runEdges(
               to_task_id: edge.to_task_id,
               type: edge.type,
             });
+            await syncBlockedStatusForTask(
+              config.doltRepoPath,
+              edge.to_task_id,
+            ).match(
+              () => {},
+              (err) =>
+                console.error(
+                  `syncBlockedStatusForTask(${edge.to_task_id}):`,
+                  err.message,
+                ),
+            );
           }
         } else {
           const insertRes = await q.insert("edge", {

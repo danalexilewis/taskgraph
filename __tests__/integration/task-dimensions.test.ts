@@ -1,10 +1,10 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import * as fs from "fs";
-import * as path from "path";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import {
+  runTgCli,
   setupIntegrationTest,
   teardownIntegrationTest,
-  runTgCli,
 } from "./test-utils";
 
 describe("Task dimensions integration", () => {
@@ -58,15 +58,19 @@ todos:
     }>;
     const plan = plans.find((p) => p.title === "Dimensions Test Plan");
     expect(plan).toBeDefined();
-    planId = plan!.plan_id;
+    planId = plan?.plan_id;
 
     const { stdout: nextStdout } = await runTgCli(
-      `next --plan ${planId} --limit 5`,
+      `next --plan ${planId} --limit 5 --json`,
       context.tempDir,
     );
-    const match = nextStdout.match(/ID: ([0-9a-f-]{36}), Title: Schema task/);
-    expect(match).toBeDefined();
-    taskIdWithDimensions = match![1];
+    const nextTasks = JSON.parse(nextStdout) as Array<{
+      task_id: string;
+      title: string;
+    }>;
+    const schemaTask = nextTasks.find((t) => t.title === "Schema task");
+    expect(schemaTask).toBeDefined();
+    taskIdWithDimensions = schemaTask!.task_id;
   }, 60000);
 
   afterAll(() => {
@@ -132,9 +136,9 @@ todos:
     expect(Array.isArray(data.related_done_by_doc)).toBe(true);
     expect(Array.isArray(data.related_done_by_skill)).toBe(true);
     // dim-done is done and has doc schema, skill sql-migration; may appear in related
-    expect(
-      data.related_done_by_doc.some((t) => t.title.includes("done")),
-    ).toBe(true);
+    expect(data.related_done_by_doc.some((t) => t.title.includes("done"))).toBe(
+      true,
+    );
     expect(
       data.related_done_by_skill.some((t) => t.title.includes("done")),
     ).toBe(true);

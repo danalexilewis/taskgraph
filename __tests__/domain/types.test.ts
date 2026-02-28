@@ -1,17 +1,17 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "bun:test";
 import {
-  PlanSchema,
-  TaskSchema,
-  EdgeSchema,
-  EventSchema,
+  ActorSchema,
   DecisionSchema,
-  PlanStatusSchema,
-  TaskStatusSchema,
-  OwnerSchema,
-  RiskSchema,
+  EdgeSchema,
   EdgeTypeSchema,
   EventKindSchema,
-  ActorSchema,
+  EventSchema,
+  OwnerSchema,
+  PlanSchema,
+  PlanStatusSchema,
+  RiskSchema,
+  TaskSchema,
+  TaskStatusSchema,
 } from "../../src/domain/types";
 
 describe("types Zod schemas", () => {

@@ -1,10 +1,10 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "bun:test";
+import { ErrorCode } from "../../src/domain/errors";
 import {
   checkNoBlockerCycle,
   checkValidTransition,
 } from "../../src/domain/invariants";
-import { TaskStatusSchema, Edge } from "../../src/domain/types";
-import { ErrorCode } from "../../src/domain/errors";
+import { type Edge, TaskStatusSchema } from "../../src/domain/types";
 
 describe("invariants", () => {
   describe("checkValidTransition", () => {

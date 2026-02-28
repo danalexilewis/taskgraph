@@ -1,12 +1,12 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import * as fs from "fs";
-import * as path from "path";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { doltSql } from "../../src/db/connection";
 import {
+  runTgCli,
   setupIntegrationTest,
   teardownIntegrationTest,
-  runTgCli,
 } from "./test-utils";
-import { doltSql } from "../../src/db/connection";
 
 describe("Batch CLI: done with multiple IDs", () => {
   let context: Awaited<ReturnType<typeof setupIntegrationTest>> | undefined;
@@ -58,7 +58,7 @@ isProject: false
     }>;
     const plan = plans.find((p) => p.title === "Batch CLI Test Plan");
     expect(plan).toBeDefined();
-    planId = plan!.plan_id;
+    planId = plan?.plan_id;
 
     const tasksResult = await doltSql(
       `SELECT task_id FROM \`task\` WHERE plan_id = '${planId}' ORDER BY external_key`,
@@ -96,9 +96,9 @@ isProject: false
     }
   }, 30000);
 
-  it("(b) tg done \"id1,id2\" (comma-separated) marks both done", async () => {
+  it('(b) tg done "id1,id2" (comma-separated) marks both done', async () => {
     if (!context) throw new Error("Context not initialized");
-    const [,, id3, id4] = taskIds;
+    const [, , id3, id4] = taskIds;
     await runTgCli(
       `start ${id3} ${id4} --agent test --no-commit`,
       context.tempDir,
@@ -144,9 +144,11 @@ isProject: false
     );
     expect(result.exitCode).toBe(1);
 
-    const results = JSON.parse(result.stdout) as Array<
-      { id: string; status?: string; error?: string }
-    >;
+    const results = JSON.parse(result.stdout) as Array<{
+      id: string;
+      status?: string;
+      error?: string;
+    }>;
     expect(results.length).toBe(2);
     const byId = Object.fromEntries(results.map((r) => [r.id, r]));
     expect(byId[id6]).toBeDefined();

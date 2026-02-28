@@ -1,6 +1,6 @@
 import { execa } from "execa";
 import { ResultAsync } from "neverthrow";
-import { AppError, ErrorCode, buildError } from "../domain/errors";
+import { type AppError, buildError, ErrorCode } from "../domain/errors";
 
 const doltPath = () => process.env.DOLT_PATH || "dolt";
 

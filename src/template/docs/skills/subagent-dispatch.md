@@ -4,6 +4,8 @@
 
 Execute task-graph work by dispatching fast sub-agents (Cursor Task tool with `model="fast"`) instead of doing every task yourself. Use parallel batch execution when multiple unblocked tasks exist; use the planner-analyst before writing a plan so the expensive model focuses on reasoning, not codebase exploration.
 
+**Task orchestration UI**: When running tg tasks, call TodoWrite with the task list from `tg next` before dispatching and update statuses as tasks complete; when dispatching a batch, emit N Task (or mcp_task) calls in the same turn. See `.cursor/rules/subagent-dispatch.mdc` for the full TodoWrite and batch-in-one-turn protocol.
+
 ## Inputs
 
 - A plan with runnable tasks (`tg next`) or a user request to create a new plan
@@ -12,7 +14,7 @@ Execute task-graph work by dispatching fast sub-agents (Cursor Task tool with `m
 
 ## When to use
 
-- **Parallel batch**: You are executing a plan and `tg next` returns 2+ unblocked tasks that do not share files — dispatch implementers concurrently, then reviewers.
+- **Parallel batch**: You are executing a plan and `tg next` returns runnable tasks — include all that do not share files; dispatch them all in one turn. Cursor decides how many run in parallel; then reviewers.
 - **Sequential**: One runnable task or tasks that share files — optional explorer, then implementer, then reviewer.
 - **Plan analysis**: Before writing a new plan — dispatch planner-analyst, then use its output when drafting the plan.
 
@@ -24,10 +26,10 @@ Execute task-graph work by dispatching fast sub-agents (Cursor Task tool with `m
 
 ## Steps (parallel batch)
 
-1. `tg next --plan "<Plan>" --json --limit 4`
-2. If tasks share files (from file_tree/suggested_changes), reduce the batch to independent tasks only.
+1. `tg next --plan "<Plan>" --json --limit 20`
+2. Keep only tasks that do not share files (file_tree/suggested_changes). Do not cap the batch size — Cursor decides concurrency.
 3. For each task: `tg context <taskId> --json`; build implementer prompt from `.cursor/agents/implementer.md` placeholders.
-4. Dispatch up to 4 Task(model="fast", prompt=…) concurrently with agent names implementer-1, implementer-2, …
+4. Dispatch all tasks in the batch in the same turn (one Task call per task). Agent names implementer-1, implementer-2, …
 5. When each completes, build reviewer prompt from `.cursor/agents/reviewer.md` (context + diff); dispatch Task(model="fast", …). On FAIL, re-dispatch implementer once with feedback.
 6. Repeat from step 1 until no runnable tasks or plan is complete.
 

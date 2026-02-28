@@ -1,13 +1,11 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname, resolve, sep } from "node:path";
 import { Command } from "commander";
-import { writeFileSync, mkdirSync } from "fs";
-import { resolve, sep, dirname } from "path";
-import { generateMermaidGraph } from "../export/mermaid";
+import { type AppError, buildError, ErrorCode } from "../domain/errors";
 import { generateDotGraph } from "../export/dot";
 import { generateMarkdown } from "../export/markdown";
-import { readConfig } from "./utils";
-import { ResultAsync } from "neverthrow";
-import { AppError, buildError, ErrorCode } from "../domain/errors";
-import { Config } from "./utils";
+import { generateMermaidGraph } from "../export/mermaid";
+import { type Config, readConfig } from "./utils";
 
 export function exportCommand(program: Command) {
   program
@@ -24,7 +22,7 @@ function exportMermaidCommand(): Command {
     .option("--plan <planId>", "Filter by plan ID")
     .option("--feature <featureKey>", "Filter by feature key")
     .action(async (options, cmd) => {
-      const result = await readConfig().asyncAndThen((config: Config) => {
+      const result = await readConfig().asyncAndThen((_config: Config) => {
         // Removed config.doltRepoPath from generateMermaidGraph call
         return generateMermaidGraph(options.plan, options.feature);
       });
@@ -57,7 +55,7 @@ function exportDotCommand(): Command {
     .option("--plan <planId>", "Filter by plan ID")
     .option("--feature <featureKey>", "Filter by feature key")
     .action(async (options, cmd) => {
-      const result = await readConfig().asyncAndThen((config: Config) => {
+      const result = await readConfig().asyncAndThen((_config: Config) => {
         // Removed config.doltRepoPath from generateDotGraph call
         return generateDotGraph(options.plan, options.feature);
       });

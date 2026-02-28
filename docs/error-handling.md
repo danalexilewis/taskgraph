@@ -1,3 +1,10 @@
+---
+triggers:
+  files: ["src/domain/errors.ts", "src/domain/**"]
+  change_types: ["create", "modify"]
+  keywords: ["error", "AppError", "ErrorCode"]
+---
+
 # Error Handling
 
 The Task Graph system prioritizes reliability and determinism, making robust error handling a first-class requirement. We utilize the `neverthrow` library to manage errors explicitly, replacing traditional `throw`/`try-catch` patterns with `Result` and `ResultAsync` types.

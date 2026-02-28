@@ -1,15 +1,12 @@
-import { Command } from "commander";
-import { v4 as uuidv4 } from "uuid";
+import type { Command } from "commander";
+import { ResultAsync } from "neverthrow";
 import { doltCommit } from "../db/commit";
-import { readConfig, Config } from "./utils"; // Import Config
-import {
-  checkNoBlockerCycle,
-  checkValidTransition,
-} from "../domain/invariants";
-import { TaskStatus, Edge } from "../domain/types";
-import { ResultAsync, ok, err } from "neverthrow";
-import { AppError, buildError, ErrorCode } from "../domain/errors";
-import { query, now, jsonObj } from "../db/query";
+import { query } from "../db/query";
+import { syncBlockedStatusForTask } from "../domain/blocked-status";
+import type { AppError } from "../domain/errors";
+import { checkNoBlockerCycle } from "../domain/invariants";
+import type { Edge, TaskStatus } from "../domain/types";
+import { type Config, readConfig } from "./utils";
 
 export function blockCommand(program: Command) {
   program
@@ -20,9 +17,6 @@ export function blockCommand(program: Command) {
     .option("--reason <reason>", "Reason for the block")
     .action(async (taskId, options, cmd) => {
       const result = await readConfig().asyncAndThen((config: Config) => {
-        // Removed async, added type
-        const currentTimestamp = now();
-
         const q = query(config.doltRepoPath);
 
         return ResultAsync.fromPromise(
@@ -62,46 +56,11 @@ export function blockCommand(program: Command) {
               );
             }
 
-            const currentStatusResult = await q.select<{ status: TaskStatus }>(
-              "task",
-              { columns: ["status"], where: { task_id: taskId } },
+            const syncResult = await syncBlockedStatusForTask(
+              config.doltRepoPath,
+              taskId,
             );
-            if (currentStatusResult.isErr()) throw currentStatusResult.error;
-            if (currentStatusResult.value.length === 0) {
-              throw buildError(
-                ErrorCode.TASK_NOT_FOUND,
-                `Task with ID ${taskId} not found.`,
-              );
-            }
-            const currentStatus = currentStatusResult.value[0].status;
-
-            if (currentStatus !== "blocked") {
-              const transitionResult = checkValidTransition(
-                currentStatus,
-                "blocked",
-              );
-              if (transitionResult.isErr()) throw transitionResult.error;
-
-              const updateStatusResult = await q.update(
-                "task",
-                { status: "blocked", updated_at: currentTimestamp },
-                { task_id: taskId },
-              );
-              if (updateStatusResult.isErr()) throw updateStatusResult.error;
-            }
-
-            const insertEventResult = await q.insert("event", {
-              event_id: uuidv4(),
-              task_id: taskId,
-              kind: "blocked",
-              body: jsonObj({
-                blockerTaskId: options.on,
-                reason: options.reason ?? null,
-                timestamp: currentTimestamp,
-              }),
-              created_at: currentTimestamp,
-            });
-            if (insertEventResult.isErr()) throw insertEventResult.error;
+            if (syncResult.isErr()) throw syncResult.error;
 
             const commitResult = await doltCommit(
               `task: block ${taskId} on ${options.on}`,

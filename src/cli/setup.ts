@@ -1,8 +1,8 @@
-import { Command } from "commander";
-import * as fs from "fs";
-import * as path from "path";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import type { Command } from "commander";
 import { ResultAsync } from "neverthrow";
-import { AppError, buildError, ErrorCode } from "../domain/errors";
+import { type AppError, buildError, ErrorCode } from "../domain/errors";
 
 type SetupOptions = {
   docs: boolean;
@@ -135,11 +135,15 @@ export function setupCommand(program: Command) {
         console.log("TaskGraph scaffold complete.");
         if (result.created.length > 0) {
           console.log("Created:");
-          result.created.sort().forEach((p) => console.log(`  + ${p}`));
+          result.created.sort().forEach((p) => {
+            console.log(`  + ${p}`);
+          });
         }
         if (result.skipped.length > 0) {
           console.log("Skipped (already exists):");
-          result.skipped.sort().forEach((p) => console.log(`  = ${p}`));
+          result.skipped.sort().forEach((p) => {
+            console.log(`  = ${p}`);
+          });
           console.log("Tip: re-run with --force to overwrite.");
         }
       };

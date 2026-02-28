@@ -33,6 +33,17 @@ process.stdin.on("end", () => {
       stdio: "inherit",
     });
     console.error("[cursor hook] Rebuilt after src/ changes.");
+    // Run cheap-gate so dist is validated
+    try {
+      execSync("bash scripts/cheap-gate.sh", {
+        cwd: root,
+        encoding: "utf8",
+        stdio: "inherit",
+      });
+      console.error("[cursor hook] Cheap gate passed.");
+    } catch (gateErr) {
+      console.error("[cursor hook] cheap-gate failed (non-fatal):", gateErr.message);
+    }
   } catch (err) {
     // Non-zero git status or missing pnpm is fine; don't break the hook protocol
     if (err.code !== "ENOENT" && err.status !== 128) {

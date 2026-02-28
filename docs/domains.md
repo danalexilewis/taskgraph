@@ -14,3 +14,15 @@ Tasks can set a `domain` that maps to a docs page. The agent reads `docs/<domain
 | `agent-contract` | [agent-contract.md](agent-contract.md) — Agent workflow and contract |
 
 Use the slug (e.g. `schema`, `plan-import`) as the task’s `domain` in plan YAML.
+
+Domain docs now include YAML frontmatter with a `triggers` block to assist automated assignment. The frontmatter uses the following format:
+
+```yaml
+---
+triggers:
+  files: ["<glob patterns>"]
+  change_types: ["<types>"]
+  keywords: ["<terms>"]
+---
+```
+

@@ -1,4 +1,3 @@
-import { ResultAsync } from "neverthrow";
 import "vitest/globals";
 
 declare module "neverthrow" {

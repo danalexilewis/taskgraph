@@ -1,12 +1,12 @@
 import { Command } from "commander";
-import { v4 as uuidv4 } from "uuid";
+import { ok, ResultAsync } from "neverthrow";
 import { doltCommit } from "../db/commit";
-import { readConfig, Config } from "./utils";
-import { EdgeTypeSchema, Edge } from "../domain/types";
-import { ResultAsync, ok, err } from "neverthrow";
-import { AppError, buildError, ErrorCode } from "../domain/errors";
-import { checkNoBlockerCycle } from "../domain/invariants";
 import { query } from "../db/query";
+import { syncBlockedStatusForTask } from "../domain/blocked-status";
+import type { AppError } from "../domain/errors";
+import { checkNoBlockerCycle } from "../domain/invariants";
+import { type Edge, EdgeTypeSchema } from "../domain/types";
+import { type Config, readConfig } from "./utils";
 
 export function edgeCommand(program: Command) {
   program
@@ -62,6 +62,9 @@ function edgeAddCommand(): Command {
                 type,
                 reason: options.reason ?? null,
               })
+              .andThen(() =>
+                syncBlockedStatusForTask(config.doltRepoPath, toTaskId),
+              )
               .map(() => ({
                 from_task_id: fromTaskId,
                 to_task_id: toTaskId,

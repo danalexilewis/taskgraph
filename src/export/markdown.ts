@@ -1,9 +1,9 @@
 import yaml from "js-yaml";
-import { readConfig, Config } from "../cli/utils";
-import { ResultAsync, errAsync } from "neverthrow";
-import { AppError, buildError, ErrorCode } from "../domain/errors";
-import { query } from "../db/query";
+import { errAsync, type ResultAsync } from "neverthrow";
+import { type Config, readConfig } from "../cli/utils";
 import { sqlEscape } from "../db/escape";
+import { query } from "../db/query";
+import { type AppError, buildError, ErrorCode } from "../domain/errors";
 
 interface PlanRow {
   plan_id: string;
@@ -104,26 +104,28 @@ export function generateMarkdown(
                         taskIdToKey.has(e.from_task_id) &&
                         taskIdToKey.has(e.to_task_id)
                       ) {
-                        const key = taskIdToKey.get(e.to_task_id)!;
-                        const blockerKey = taskIdToKey.get(e.from_task_id)!;
-                        if (!blockedByMap.has(key)) {
-                          blockedByMap.set(key, []);
+                        const key = taskIdToKey.get(e.to_task_id);
+                        const blockerKey = taskIdToKey.get(e.from_task_id);
+                        if (key !== undefined && blockerKey !== undefined) {
+                          if (!blockedByMap.has(key)) {
+                            blockedByMap.set(key, []);
+                          }
+                          blockedByMap.get(key)?.push(blockerKey);
                         }
-                        blockedByMap.get(key)!.push(blockerKey);
                       }
                     });
 
                     const todos = tasks
                       .filter((t) => t.external_key)
                       .map((t) => {
+                        const extKey = t.external_key as string;
                         const status =
                           t.status === "done" ? "completed" : "pending";
-                        const blockedBy =
-                          blockedByMap.get(t.external_key!) ?? [];
+                        const blockedBy = blockedByMap.get(extKey) ?? [];
                         const docs = docsByTask.get(t.task_id);
                         const skills = skillsByTask.get(t.task_id);
                         return {
-                          id: t.external_key!,
+                          id: extKey,
                           content: t.title,
                           status,
                           ...(blockedBy.length > 0 && { blockedBy }),

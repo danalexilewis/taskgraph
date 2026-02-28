@@ -1,0 +1,19 @@
+---
+description: Validation commands default to changed files (git); use :all or --full for whole-repo
+alwaysApply: true
+---
+
+# Changed-Files Default
+
+**Assumption:** Files that have not been modified have already been validated (typechecked, tested). Validation commands should default to **only changed files** from git's perspective (e.g. `git diff --name-only HEAD`), not the whole repo.
+
+## Commands
+
+- **Typecheck:** `pnpm typecheck` runs typecheck only on changed `src/**/*.ts`; `pnpm typecheck:all` runs full `tsc --noEmit`. Sub-agents and gate use the default (changed-files).
+- **Tests:** `pnpm gate` runs affected tests (via `scripts/affected-tests.ts`); `pnpm gate:full` runs the full test suite.
+- **Lint:** Currently runs on full scope (`src/`, `__tests__/`, `scripts/`); future lint scoping would follow the same pattern (default = changed, opt-in = all).
+
+## When to use full scope
+
+- Before release or when validating the whole codebase: `pnpm typecheck:all`, `pnpm gate:full`.
+- CI or pre-push: choose gate vs gate:full per pipeline.

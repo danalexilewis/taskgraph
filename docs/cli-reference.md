@@ -1,6 +1,20 @@
+---
+triggers:
+  files: ["src/cli/**"]
+  change_types: ["create", "modify"]
+  keywords: ["command", "option", "flag", "CLI"]
+---
+
 # CLI Reference
 
 The Task Graph Command Line Interface (`tg`) provides a comprehensive set of commands for managing plans, tasks, dependencies, events, and portfolio views. This document details each command, its options, and examples.
+
+## Task IDs
+
+All commands that accept `<taskId>` (or similar task ID arguments such as `<fromTaskId>`, `<toTaskId>`, `<blockerTaskId>`) accept both:
+
+- **Full UUID**: e.g., `b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11`
+- **Short hash**: e.g., `tg-XXXXXX` (from the task's `hash_id` column)
 
 ## Global Options
 
@@ -528,10 +542,10 @@ tg crossplan edges --dry-run
 
 ### `tg status`
 
-Quick overview: plans count, task counts by status, next runnable tasks.
+Quick overview: plans count, task counts by status, next runnable tasks. By default shows the dashboard (Completed, Active Plans, Active Work, Next Runnable). Use `--tasks` for a single-table tasks view, `--projects` for a projects (plans) table, or `--initiatives` for an initiatives table (when the initiative table exists). Only one of `--tasks`, `--projects`, or `--initiatives` may be used at a time.
 
 ```bash
-tg status [--plan <planId>] [--domain <domain>] [--skill <skill>] [--change-type <type>]
+tg status [--plan <planId>] [--domain <domain>] [--skill <skill>] [--change-type <type>] [--tasks] [--projects] [--initiatives] [--filter active|upcoming] [--dashboard]
 ```
 
 **Options:**
@@ -540,17 +554,35 @@ tg status [--plan <planId>] [--domain <domain>] [--skill <skill>] [--change-type
 - `--domain <domain>`: Filter by task domain.
 - `--skill <skill>`: Filter by task skill.
 - `--change-type <type>`: Filter by change type.
-- `--json`: Output as JSON object.
+- `--all`: Include canceled tasks and abandoned plans.
+- `--tasks`: Show a single table of tasks: columns Id (hash or task_id), Title, Plan, Status, Owner. Reuses `--plan`, `--domain`, `--skill`, `--change-type`, `--all`. With `--filter active`, restrict to task status in (todo, doing, blocked). One-shot or with `--dashboard` (refreshes every 2s).
+- `--projects`: Show a single table of projects (plans): columns Project, Status, Todo, Doing, Blocked, Done. Uses the `plan` table; filters `--plan`, `--domain`, `--skill`, `--all` apply.
+- `--initiatives`: Show initiatives table (Initiative, Status, Cycle Start, Cycle End, Projects). Requires the `initiative` table; if it does not exist, prints a stub message and exits 0. One-shot or with `--dashboard`.
+- `--filter <filter>`: For `--projects`, use `active` to show only plans whose status is not `done` or `abandoned`. For `--tasks`, use `active` to show only tasks with status todo, doing, or blocked. For `--initiatives`, use `upcoming` to show initiatives with status `draft` or `cycle_start` &gt; today.
+- `--dashboard`: Open status dashboard (live-updating TUI; 2s refresh, q or Ctrl+C to quit). When no other view is selected, runs the full dashboard live path (OpenTUI when available, else setInterval + ANSI clear + boxen sections). With `--tasks`, `--projects`, or `--initiatives`, the table refreshes every 2s.
+- `--json`: Output as JSON object (one-shot only; not supported with `--dashboard`).
 
 **Output (human):**
 
+- **Dashboard (default):** Section boxes (via boxen): each logical section (Completed, Active Plans, Active Work, Next Runnable) is wrapped in a rounded box. Inner text uses chalk for colors.
+- **Tasks view (`--tasks`):** A single boxen-wrapped table with columns Id, Title, Plan, Status, Owner. One-shot or with `--dashboard` (refreshes every 2s).
+- **Projects view (`--projects`):** A single boxen-wrapped table with columns Project, Status, Todo, Doing, Blocked, Done. One-shot or with `--dashboard` (refreshes every 2s).
+- **Initiatives view (`--initiatives`):** If the `initiative` table does not exist, prints a stub message (e.g. "Initiatives view requires the Initiative-Project hierarchy...") and exits 0. If it exists, a single boxen-wrapped table with columns Initiative, Status, Cycle Start, Cycle End, Projects; one-shot or with `--dashboard` (refreshes every 2s).
 - Plans: count
 - Tasks: summary line with counts **not done**, **in progress**, **blocked**, **actionable** (e.g. `Tasks: 12 not done (3 in progress, 2 blocked, 4 actionable)`)
-- Task counts by status: todo, doing, blocked, done, canceled (each only if &gt; 0)
+- Task counts by status: todo, doing, blocked, done, canceled (each only if &gt; 0). The **blocked** count shows tasks with `task.status = 'blocked'`, which is materialized from the dependency graph (see [schema](schema.md)).
 - Active work: doing tasks with agent_id, plan title, started_at (when multiple agents may be active)
 - Next runnable: up to 2 tasks with ID, title, plan
 
 With `--json`, the payload includes a `summary` object: `not_done`, `in_progress`, `blocked`, `actionable`.
+
+**Live mode behavior** (`--dashboard`):
+
+- **Same sections as one-shot.** The same sections are shown (in boxen boxes): Completed, Active Plans, Active Work, Next Runnable. Terminal resize is reflected on the next refresh.
+- **OpenTUI when available.** When the runtime supports it (e.g. Bun), the live view may use OpenTUI (`@opentui/core`, `createCliRenderer`) for rendering. When OpenTUI is not available or init fails (e.g. Node), the implementation falls back to Node only: `setInterval`, ANSI clear (e.g. `\x1b[2J\x1b[H`), and the existing human status printer (with boxen section boxes).
+- **Polling.** The status query chain is re-run every 2 seconds. Dolt is invoked via execa per call. File watching is out of scope.
+- **Raw mode and exit.** On entering live mode, `process.stdin.setRawMode(true)` is set so that the "q" key can quit. On **SIGINT**, **SIGTERM**, or key **"q"**: clear the refresh interval, call `setRawMode(false)`, then `process.exit(0)`. **Ctrl+C** and **"q"** both quit live mode.
+- **`--json` with `--dashboard` unsupported.** If `--json` is passed with `--dashboard`, the CLI prints to stderr: `tg status --dashboard does not support --json`, then `process.exit(1)`.
 
 ### `tg portfolio overlaps`
 
@@ -623,6 +655,7 @@ tg import <filePath> --plan "<planTitleOrId>" [--format cursor|legacy]
 
 - `--plan <planTitleOrId>`: **(Required)** The title or ID of the plan to associate the imported tasks with. If a plan with the given title/ID does not exist, a new one will be created.
 - `--format <format>`: Plan format. `cursor` for Cursor plans (YAML frontmatter with todos); `legacy` for TASK:/TITLE:/BLOCKED_BY: format (default).
+- `--no-suggest`: Disable auto-suggestion of docs/skills from plan file tree and task file patterns. When enabled (default), tasks with no docs/skills get suggestions and a console warning is printed.
 
 **Example:**
 

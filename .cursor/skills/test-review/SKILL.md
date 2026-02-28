@@ -5,6 +5,8 @@ description: Review and audit the project's testing approach, coverage, quality,
 
 # Test Review
 
+**Lead documentation:** See [docs/leads/test-review.md](docs/leads/test-review.md).
+
 Orchestrates a comprehensive review of the project's testing approach by dispatching three fast subagents in parallel, synthesising their findings, writing a report, and **creating a Cursor-format plan** that can be imported into taskgraph. Each task in the plan records which sub-agent should execute it so the execution loop can run `tg start <taskId> --agent <agent>` and dispatch efficiently.
 
 ## Architecture

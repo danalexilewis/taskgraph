@@ -4,6 +4,8 @@
 
 Execute tasks from a taskgraph plan with correct status transitions so the graph stays in sync. Prevents desync (tasks left `doing`, forgotten `done`), cross-plan confusion, and invalid transitions (e.g. `todo` → `done` without `start`).
 
+When the orchestrator dispatches sub-agents for tg tasks, call TodoWrite with the task list before dispatching and emit N Task/mcp_task calls in the same turn when batching. See `.cursor/rules/subagent-dispatch.mdc` for the TodoWrite and batch-in-one-turn protocol.
+
 ## Inputs
 
 - A plan imported into taskgraph (`tg import ... --format cursor`)
@@ -13,7 +15,7 @@ Execute tasks from a taskgraph plan with correct status transitions so the graph
 ## Steps
 
 1. Run `pnpm tg status` to orient — note stale `doing` tasks and cleanup if needed (see Recovery in taskgraph-workflow.mdc).
-2. Run `pnpm tg next --plan "<Plan>" --limit 5` and pick the top runnable task.
+2. Run `pnpm tg next --plan "<Plan>" --limit 20` and pick the top runnable task.
 3. Run `pnpm tg show <taskId>` and restate: intent, scope in/out, acceptance checks.
 4. Run `pnpm tg start <taskId>` — **must** run before any work.
 5. Run `pnpm tg context <taskId>` — load domain doc and skill guide if output; read related done tasks.

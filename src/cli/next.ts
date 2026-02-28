@@ -1,9 +1,9 @@
-import { Command } from "commander";
-import { readConfig, Config } from "./utils";
-import { ResultAsync, errAsync } from "neverthrow";
-import { AppError, buildError, ErrorCode } from "../domain/errors";
-import { query } from "../db/query";
+import type { Command } from "commander";
+import { errAsync } from "neverthrow";
 import { sqlEscape } from "../db/escape";
+import { query } from "../db/query";
+import { type AppError, buildError, ErrorCode } from "../domain/errors";
+import { type Config, readConfig } from "./utils";
 
 export function nextCommand(program: Command) {
   program
@@ -27,7 +27,7 @@ export function nextCommand(program: Command) {
     .action(async (options, cmd) => {
       const result = await readConfig().asyncAndThen((config: Config) => {
         const limit = parseInt(options.limit, 10);
-        if (isNaN(limit) || limit <= 0) {
+        if (Number.isNaN(limit) || limit <= 0) {
           return errAsync(
             buildError(
               ErrorCode.VALIDATION_FAILED,
@@ -68,7 +68,7 @@ export function nextCommand(program: Command) {
           : " AND t.status != 'canceled' AND p.status != 'abandoned' ";
 
         const nextTasksQuery = `
-          SELECT t.task_id, t.title, p.title as plan_title, t.risk, t.estimate_mins,
+          SELECT t.task_id, t.hash_id, t.title, p.title as plan_title, t.risk, t.estimate_mins,
             (SELECT COUNT(*) FROM \`edge\` e 
              JOIN \`task\` bt ON e.from_task_id = bt.task_id 
              WHERE e.to_task_id = t.task_id AND e.type = 'blocks' 
@@ -95,6 +95,7 @@ export function nextCommand(program: Command) {
         (tasks: unknown) => {
           const tasksArray = tasks as Array<{
             task_id: string;
+            hash_id: string | null;
             title: string;
             plan_title: string;
             risk: string;
@@ -104,8 +105,9 @@ export function nextCommand(program: Command) {
             if (tasksArray.length > 0) {
               console.log("Runnable Tasks:");
               tasksArray.forEach((task) => {
+                const id = task.hash_id ?? task.task_id;
                 console.log(
-                  `  ID: ${task.task_id}, Title: ${task.title}, Plan: ${task.plan_title}, Risk: ${task.risk}, Estimate: ${task.estimate_mins ?? "N/A"}`,
+                  `  ID: ${id}, Title: ${task.title}, Plan: ${task.plan_title}, Risk: ${task.risk}, Estimate: ${task.estimate_mins ?? "N/A"}`,
                 );
               });
             } else {

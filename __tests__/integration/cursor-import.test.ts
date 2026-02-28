@@ -1,12 +1,12 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import * as fs from "fs";
-import * as path from "path";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { doltSql } from "../../src/db/connection";
 import {
+  runTgCli,
   setupIntegrationTest,
   teardownIntegrationTest,
-  runTgCli,
 } from "./test-utils";
-import { doltSql } from "../../src/db/connection";
 
 describe("Cursor format import integration", () => {
   let context: Awaited<ReturnType<typeof setupIntegrationTest>> | undefined;

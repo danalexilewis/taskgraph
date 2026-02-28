@@ -1,17 +1,27 @@
+---
+triggers:
+  files: ["src/db/**"]
+  change_types: ["create", "modify"]
+  keywords: ["migration", "schema", "SQL"]
+---
+
 # Skill: SQL migration
 
 ## Purpose
 
-Add or change columns/tables in the Dolt-backed taskgraph schema in a way that is safe for existing repos (idempotent where possible).
+Dolt schema changes; `information_schema` checks.
 
-## Examples
+## Inputs
 
-- Add nullable columns via `ALTER TABLE ... ADD COLUMN` after checking `information_schema.COLUMNS`.
-- Use `CREATE TABLE IF NOT EXISTS` for initial schema so re-running init does not fail.
-- Run migrations from `tg init` (e.g. `applyTaskDimensionsMigration`) so existing users get new columns on next init.
+- SQL migration scripts
+- Database connection
+
+## Steps
+
+1. Write SQL for `ALTER TABLE`, `CREATE TABLE`, etc.
+2. Test against `information_schema` for expected structure.
 
 ## Gotchas
 
-- Dolt uses MySQL-compatible SQL; no `ADD COLUMN IF NOT EXISTS`. Check for column existence before altering.
-- Prefer one migration function per logical change; call it from init after `applyMigrations`.
-- Commit migration changes with a clear message so Dolt history is readable.
+- Avoid destructive operations without backups.
+- Confirm SQL compatibility across Dolt versions.

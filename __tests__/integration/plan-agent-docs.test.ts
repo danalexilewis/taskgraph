@@ -1,10 +1,10 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import * as fs from "fs";
-import * as path from "path";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import {
+  runTgCli,
   setupIntegrationTest,
   teardownIntegrationTest,
-  runTgCli,
 } from "./test-utils";
 
 describe("Plan import with agent and docs fields", () => {
@@ -53,7 +53,7 @@ isProject: false
       plan_id: string;
       title: string;
     }>;
-    planId = plans.find((p) => p.title === "Agent Docs Test Plan")!.plan_id;
+    planId = plans.find((p) => p.title === "Agent Docs Test Plan")?.plan_id;
 
     const { stdout: nextOut } = await runTgCli(
       `next --plan "${planId}" --json --limit 10`,
@@ -66,9 +66,12 @@ isProject: false
 
     taskIds = {};
     for (const t of tasks) {
-      if (t.title === "Task assigned to explorer") taskIds["with-agent"] = t.task_id;
-      if (t.title === "Task with no agent specified") taskIds["without-agent"] = t.task_id;
-      if (t.title === "Task using legacy domain field") taskIds["legacy-domain"] = t.task_id;
+      if (t.title === "Task assigned to explorer")
+        taskIds["with-agent"] = t.task_id;
+      if (t.title === "Task with no agent specified")
+        taskIds["without-agent"] = t.task_id;
+      if (t.title === "Task using legacy domain field")
+        taskIds["legacy-domain"] = t.task_id;
     }
   }, 60000);
 

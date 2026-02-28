@@ -1,11 +1,11 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "bun:test";
+import { unlinkSync, writeFileSync } from "node:fs";
+import * as path from "node:path";
+import { ErrorCode } from "../../src/domain/errors";
 import {
-  parsePlanMarkdown,
   parseCursorPlan,
+  parsePlanMarkdown,
 } from "../../src/plan-import/parser";
-import { AppError, ErrorCode } from "../../src/domain/errors";
-import { writeFileSync, unlinkSync } from "fs";
-import * as path from "path";
 
 describe("parsePlanMarkdown", () => {
   const testFilePath = path.join(__dirname, "test-plan.md");

@@ -5,7 +5,32 @@ alwaysApply: false
 
 # Sub-Agent Dispatch
 
-**Execution and planning both use sub-agents.** You MUST dispatch sub-agents when executing tasks from a plan — do not do the work yourself. Max **5** tasks in flight at a time. The orchestrator coordinates; sub-agents do bounded work with full context injected. **Dispatch** is the same prompt and workflow; choose the mechanism by what is available (see below).
+**Execution and planning both use sub-agents.** You MUST dispatch sub-agents when executing tasks from a plan — do not do the work yourself. **Concurrency is decided by Cursor:** feed it all runnable tasks that do not depend on each other (no file overlap); do not cap the batch size yourself. The orchestrator coordinates; sub-agents do bounded work with full context injected. **Dispatch** is the same prompt and workflow; choose the mechanism by what is available (see below).
+
+## Task orchestration UI — TodoWrite protocol (MANDATORY)
+
+Before dispatching **any** sub-agents for tg tasks, you MUST call **TodoWrite** to register the task list. This triggers Cursor's "Task orchestration for autonomous execution" panel. Cursor docs state that the agent sends multiple Task tool calls in a single message so subagents run simultaneously; one call per turn may not trigger the panel or parallel execution.
+
+**Protocol:**
+
+1. **Get tasks**: `pnpm tg next --plan "<Plan>" --json --limit 20`
+2. **TodoWrite (merge=false)**: Map each task to a todo item: `{ id: taskId, content: title, status: "in_progress" }` for the current batch, `{ id: taskId, content: title, status: "pending" }` for later tasks. Call TodoWrite with this list before any dispatch.
+3. **Dispatch**: When dispatching a batch of N runnable tasks, emit **N Task (or mcp_task) invocations in the SAME message/turn** — one call per task. Do not dispatch one task per turn; Cursor runs them in parallel and surfaces the orchestration UI when all batch calls are in one response.
+4. **As each completes**: TodoWrite with `merge=true` to update that item to `"completed"`. On failure, update to `"cancelled"`.
+
+**Single-task batch:** TodoWrite is still required. TodoWrite expects at least 2 items; when only one tg task is in the batch, add a second item (e.g. "Review & gate") so the list has 2 entries.
+
+Keep `.cursor/agents/implementer.md` in context when starting the tg execution loop.
+
+## Task prioritization (orchestrator)
+
+`tg next` returns runnable tasks in a **default order**: plan priority (higher first), then task risk (low → high), then estimate (shorter first, nulls last), then created_at (oldest first). So the list is already a suggested priority. The lead may:
+
+- **Use the list as-is** — Treat order as priority; batch from the top (after file-conflict filter). No extra logic.
+- **Reorder by strategy** — E.g. finish one plan before switching; or pick quick wins (low risk, small estimate) first; or prefer the plan with the most blocked tasks to unblock it. Same as a dev picking from a kanban by vibes.
+- **Use the signals in JSON** — Each task has `risk`, `estimate_mins`, `plan_title`; use them to reason if you want (e.g. "batch all low-risk under 30 min first"), or ignore and pick by list order.
+
+No mandatory reasoning logic. The default order is a good default; discretion is fine.
 
 Agent templates live in `.cursor/agents/` (see README there). You build each sub-agent prompt by interpolating `tg context <taskId> --json` output into the template placeholders.
 
@@ -17,32 +42,46 @@ Agent templates live in `.cursor/agents/` (see README there). You build each sub
 ## When to use sub-agents
 
 - **Before creating a plan** — **MANDATORY.** You MUST dispatch the planner-analyst first. See Pattern 3 below. AGENT.md and plan-authoring.mdc both require this; skipping it is a critical failure.
-- **When executing tasks from a plan** — **MANDATORY.** You MUST use Pattern 1 (parallel, max 3) or Pattern 2 (sequential). Dispatch implementer sub-agents; do not run tg start / code / tg done yourself. Max **3** concurrent tasks. AGENT.md requires this; skipping it is a critical failure.
+- **When executing tasks from a plan** — **MANDATORY.** You MUST use Pattern 1 (parallel batch) or Pattern 2 (sequential). Dispatch implementer sub-agents; do not run tg start / code / tg done yourself. Feed all runnable, non-conflicting tasks; Cursor decides how many run in parallel. AGENT.md requires this; skipping it is a critical failure.
 - **Well-scoped tasks** with clear intent and domain/skill docs — sub-agents follow the context.
 
 Use **direct execution** (you do start → work → done yourself) only when: a sub-agent has failed twice and you are completing that task yourself, or the task is explicitly exploratory/ambiguous and not suitable for dispatch. Always log direct execution with `tg note <taskId> --msg "Direct execution: <reason>"`.
 
 ## Pattern 1: Parallel batch execution (primary) — MANDATORY for execution
 
-When executing a plan with multiple unblocked tasks, you MUST use this pattern. **Max 3 concurrent.**
+When executing a plan with multiple unblocked tasks, you MUST use this pattern. **Feed all non-conflicting tasks; Cursor decides how many run in parallel.**
 
-1. Run `pnpm tg next --plan "<Plan>" --json --limit 5` to get up to 5 runnable tasks.
-2. **File conflict check**: If tasks might touch the same files (e.g. same path in `file_tree` or `suggested_changes`), do not parallelize those together — run them sequentially or batch only independent ones.
+0. **TodoWrite**: Once you have the runnable batch (from steps 1–2), call TodoWrite with it (see Task orchestration UI — TodoWrite protocol above). Map each task to a todo item (id, content, status); use merge=false before any dispatch. For a single-task batch, add a second item (e.g. "Review & gate") so the list has at least 2 entries.
+1. Run `pnpm tg next --plan "<Plan>" --json --limit 20` (or `tg next --json --limit 20` for multi-plan) to get runnable tasks.
+2. **File conflict check**: From the list, keep only tasks that do not touch the same files (compare `file_tree`, `suggested_changes`, or intent). Do not cap the batch size — include every runnable task that is independent of the others. Cursor will decide how many sub-agents run concurrently.
 3. For each task in the batch, run `pnpm tg context <taskId> --json` and capture the JSON.
-4. Inspect the `agent` field from the context JSON: if set, select the corresponding agent template (`.cursor/agents/{{AGENT}}.md`); otherwise default to `.cursor/agents/implementer.md`. Build the sub-agent prompt by replacing placeholders (`{{TASK_ID}}`, `{{AGENT_NAME}}`, `{{TITLE}}`, `{{INTENT}}`, `{{DOC_PATHS}}`, `{{SKILL_DOCS}}`, `{{SUGGESTED_CHANGES}}`, `{{FILE_TREE}}`, `{{RISKS}}`, `{{RELATED_DONE}}`, `{{EXPLORER_OUTPUT}}`) with values from the context JSON. Refer to the agent registry rule at `.cursor/rules/available-agents.mdc` for valid agent names. Use unique agent names (e.g. implementer-1, explorer-1, reviewer-1) so `tg status` shows distinct workers.
-5. **Dispatch** up to **5** sub-agents **concurrently**: use the Task tool, agent CLI, or mcp_task (see Dispatch mechanisms above). Same built prompt and a short description (e.g. "Implement task: <title>").
-6. Wait for all to complete. For each completed task, if you have the implementer's diff, dispatch the **reviewer** (read `.cursor/agents/reviewer.md`, build prompt with task context + diff; use Task tool, agent CLI, or mcp_task). If reviewer returns FAIL, re-dispatch the implementer once with the feedback; after 2 failures, do that task yourself (direct execution).
-7. Run `pnpm tg next --plan "<Plan>" --json --limit 5` again. If more runnable tasks exist, go to step 3. Otherwise continue with any remaining work or finish the plan.
+4. Inspect the `agent` field from the context JSON: if set, select the corresponding agent template (`.cursor/agents/{{AGENT}}.md`); otherwise default to `.cursor/agents/implementer.md`. Build the sub-agent prompt by replacing placeholders (`{{TASK_ID}}`, `{{AGENT_NAME}}`, `{{TITLE}}`, `{{INTENT}}`, `{{DOC_PATHS}}`, `{{SKILL_DOCS}}`, `{{SUGGESTED_CHANGES}}`, `{{FILE_TREE}}`, `{{RISKS}}`, `{{RELATED_DONE}}`, `{{EXPLORER_OUTPUT}}`) with values from the context JSON. Refer to the agent registry rule at `.cursor/rules/available-agents.mdc` for valid agent names. Use unique agent names (e.g. implementer-1, implementer-2, …) so `tg status` shows distinct workers.
+5. **Dispatch** all tasks in the batch **in the same response** (one Task or mcp_task call per task in the batch). Do not dispatch one task per turn — emit all N calls in the same message so Cursor runs them in parallel and surfaces the orchestration UI. Same built prompt and a short description (e.g. "Implement task: <title>") per call. Cursor decides concurrency; do not artificially limit the number.
+6. Wait for all to complete. For each completed task, if you have the implementer's diff, run the **two-stage review**: (1) dispatch **spec-reviewer** (read `.cursor/agents/spec-reviewer.md`, build prompt with task context + diff; Task tool, agent CLI, or mcp_task). (2) If spec-reviewer returns PASS, dispatch **quality-reviewer** (read `.cursor/agents/quality-reviewer.md`, build prompt with task context + diff; same mechanism). (3) If either returns FAIL, re-dispatch the implementer with that reviewer's specific feedback. After 2 re-dispatch failures for that task, do that task yourself (direct execution).
+7. **Follow-up from notes/evidence**: For each completed task, read the implementer's return message and any notes on the task (e.g. `tg show <taskId>` for recent events). If the sub-agent reported environment limitations, gate failures, or suggested follow-up, apply the **Follow-up from notes/evidence** protocol below.
+8. Run `pnpm tg next --plan "<Plan>" --json --limit 20` again. If more runnable tasks exist, go to step 2. Otherwise continue with any remaining work or finish the plan.
 
 ## Pattern 2: Sequential single-task execution — MANDATORY when only one runnable
 
 When only one task is runnable or tasks share files (so you cannot batch), you MUST still use a sub-agent:
 
+0. **TodoWrite**: Call TodoWrite with the task list (see Task orchestration UI — TodoWrite protocol above). For a single task, use 2 items (the task plus e.g. "Review & gate") so the list has at least 2 entries; update statuses with merge=true as the task completes.
 1. Run `pnpm tg next --plan "<Plan>" --limit 1` and pick the task.
 2. Optionally dispatch the **explorer** (read `.cursor/agents/explorer.md`, build prompt; use Task tool, agent CLI, or mcp_task). Use explorer output to enrich implementer context. Skip explorer for very simple tasks (e.g. add a test file, document X).
 3. Run `pnpm tg context <taskId> --json`. Build the implementer prompt from the template and context (and explorer output if present). **Dispatch** one implementer (Task tool, agent CLI, or mcp_task) with the built prompt and description "Implement: <title>".
-4. When implementer completes, dispatch the **reviewer** with task context + diff (same mechanism). If FAIL, re-dispatch implementer with feedback once; after 2 failures, complete the task yourself.
-5. Repeat from step 1 for the next task.
+4. When implementer completes, run the **two-stage review**: (1) dispatch **spec-reviewer** (read `.cursor/agents/spec-reviewer.md`, build prompt with task context + diff; Task tool, agent CLI, or mcp_task). (2) If spec-reviewer returns PASS, dispatch **quality-reviewer** (read `.cursor/agents/quality-reviewer.md`, build prompt with task context + diff; same mechanism). (3) If either returns FAIL, re-dispatch the implementer with that reviewer's specific feedback. After 2 re-dispatch failures, complete the task yourself.
+5. **Follow-up from notes/evidence**: Read the implementer's return message and any notes on the task (`tg show <taskId>`). If they reported environment limitations, gate failures, or suggested follow-up, apply the **Follow-up from notes/evidence** protocol below.
+6. Repeat from step 1 for the next task.
+
+## Follow-up from notes/evidence (orchestrator decides)
+
+When an implementer (or other sub-agent) completes and their return message, evidence, or task notes mention environment limitations (e.g. "bun not available"), gate failures (e.g. "typecheck failed"), or suggested follow-up (e.g. "fix bun-types in tsconfig"), the **orchestrator** must decide whether to investigate further.
+
+1. **Evaluate**: Does the finding warrant a follow-up task? Consider: Is it blocking the plan or other work? A known limitation of the sub-agent environment that the human can ignore? Out of scope for the current plan?
+2. **If follow-up is warranted**: Create one or more tasks with `tg task new "<title>" --plan <planId>` (use the plan of the task that just completed). Optionally record the link: `tg note <completedTaskId> --msg "Follow-up: <newTaskId> <brief reason>"`. Delegate the new task(s) via the normal dispatch flow (they will appear in the next `tg next` batch, or dispatch them in the same batch if you have capacity).
+3. **If not warranted**: Continue without creating tasks. Optionally `tg note <completedTaskId> --msg "Orchestrator: no follow-up; <brief reason>"` for audit.
+
+Implementers should leave a `tg note` when they hit environment or gate issues they cannot fix, so the orchestrator can evaluate and optionally spawn follow-up tasks.
 
 ## Pattern 3: Plan analysis (before writing a plan) — MANDATORY
 
@@ -106,11 +145,11 @@ Place this after the main instructions and before any task-specific context. The
 ## Lifecycle and errors
 
 - Every implementer sub-agent must run `pnpm tg start <taskId> --agent <name>` at the start and `pnpm tg done <taskId> --evidence "..."` at the end. Do not skip — the task graph is the source of truth.
-- If a fast sub-agent fails (error, wrong result, or reviewer FAIL): re-dispatch once with clearer context or feedback. If it fails again, complete that task yourself with direct execution (session model).
+- If a fast sub-agent fails (error, wrong result, or spec-reviewer/quality-reviewer FAIL): re-dispatch once with clearer context or that reviewer's feedback. If it fails again, complete that task yourself with direct execution (session model).
 - When dispatching in parallel, ensure each task has a distinct agent name (`implementer-1`, etc.) so `tg status` and events stay clear.
 
 ## Building prompts from context JSON
 
-`pnpm tg context <taskId> --json` returns an object with: `task_id`, `title`, `agent`, `docs`, `skills`, `change_type`, `suggested_changes`, `file_tree`, `risks`, `doc_paths`, `skill_docs`, `related_done_by_domain`, `related_done_by_skill`. Map these to the placeholders in each agent template (see `.cursor/agents/README.md`). For the reviewer you also need the implementer's git diff (e.g. `git diff` or `git show` after the implementer's run).
+`pnpm tg context <taskId> --json` returns an object with: `task_id`, `title`, `agent`, `docs`, `skills`, `change_type`, `suggested_changes`, `file_tree`, `risks`, `doc_paths`, `skill_docs`, `related_done_by_domain`, `related_done_by_skill`. Map these to the placeholders in each agent template (see `.cursor/agents/README.md`). For the spec-reviewer and quality-reviewer you also need the implementer's git diff (e.g. `git diff` or `git show` after the implementer's run).
 
 Additionally, for every agent: read the agent file's `## Learnings` section (if non-empty) and inject it as `{{LEARNINGS}}`. See Learning Mode above.

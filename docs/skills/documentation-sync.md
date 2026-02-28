@@ -1,3 +1,10 @@
+---
+triggers:
+  files: ["docs/**", "AGENT.md", ".cursor/rules/**"]
+  change_types: ["document", "modify"]
+  keywords: ["docs", "documentation", "sync", "cli-reference", "schema.md"]
+---
+
 # Skill: Documentation sync
 
 ## Purpose
@@ -16,8 +23,6 @@ Keep docs aligned with code and agent behavior so AGENT.md, cli-reference, schem
 2. Update the doc in the same PR/change as the code. Prefer a single commit that includes both code and doc edits.
 3. For cli-reference: add or update the command section (syntax, options, output, example). Match the actual flags and behavior.
 4. For AGENT.md: keep it short (tables, bullets); put longer narrative in agent-contract.md and link if needed.
-5. For schema.md: add new columns/tables with type and description; update invariants if they change.
-6. If you add a new skill or domain doc, add it to `docs/skills/README.md` or `docs/domains.md` so it’s discoverable.
 
 ## Gotchas
 

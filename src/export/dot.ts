@@ -1,6 +1,6 @@
-import { ResultAsync } from "neverthrow";
-import { AppError } from "../domain/errors";
-import { getGraphData, GraphNode, GraphEdge } from "./graph-data";
+import type { ResultAsync } from "neverthrow";
+import type { AppError } from "../domain/errors";
+import { type GraphEdge, type GraphNode, getGraphData } from "./graph-data";
 
 export function formatDotGraph(nodes: GraphNode[], edges: GraphEdge[]): string {
   let dot = "digraph TaskGraph {\n";
@@ -8,11 +8,11 @@ export function formatDotGraph(nodes: GraphNode[], edges: GraphEdge[]): string {
   dot += "  node [shape=box];\n";
 
   nodes.forEach((node) => {
-    dot += `  \"${node.id}\" [label=\"${node.label}\"];\n`;
+    dot += `  "${node.id}" [label="${node.label}"];\n`;
   });
 
   edges.forEach((edge) => {
-    dot += `  \"${edge.from}\" -> \"${edge.to}\" [label=\"${edge.type}\"];\n`;
+    dot += `  "${edge.from}" -> "${edge.to}" [label="${edge.type}"];\n`;
   });
 
   dot += "}\n";

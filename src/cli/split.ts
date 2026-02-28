@@ -1,11 +1,12 @@
-import { Command } from "commander";
+import type { Command } from "commander";
+import { ResultAsync } from "neverthrow";
 import { v4 as uuidv4 } from "uuid";
 import { doltCommit } from "../db/commit";
-import { readConfig, Config } from "./utils"; // Import Config
-import { Task, TaskStatus, TaskStatusSchema } from "../domain/types";
-import { ResultAsync, ok, err } from "neverthrow";
-import { AppError, buildError, ErrorCode } from "../domain/errors";
-import { query, now, jsonObj } from "../db/query";
+import { allocateHashId } from "../db/hash-id";
+import { jsonObj, now, query } from "../db/query";
+import { type AppError, buildError, ErrorCode } from "../domain/errors";
+import { type Task, type TaskStatus, TaskStatusSchema } from "../domain/types";
+import { type Config, readConfig } from "./utils"; // Import Config
 
 export function splitCommand(program: Command) {
   program
@@ -96,9 +97,16 @@ export function splitCommand(program: Command) {
               newTasks.push(newTask);
               taskMappings.push({ original: taskId, new: newTaskId });
 
+              const hashIdRes = await allocateHashId(
+                config.doltRepoPath,
+                newTask.task_id,
+              );
+              if (hashIdRes.isErr()) throw hashIdRes.error;
+
               const insertTaskResult = await q.insert("task", {
                 task_id: newTask.task_id,
                 plan_id: newTask.plan_id,
+                hash_id: hashIdRes.value,
                 feature_key: newTask.feature_key ?? null,
                 title: newTask.title,
                 intent: newTask.intent ?? null,
@@ -240,9 +248,9 @@ export function splitCommand(program: Command) {
             console.log(
               `Task ${resultData.original_task_id} split into new tasks.`,
             );
-            resultData.new_tasks.forEach((task) =>
-              console.log(`  - ${task.title} (ID: ${task.task_id})`),
-            );
+            resultData.new_tasks.forEach((task) => {
+              console.log(`  - ${task.title} (ID: ${task.task_id})`);
+            });
           } else {
             console.log(JSON.stringify(resultData, null, 2));
           }

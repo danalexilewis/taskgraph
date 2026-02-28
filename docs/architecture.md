@@ -1,3 +1,10 @@
+---
+triggers:
+  files: ["src/domain/**", "src/db/**", "src/plan-import/**", "src/export/**"]
+  change_types: ["create", "refactor"]
+  keywords: ["architecture", "layer", "data flow"]
+---
+
 # Architecture
 
 The Task Graph system is built around a Command Line Interface (CLI) that interacts with a Dolt database, acting as a Git-like version-controlled data store. This architecture is designed for reliability, determinism, and ease of audit.
@@ -30,6 +37,14 @@ The project adheres to a structured repository layout to separate concerns and i
   .taskgraph/
     config.json      # Local configuration for the Task Graph system
 ```
+
+### Configuration (`.taskgraph/config.json`)
+
+| Field                  | Type                       | Description                                                                  |
+| :--------------------- | :------------------------- | :--------------------------------------------------------------------------- |
+| `doltRepoPath`         | string                     | Path to the Dolt repository (required).                                      |
+| `learningMode`         | boolean (optional)         | When true, orchestrator may append learnings to agent files after runs.       |
+| `context_token_budget` | number or null (optional)   | Max tokens for `tg context` output; null or omitted = unlimited. Typical: 4000–8000. |
 
 ## Data Flow and Error Handling
 

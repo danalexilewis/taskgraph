@@ -32,6 +32,32 @@ TaskGraph is a small CLI (`tg`) + Dolt-backed schema for managing **plans, tasks
    pnpm tg setup
    ```
 
+## Development (this repo)
+
+To work on TaskGraph itself:
+
+1. **Prerequisites**
+   - **Node** ≥18 (CLI runtime)
+   - **Dolt** (local DB): `brew install dolt`
+   - **Bun** (test runner; not an npm dependency): `curl -fsSL https://bun.sh/install | bash` or `brew install oven-sh/bun/bun`
+
+2. **Install and build**
+
+   ```bash
+   git clone https://github.com/danalexilewis/taskgraph.git
+   cd taskgraph
+   pnpm install
+   pnpm build
+   ```
+
+3. **Run tests**
+   - Unit: `pnpm test`
+   - Integration: `pnpm test:integration`
+   - Full suite: `pnpm test:all` or `pnpm gate:full`
+   - Validation pipeline (lint → typecheck on changed files → affected tests): `pnpm gate`. Use `pnpm typecheck:all` for full typecheck; see `.cursor/rules/changed-files-default.mdc`.
+
+4. **Run the CLI** from the repo: `pnpm tg` (uses `dist/` from the last build).
+
 ## Conventions (domain + skill guides)
 
 Tasks can optionally declare:

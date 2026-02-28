@@ -1,3 +1,10 @@
+---
+triggers:
+  files: ["src/db/**", "src/domain/types.ts"]
+  change_types: ["create", "modify"]
+  keywords: ["schema", "column", "table", "migration"]
+---
+
 # Dolt Schema Reference
 
 The Task Graph system leverages Dolt as its underlying data store, providing version control capabilities for all stored data. The schema consists of five main tables: `plan`, `task`, `edge`, `event`, and `decision`.
@@ -32,6 +39,7 @@ Represents an individual task within a plan, which can have dependencies and eve
 | Column              | Type                                                                       | Constraints                      | Description                                              |
 | :------------------ | :------------------------------------------------------------------------- | :------------------------------- | :------------------------------------------------------- |
 | `task_id`           | `CHAR(36)`                                                                 | `PRIMARY KEY`                    | Unique identifier for the task                           |
+| `hash_id`           | `VARCHAR(10)`                                                              | `NULL`, `UNIQUE`                 | Short form for CLI (e.g., `tg-XXXXXX`)                    |
 | `plan_id`           | `CHAR(36)`                                                                 | `NOT NULL`, `FK -> plan.plan_id` | Foreign key to the parent plan                           |
 | `feature_key`       | `VARCHAR(64)`                                                              | `NULL`                           | Key for portfolio analysis (e.g., `auth`, `billing`)     |
 | `title`             | `VARCHAR(255)`                                                             | `NOT NULL`                       | Title of the task                                        |
@@ -120,5 +128,5 @@ The following business logic invariants are enforced by the application to maint
 
 - A `done` task cannot have any blocking inbound edges from tasks that are not `done` or `canceled`.
 - A `doing` task must have an active "started" event as its latest terminal state.
-- `blocked` tasks must have at least one unmet blocker (or a "blocked" event with a reason).
+- **Materialized `blocked`**: `task.status = 'blocked'` is a materialized view of the blocks graph. It is set when the task has at least one *unmet* blocker—i.e., an edge of type `blocks` from a task that is not `done` or `canceled`. It is cleared to `todo` when all such blockers are `done` or `canceled`. This materialization is kept in sync on: plan import, `tg block`, `tg edge add` (for type `blocks`), `tg done`, `tg cancel`, and when adding cross-plan edges via `tg crossplan edges`.
 - Edges of `type='blocks'` must not create cycles in the task graph. This is enforced by application logic (DFS cycle detection).

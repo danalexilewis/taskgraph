@@ -1,15 +1,17 @@
-import { doltSql } from "./connection";
-import { doltCommit } from "./commit";
-import * as fs from "fs";
+import * as fs from "node:fs";
 import { execa } from "execa";
-import { ResultAsync, ok } from "neverthrow";
-import { AppError, buildError, ErrorCode } from "../domain/errors";
+import { ok, ResultAsync } from "neverthrow";
+import { type AppError, buildError, ErrorCode } from "../domain/errors";
+import { generateUniqueHashId } from "../domain/hash-id";
+import { doltCommit } from "./commit";
+import { doltSql } from "./connection";
+import { sqlEscape } from "./escape";
 
 const SCHEMA = [
-  "CREATE TABLE IF NOT EXISTS `plan` (plan_id CHAR(36) PRIMARY KEY, title VARCHAR(255) NOT NULL, intent TEXT NOT NULL, status ENUM(\'draft\',\'active\',\'paused\',\'done\',\'abandoned\') DEFAULT \'draft\', priority INT DEFAULT 0, source_path VARCHAR(512) NULL, source_commit VARCHAR(64) NULL, created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL);",
-  "CREATE TABLE IF NOT EXISTS `task` (task_id CHAR(36) PRIMARY KEY, plan_id CHAR(36) NOT NULL, feature_key VARCHAR(64) NULL, title VARCHAR(255) NOT NULL, intent TEXT NULL, scope_in TEXT NULL, scope_out TEXT NULL, acceptance JSON NULL, status ENUM(\'todo\',\'doing\',\'blocked\',\'done\',\'canceled\') DEFAULT \'todo\', owner ENUM('human','agent') DEFAULT 'agent', area VARCHAR(64) NULL, risk ENUM('low','medium','high') DEFAULT 'low', estimate_mins INT NULL, created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL, external_key VARCHAR(128) NULL UNIQUE, FOREIGN KEY (plan_id) REFERENCES `plan`(plan_id));",
-  "CREATE TABLE IF NOT EXISTS `edge` (from_task_id CHAR(36) NOT NULL, to_task_id CHAR(36) NOT NULL, type ENUM(\'blocks\',\'relates\') DEFAULT \'blocks\', reason TEXT NULL, PRIMARY KEY (from_task_id, to_task_id, type), FOREIGN KEY (from_task_id) REFERENCES `task`(task_id), FOREIGN KEY (to_task_id) REFERENCES `task`(task_id));",
-  "CREATE TABLE IF NOT EXISTS `event` (event_id CHAR(36) PRIMARY KEY, task_id CHAR(36) NOT NULL, kind ENUM(\'created\',\'started\',\'progress\',\'blocked\',\'unblocked\',\'done\',\'split\',\'decision_needed\',\'note\') NOT NULL, body JSON NOT NULL, actor ENUM(\'human\',\'agent\') DEFAULT \'agent\', created_at DATETIME NOT NULL, FOREIGN KEY (task_id) REFERENCES `task`(task_id));",
+  "CREATE TABLE IF NOT EXISTS `plan` (plan_id CHAR(36) PRIMARY KEY, title VARCHAR(255) NOT NULL, intent TEXT NOT NULL, status ENUM('draft','active','paused','done','abandoned') DEFAULT 'draft', priority INT DEFAULT 0, source_path VARCHAR(512) NULL, source_commit VARCHAR(64) NULL, created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL);",
+  "CREATE TABLE IF NOT EXISTS `task` (task_id CHAR(36) PRIMARY KEY, plan_id CHAR(36) NOT NULL, feature_key VARCHAR(64) NULL, title VARCHAR(255) NOT NULL, intent TEXT NULL, scope_in TEXT NULL, scope_out TEXT NULL, acceptance JSON NULL, status ENUM('todo','doing','blocked','done','canceled') DEFAULT 'todo', owner ENUM('human','agent') DEFAULT 'agent', area VARCHAR(64) NULL, risk ENUM('low','medium','high') DEFAULT 'low', estimate_mins INT NULL, created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL, external_key VARCHAR(128) NULL UNIQUE, FOREIGN KEY (plan_id) REFERENCES `plan`(plan_id));",
+  "CREATE TABLE IF NOT EXISTS `edge` (from_task_id CHAR(36) NOT NULL, to_task_id CHAR(36) NOT NULL, type ENUM('blocks','relates') DEFAULT 'blocks', reason TEXT NULL, PRIMARY KEY (from_task_id, to_task_id, type), FOREIGN KEY (from_task_id) REFERENCES `task`(task_id), FOREIGN KEY (to_task_id) REFERENCES `task`(task_id));",
+  "CREATE TABLE IF NOT EXISTS `event` (event_id CHAR(36) PRIMARY KEY, task_id CHAR(36) NOT NULL, kind ENUM('created','started','progress','blocked','unblocked','done','split','decision_needed','note') NOT NULL, body JSON NOT NULL, actor ENUM('human','agent') DEFAULT 'agent', created_at DATETIME NOT NULL, FOREIGN KEY (task_id) REFERENCES `task`(task_id));",
   "CREATE TABLE IF NOT EXISTS `decision` (decision_id CHAR(36) PRIMARY KEY, plan_id CHAR(36) NOT NULL, task_id CHAR(36) NULL, summary VARCHAR(255) NOT NULL, context TEXT NOT NULL, options JSON NULL, decision TEXT NOT NULL, consequences TEXT NULL, source_ref VARCHAR(512) NULL, created_at DATETIME NOT NULL, FOREIGN KEY (plan_id) REFERENCES `plan`(plan_id), FOREIGN KEY (task_id) REFERENCES `task`(task_id));",
 ];
 
@@ -99,8 +101,8 @@ export function applyTaskSuggestedChangesMigration(
   });
 }
 
-/** Returns true if the table exists. */
-function tableExists(
+/** Returns true if the table exists. Exported for CLI views that depend on optional tables (e.g. initiative). */
+export function tableExists(
   repoPath: string,
   tableName: string,
 ): ResultAsync<boolean, AppError> {
@@ -285,6 +287,51 @@ export function applyDomainToDocRenameMigration(
   });
 }
 
+/** Add hash_id column to task table and backfill existing rows (idempotent). */
+export function applyHashIdMigration(
+  repoPath: string,
+  noCommit: boolean = false,
+): ResultAsync<void, AppError> {
+  return taskColumnExists(repoPath, "hash_id").andThen((hasCol) => {
+    if (hasCol) return ResultAsync.fromSafePromise(Promise.resolve());
+    const alter =
+      "ALTER TABLE `task` ADD COLUMN `hash_id` VARCHAR(10) NULL UNIQUE";
+    return doltSql(alter, repoPath)
+      .map(() => undefined)
+      .andThen(() =>
+        doltSql(
+          "SELECT `task_id` FROM `task` ORDER BY `created_at` ASC",
+          repoPath,
+        ),
+      )
+      .andThen((rows: { task_id: string }[]) => {
+        const usedIds = new Set<string>();
+        let chain: ResultAsync<void, AppError> = ResultAsync.fromSafePromise(
+          Promise.resolve(undefined),
+        );
+        for (const row of rows) {
+          chain = chain.andThen(() => {
+            const hashId = generateUniqueHashId(row.task_id, usedIds);
+            usedIds.add(hashId);
+            return doltSql(
+              `UPDATE \`task\` SET \`hash_id\` = '${sqlEscape(hashId)}' WHERE \`task_id\` = '${sqlEscape(row.task_id)}'`,
+              repoPath,
+            ).map(() => undefined);
+          });
+        }
+        return chain;
+      })
+      .andThen(() =>
+        doltCommit(
+          "db: add task hash_id column and backfill",
+          repoPath,
+          noCommit,
+        ),
+      )
+      .map(() => undefined);
+  });
+}
+
 /** Add agent column to task table if missing (idempotent). */
 export function applyTaskAgentMigration(
   repoPath: string,
@@ -313,6 +360,7 @@ export function ensureMigrations(
     .andThen(() => applyTaskDomainSkillJunctionMigration(repoPath, noCommit))
     .andThen(() => applyDomainToDocRenameMigration(repoPath, noCommit))
     .andThen(() => applyTaskAgentMigration(repoPath, noCommit))
+    .andThen(() => applyHashIdMigration(repoPath, noCommit))
     .andThen(() => applyNoDeleteTriggersMigration(repoPath, noCommit))
     .map(() => undefined);
 }

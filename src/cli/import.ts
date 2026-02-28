@@ -1,16 +1,16 @@
-import { Command } from "commander";
-import { readConfig, Config } from "./utils";
-import {
-  parsePlanMarkdown,
-  parseCursorPlan,
-  ParsedPlan,
-} from "../plan-import/parser";
-import { upsertTasksAndEdges } from "../plan-import/importer";
-import { doltCommit } from "../db/commit";
+import type { Command } from "commander";
+import { ResultAsync } from "neverthrow";
 import { v4 as uuidv4 } from "uuid";
-import { ResultAsync, ok, err } from "neverthrow";
-import { AppError, buildError, ErrorCode } from "../domain/errors";
-import { query, now, type SqlValue } from "../db/query";
+import { doltCommit } from "../db/commit";
+import { now, query, type SqlValue } from "../db/query";
+import { type AppError, buildError, ErrorCode } from "../domain/errors";
+import { upsertTasksAndEdges } from "../plan-import/importer";
+import {
+  type ParsedPlan,
+  parseCursorPlan,
+  parsePlanMarkdown,
+} from "../plan-import/parser";
+import { type Config, readConfig } from "./utils";
 
 export function importCommand(program: Command) {
   program
@@ -32,6 +32,10 @@ export function importCommand(program: Command) {
     .option(
       "--external-key-prefix <prefix>",
       "Optional prefix for task external_key to avoid collisions (e.g. when importing historical plans that share todo ids)",
+    )
+    .option(
+      "--no-suggest",
+      "Disable auto-suggestion of docs/skills from file patterns (default: suggest enabled)",
     )
     .action(async (filePath, options, cmd) => {
       const result = await readConfig().asyncAndThen((config: Config) => {
@@ -149,6 +153,8 @@ export function importCommand(program: Command) {
                 config.doltRepoPath,
                 cmd.parent?.opts().noCommit,
                 options.externalKeyPrefix,
+                fileTree ?? null,
+                options.suggest !== false,
               );
               if (upsertResult.isErr()) throw upsertResult.error;
 

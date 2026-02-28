@@ -1,11 +1,12 @@
 import { Command } from "commander";
+import { errAsync } from "neverthrow"; // Import errAsync
 import { v4 as uuidv4 } from "uuid";
 import { doltCommit } from "../db/commit";
-import { readConfig, Config, rootOpts } from "./utils";
-import { ResultAsync, ok, err, errAsync } from "neverthrow"; // Import errAsync
-import { AppError, buildError, ErrorCode } from "../domain/errors";
-import { TaskStatusSchema, Task } from "../domain/types";
-import { query, now, jsonObj, JsonObj } from "../db/query";
+import { allocateHashId } from "../db/hash-id";
+import { type JsonObj, jsonObj, now, query } from "../db/query";
+import { type AppError, buildError, ErrorCode } from "../domain/errors";
+import type { Task } from "../domain/types";
+import { type Config, readConfig, rootOpts } from "./utils";
 
 export function taskCommand(program: Command) {
   program
@@ -33,7 +34,7 @@ function taskNewCommand(): Command {
         let acceptanceJson: JsonObj | null = null;
         if (options.acceptance) {
           try {
-            const parsedAcceptance = JSON.parse(options.acceptance);
+            const _parsedAcceptance = JSON.parse(options.acceptance);
             acceptanceJson = jsonObj({ val: options.acceptance });
           } catch (e: unknown) {
             return errAsync(
@@ -46,26 +47,29 @@ function taskNewCommand(): Command {
           }
         }
 
-        return q
-          .insert("task", {
-            task_id,
-            plan_id: options.plan,
-            feature_key: options.feature ?? null,
-            title,
-            area: options.area ?? null,
-            acceptance: acceptanceJson,
-            created_at: currentTimestamp,
-            updated_at: currentTimestamp,
-          })
-          .andThen(() => {
-            return q.insert("event", {
+        return allocateHashId(config.doltRepoPath, task_id)
+          .andThen((hash_id) =>
+            q.insert("task", {
+              task_id,
+              plan_id: options.plan,
+              feature_key: options.feature ?? null,
+              title,
+              area: options.area ?? null,
+              acceptance: acceptanceJson,
+              hash_id,
+              created_at: currentTimestamp,
+              updated_at: currentTimestamp,
+            }),
+          )
+          .andThen(() =>
+            q.insert("event", {
               event_id: uuidv4(),
               task_id,
               kind: "created",
               body: jsonObj({ title }),
               created_at: currentTimestamp,
-            });
-          })
+            }),
+          )
           .andThen(() =>
             doltCommit(
               `task: create ${task_id} - ${title}`,

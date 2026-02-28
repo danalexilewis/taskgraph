@@ -1,11 +1,11 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import * as fs from "fs";
-import * as path from "path";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import yaml from "js-yaml";
 import {
+  runTgCli,
   setupIntegrationTest,
   teardownIntegrationTest,
-  runTgCli,
 } from "./test-utils";
 
 describe("Export markdown integration", () => {
@@ -48,7 +48,7 @@ isProject: false
     }>;
     const plan = plans.find((p) => p.title === "Round Trip Test");
     expect(plan).toBeDefined();
-    planId = plan!.plan_id;
+    planId = plan?.plan_id;
   }, 60000);
 
   afterAll(() => {
@@ -89,7 +89,7 @@ isProject: false
     const content = fs.readFileSync(exportPath, "utf-8");
     const match = content.match(/^---\s*\n([\s\S]*?)\n---/);
     expect(match).not.toBeNull();
-    const parsed = yaml.load(match![1]) as Record<string, unknown>;
+    const parsed = yaml.load(match?.[1]) as Record<string, unknown>;
     expect(parsed.name).toBe("Round Trip Test");
     const todos = parsed.todos as Array<{
       id: string;

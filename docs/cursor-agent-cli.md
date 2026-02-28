@@ -106,7 +106,7 @@ Build the prompt the same way as for the Task tool (from `.cursor/agents/impleme
 - **Reviewer**: `agent --model <fast-model> --print --trust --workspace . -- "<reviewer prompt>"`
 - **Planner-analyst**: `agent --model <fast-model> --print --trust --workspace . -- "<planner-analyst prompt>"`
 
-Use the same concurrency rules as in [subagent-dispatch](.cursor/rules/subagent-dispatch.mdc): max 3 in flight; avoid dispatching tasks that touch the same files.
+Use the same batching rules as in [subagent-dispatch](.cursor/rules/subagent-dispatch.mdc): feed all runnable tasks that don't share files; Cursor decides concurrency.
 
 ## When running in this environment (mcp_task)
 

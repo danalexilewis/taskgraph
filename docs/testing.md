@@ -1,3 +1,10 @@
+---
+triggers:
+  files: ["__tests__/**"]
+  change_types: ["create", "modify", "test"]
+  keywords: ["test", "vitest", "integration"]
+---
+
 # Testing Strategy
 
 The Task Graph system employs a two-tiered testing strategy to ensure reliability and determinism: **Unit Tests** for isolated business logic and **End-to-End (E2E) Tests** for validating the entire CLI workflow against a real Dolt instance.
@@ -71,3 +78,7 @@ E2E tests simulate real-world usage of the `tg` CLI, executing commands against 
 ```bash
 pnpm test:e2e
 ```
+
+## Typecheck and OpenTUI
+
+OpenTUI is **Bun-only** and must stay out of type scope for the Node-based gate. Our tsconfig keeps it isolated: `include: ["src/**/*.ts"]`, `exclude: ["node_modules"]`, `types: ["node"]`. See [Research: Cheap-Gate Typecheck/Lint Failures](research/cheap-gate-typecheck-lint-failures.md) for the full rationale.

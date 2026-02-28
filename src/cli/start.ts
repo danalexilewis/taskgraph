@@ -1,14 +1,14 @@
-import { Command } from "commander";
+import type { Command } from "commander";
+import { err, errAsync, okAsync, type ResultAsync } from "neverthrow";
 import { v4 as uuidv4 } from "uuid";
 import { doltCommit } from "../db/commit";
-import { readConfig, Config, parseIdList } from "./utils";
-import { checkRunnable, checkValidTransition } from "../domain/invariants";
-import { TaskStatus } from "../domain/types";
-import { ResultAsync, err, okAsync, errAsync } from "neverthrow";
-import { AppError, buildError, ErrorCode } from "../domain/errors";
-import { query, now, jsonObj } from "../db/query";
 import { doltSql } from "../db/connection";
 import { sqlEscape } from "../db/escape";
+import { jsonObj, now, query } from "../db/query";
+import { type AppError, buildError, ErrorCode } from "../domain/errors";
+import { checkRunnable, checkValidTransition } from "../domain/invariants";
+import type { TaskStatus } from "../domain/types";
+import { type Config, parseIdList, readConfig } from "./utils";
 
 function startOne(
   config: Config,

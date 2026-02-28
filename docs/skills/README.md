@@ -1,5 +1,7 @@
 # Skill guides
 
+Each skill guide now includes a YAML frontmatter `triggers` block specifying file patterns, change types, and keywords to enable auto-discovery and matching.
+
 Tasks can set a `skill` that maps to a guide here. The agent reads `docs/skills/<skill>.md` before starting work.
 
 ## Available skills

@@ -1,15 +1,17 @@
-import { Command } from "commander";
+import type { Command } from "commander";
+import { err, ok, ResultAsync } from "neverthrow";
 import { v4 as uuidv4 } from "uuid";
 import { doltCommit } from "../db/commit";
-import { readConfig, Config, parseIdList } from "./utils";
+import { type JsonValue, jsonObj, now, query } from "../db/query";
+import { syncBlockedStatusForTask } from "../domain/blocked-status";
+import { type AppError, buildError, ErrorCode } from "../domain/errors";
 import { checkValidTransition } from "../domain/invariants";
-import { TaskStatus } from "../domain/types";
-import { ok, err } from "neverthrow";
-import { AppError, buildError, ErrorCode } from "../domain/errors";
-import { query, now, jsonObj, JsonValue } from "../db/query";
+import { autoCompletePlanIfDone } from "../domain/plan-completion";
+import type { TaskStatus } from "../domain/types";
+import { parseIdList, readConfig } from "./utils";
 
 type DoneResult =
-  | { id: string; status: "done" }
+  | { id: string; status: "done"; plan_completed?: boolean }
   | { id: string; error: string };
 
 export function doneCommand(program: Command) {
@@ -48,9 +50,10 @@ export function doneCommand(program: Command) {
         const currentTimestamp = now();
         const q = query(config.doltRepoPath);
 
+        let planId: string | null = null;
         const singleResult = await q
-          .select<{ status: TaskStatus }>("task", {
-            columns: ["status"],
+          .select<{ status: TaskStatus; plan_id: string }>("task", {
+            columns: ["status", "plan_id"],
             where: { task_id: taskId },
           })
           .andThen((currentStatusResult) => {
@@ -63,6 +66,7 @@ export function doneCommand(program: Command) {
               );
             }
             const currentStatus = currentStatusResult[0].status;
+            planId = currentStatusResult[0].plan_id;
 
             if (!options.force) {
               const transitionResult = checkValidTransition(
@@ -120,10 +124,56 @@ export function doneCommand(program: Command) {
               cmd.parent?.opts().noCommit,
             ),
           )
-          .map(() => ({ task_id: taskId, status: "done" as const }));
+          .andThen(() =>
+            q
+              .select<{ to_task_id: string }>("edge", {
+                columns: ["to_task_id"],
+                where: { from_task_id: taskId, type: "blocks" },
+              })
+              .andThen((dependentRows) => {
+                const syncs = dependentRows.map((r) =>
+                  syncBlockedStatusForTask(config.doltRepoPath, r.to_task_id),
+                );
+                return ResultAsync.combine(syncs).map(() => undefined);
+              }),
+          )
+          .andThen(() => {
+            if (!planId) {
+              return ok({
+                task_id: taskId,
+                status: "done" as const,
+                plan_completed: false,
+              });
+            }
+            return autoCompletePlanIfDone(planId, config.doltRepoPath).andThen(
+              (planCompleted) => {
+                if (planCompleted) {
+                  return doltCommit(
+                    `plan: auto-complete ${planId}`,
+                    config.doltRepoPath,
+                    cmd.parent?.opts().noCommit,
+                  ).map(() => ({
+                    task_id: taskId,
+                    status: "done" as const,
+                    plan_completed: true,
+                  }));
+                }
+                return ok({
+                  task_id: taskId,
+                  status: "done" as const,
+                  plan_completed: false,
+                });
+              },
+            );
+          });
 
         singleResult.match(
-          () => results.push({ id: taskId, status: "done" }),
+          (value) =>
+            results.push({
+              id: taskId,
+              status: "done",
+              plan_completed: value.plan_completed,
+            }),
           (error: AppError) => {
             results.push({ id: taskId, error: error.message });
             anyFailed = true;
@@ -138,6 +188,7 @@ export function doneCommand(program: Command) {
             console.error(`Task ${r.id}: ${r.error}`);
           } else {
             console.log(`Task ${r.id} done.`);
+            if (r.plan_completed) console.log(`Plan completed!`);
           }
         }
       } else {

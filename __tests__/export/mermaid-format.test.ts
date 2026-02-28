@@ -1,7 +1,7 @@
-import { describe, it, expect } from "vitest";
-import { formatMermaidGraph } from "../../src/export/mermaid";
+import { describe, expect, it } from "bun:test";
 import { formatDotGraph } from "../../src/export/dot";
-import { GraphNode, GraphEdge } from "../../src/export/graph-data";
+import type { GraphEdge, GraphNode } from "../../src/export/graph-data";
+import { formatMermaidGraph } from "../../src/export/mermaid";
 
 describe("Graph Formatting (Pure Functions)", () => {
   const mockNodes: GraphNode[] = [
@@ -19,9 +19,9 @@ describe("Graph Formatting (Pure Functions)", () => {
     it("should generate a valid Mermaid graph TD string", () => {
       const mermaidGraph = formatMermaidGraph(mockNodes, mockEdges);
       expect(mermaidGraph).toContain("graph TD");
-      expect(mermaidGraph).toContain('task1[\"Task 1 (todo)\"]');
-      expect(mermaidGraph).toContain('task2[\"Task 2 (doing)\"]');
-      expect(mermaidGraph).toContain('task3[\"Task 3 (done)\"]');
+      expect(mermaidGraph).toContain('task1["Task 1 (todo)"]');
+      expect(mermaidGraph).toContain('task2["Task 2 (doing)"]');
+      expect(mermaidGraph).toContain('task3["Task 3 (done)"]');
       expect(mermaidGraph).toContain("task1 --> task2"); // blocks
       expect(mermaidGraph).toContain("task2 --- task3"); // relates
     });
@@ -38,11 +38,11 @@ describe("Graph Formatting (Pure Functions)", () => {
       expect(dotGraph).toContain("digraph TaskGraph {");
       expect(dotGraph).toContain("rankdir=LR;");
       expect(dotGraph).toContain("node [shape=box];");
-      expect(dotGraph).toContain('\"task1\" [label=\"Task 1 (todo)\"];');
-      expect(dotGraph).toContain('\"task2\" [label=\"Task 2 (doing)\"];');
-      expect(dotGraph).toContain('\"task3\" [label=\"Task 3 (done)\"];\n');
-      expect(dotGraph).toContain('\"task1\" -> \"task2\" [label=\"blocks\"];');
-      expect(dotGraph).toContain('\"task2\" -> \"task3\" [label=\"relates\"];');
+      expect(dotGraph).toContain('"task1" [label="Task 1 (todo)"];');
+      expect(dotGraph).toContain('"task2" [label="Task 2 (doing)"];');
+      expect(dotGraph).toContain('"task3" [label="Task 3 (done)"];\n');
+      expect(dotGraph).toContain('"task1" -> "task2" [label="blocks"];');
+      expect(dotGraph).toContain('"task2" -> "task3" [label="relates"];');
     });
 
     it("should handle empty nodes and edges", () => {

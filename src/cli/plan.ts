@@ -1,10 +1,9 @@
 import { Command } from "commander";
 import { v4 as uuidv4 } from "uuid";
 import { doltCommit } from "../db/commit";
-import { readConfig, Config, rootOpts } from "./utils";
-import { ResultAsync } from "neverthrow";
-import { AppError, buildError, ErrorCode } from "../domain/errors";
-import { query, now } from "../db/query";
+import { now, query } from "../db/query";
+import type { AppError } from "../domain/errors";
+import { type Config, readConfig, rootOpts } from "./utils";
 
 export function planCommand(program: Command) {
   program
@@ -18,7 +17,7 @@ function planListCommand(): Command {
   return new Command("list")
     .alias("ls")
     .description("List all plans")
-    .action(async (options, cmd) => {
+    .action(async (_options, cmd) => {
       const result = await readConfig().asyncAndThen((config: Config) => {
         const q = query(config.doltRepoPath);
         return q.select<{

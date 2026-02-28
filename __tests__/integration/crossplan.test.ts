@@ -1,10 +1,10 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import * as fs from "fs";
-import * as path from "path";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import {
+  runTgCli,
   setupIntegrationTest,
   teardownIntegrationTest,
-  runTgCli,
 } from "./test-utils";
 
 describe("Crossplan integration", () => {
@@ -83,9 +83,9 @@ fileTree: |
     expect(Array.isArray(data)).toBe(true);
     const cliRow = data.find((r) => r.domain === "cli");
     expect(cliRow).toBeDefined();
-    expect(cliRow!.plan_count).toBeGreaterThanOrEqual(2);
-    expect(cliRow!.plan_titles).toContain("Crossplan Plan A");
-    expect(cliRow!.plan_titles).toContain("Crossplan Plan B");
+    expect(cliRow?.plan_count).toBeGreaterThanOrEqual(2);
+    expect(cliRow?.plan_titles).toContain("Crossplan Plan A");
+    expect(cliRow?.plan_titles).toContain("Crossplan Plan B");
   });
 
   it("crossplan skills --json returns skills shared across plans", async () => {
@@ -104,7 +104,7 @@ fileTree: |
     expect(Array.isArray(data)).toBe(true);
     const skillRow = data.find((r) => r.skill === "cli-command");
     expect(skillRow).toBeDefined();
-    expect(skillRow!.plan_count).toBeGreaterThanOrEqual(2);
+    expect(skillRow?.plan_count).toBeGreaterThanOrEqual(2);
   });
 
   it("crossplan files --json returns files touched by multiple plans", async () => {
@@ -122,9 +122,9 @@ fileTree: |
     expect(Array.isArray(data)).toBe(true);
     const startTs = data.find((r) => r.file === "src/cli/start.ts");
     expect(startTs).toBeDefined();
-    expect(startTs!.plan_count).toBe(2);
-    expect(startTs!.plan_titles).toContain("Crossplan Plan A");
-    expect(startTs!.plan_titles).toContain("Crossplan Plan B");
+    expect(startTs?.plan_count).toBe(2);
+    expect(startTs?.plan_titles).toContain("Crossplan Plan A");
+    expect(startTs?.plan_titles).toContain("Crossplan Plan B");
   });
 
   it("crossplan edges --dry-run --json returns proposed edges and does not write", async () => {
@@ -188,6 +188,6 @@ fileTree: |
     expect(Array.isArray(data.proposed_edges)).toBe(true);
     const startTs = data.files.find((r) => r.file === "src/cli/start.ts");
     expect(startTs).toBeDefined();
-    expect(startTs!.plan_count).toBe(2);
+    expect(startTs?.plan_count).toBe(2);
   });
 });

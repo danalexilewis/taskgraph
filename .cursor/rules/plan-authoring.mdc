@@ -68,7 +68,7 @@ fileTree: |
 
 Show execution waves — what can run in parallel and what is gated. Use tree connectors within each wave.
 
-```
+```textmarkdown
 Parallel start (3 unblocked):
   ├── create-registry-rule
   ├── schema-migration (migrate.ts + types.ts)
@@ -139,6 +139,12 @@ Below the closing `---`, add the markdown body: **Analysis**, **Dependency graph
 | `skill`            | no       | Single slug or array → `docs/skills/<skill>.md`. Use kebab-case.              |
 | `changeType`       | no       | `create`, `modify`, `refactor`, `fix`, `investigate`, `test`, `document`.     |
 | `suggestedChanges` | no       | Directional snippets for the agent when the task touches specific code.       |
+
+## Assigning docs and skills
+
+When authoring todos, use the `docs` field to reference documentation pages that provide domain context or additional instructions. The value should be a single slug or an array of slugs corresponding to files under `docs/`. The agent will load these files before executing the task.
+
+Use the `skill` field to specify a specialized Cursor skill for the task, referenced by its slug (e.g., `my-skill` for `docs/skills/my-skill.md`). Skills extend agent capabilities and should be included only when a task requires functionality beyond the core agent commands.
 
 ## Dependency and scope
 

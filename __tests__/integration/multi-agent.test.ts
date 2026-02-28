@@ -1,12 +1,12 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import * as fs from "fs";
-import * as path from "path";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { doltSql } from "../../src/db/connection";
 import {
+  runTgCli,
   setupIntegrationTest,
   teardownIntegrationTest,
-  runTgCli,
 } from "./test-utils";
-import { doltSql } from "../../src/db/connection";
 
 describe("Multi-agent integration", () => {
   let context: Awaited<ReturnType<typeof setupIntegrationTest>> | undefined;
@@ -61,7 +61,7 @@ isProject: false
     const rows = eventsResult._unsafeUnwrap() as { body: string | object }[];
     expect(rows.length).toBeGreaterThanOrEqual(1);
     const raw = rows[0].body;
-    let body =
+    const body =
       typeof raw === "string" ? JSON.parse(raw) : (raw as { agent?: string });
     let agentVal = body.agent;
     if (typeof agentVal === "string" && agentVal.startsWith('"')) {
@@ -98,7 +98,7 @@ isProject: false
     );
     const rows = eventsResult._unsafeUnwrap() as { body: string }[];
     const raw = rows[0].body;
-    let body = typeof raw === "string" ? JSON.parse(raw) : raw;
+    const body = typeof raw === "string" ? JSON.parse(raw) : raw;
     let agent = (body as { agent?: string }).agent;
     if (typeof agent === "string" && agent.startsWith('"')) {
       agent = JSON.parse(agent);

@@ -1,8 +1,8 @@
-import { readConfig, Config } from "../cli/utils";
-import { Task, Edge } from "../domain/types";
-import { ResultAsync } from "neverthrow";
-import { AppError } from "../domain/errors";
+import type { ResultAsync } from "neverthrow";
+import { type Config, readConfig } from "../cli/utils";
 import { query } from "../db/query";
+import type { AppError } from "../domain/errors";
+import type { Edge, Task } from "../domain/types";
 
 export interface GraphNode {
   id: string;

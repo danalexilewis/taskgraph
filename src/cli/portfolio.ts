@@ -1,8 +1,8 @@
 import { Command } from "commander";
-import { readConfig, Config } from "./utils"; // Import Config
-import { ResultAsync, ok, err, errAsync } from "neverthrow";
-import { AppError, buildError, ErrorCode } from "../domain/errors";
+import { errAsync } from "neverthrow";
 import { query } from "../db/query";
+import { type AppError, buildError, ErrorCode } from "../domain/errors";
+import { type Config, readConfig } from "./utils"; // Import Config
 
 export function portfolioCommand(program: Command) {
   program
@@ -35,7 +35,7 @@ function portfolioOverlapsCommand(): Command {
       const result = await readConfig().asyncAndThen((config: Config) => {
         const q = query(config.doltRepoPath);
         const minFeatures = parseInt(options.min, 10);
-        if (isNaN(minFeatures) || minFeatures <= 0) {
+        if (Number.isNaN(minFeatures) || minFeatures <= 0) {
           return errAsync(
             buildError(
               ErrorCode.VALIDATION_FAILED,
@@ -155,7 +155,7 @@ function portfolioHotspotsCommand(): Command {
     .description(
       "Counts tasks per area, plus tasks touched by multiple features",
     )
-    .action(async (options, cmd) => {
+    .action(async (_options, cmd) => {
       const result = await readConfig().asyncAndThen((config: Config) => {
         const q = query(config.doltRepoPath);
         const tasksPerAreaQuery = `

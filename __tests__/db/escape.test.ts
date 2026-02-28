@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { sqlEscape } from "../../src/db/escape";
 
 describe("sqlEscape", () => {
@@ -27,7 +27,7 @@ describe("sqlEscape", () => {
   });
 
   it("should handle all special characters together", () => {
-    expect(sqlEscape("It\'s a \\test with \0null byte")).toBe(
+    expect(sqlEscape("It's a \\test with \0null byte")).toBe(
       "It''s a \\\\test with null byte",
     );
   });

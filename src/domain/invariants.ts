@@ -1,9 +1,15 @@
-import { TaskStatus, EdgeType, Edge } from "./types";
-import { Result, ResultAsync, ok, err } from "neverthrow";
-import { errAsync, okAsync } from "neverthrow";
-import { AppError, ErrorCode, buildError } from "./errors";
-import { query } from "../db/query";
+import {
+  err,
+  errAsync,
+  ok,
+  okAsync,
+  type Result,
+  type ResultAsync,
+} from "neverthrow";
 import { sqlEscape } from "../db/escape";
+import { query } from "../db/query";
+import { type AppError, buildError, ErrorCode } from "./errors";
+import type { Edge, TaskStatus } from "./types";
 
 // Helper for cycle detection (DFS)
 function hasCycleDFS(

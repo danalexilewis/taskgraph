@@ -27,12 +27,13 @@ Return a **structured analysis document** with these sections:
 5. **Dolt / task-graph state** — What in the task-graph DB is relevant? (e.g. from `tg status`, `tg plan list` if available, or schema: plan/task/edge/event tables, event kinds, existing columns). Note active plans, recent done tasks in the same area, and any schema or event conventions that the request would build on or change.
 6. **Related prior work** — from tg status or recent done tasks: plans/tasks that touch the same domain or files
 7. **Suggested task breakdown (rough)** — a short list of logical steps or phases (e.g. "1. Schema 2. API 3. Tests"). For each step, note which other steps it truly depends on and which are independent. This is input for the planner, not the final plan. The planner will challenge dependencies and may restructure.
+8. **Recommended docs and skills per task** — For each task in the rough breakdown, list which doc slugs (from docs/domains.md) and skill slugs (from docs/skills/README.md) the task should carry. Base this on the trigger metadata in each doc/skill file's frontmatter. If unsure, include the slug — the implementer benefits from extra context.
 
 Do not produce YAML or a full plan. Only the analysis and rough breakdown.
 
 ## Prompt template
 
-```
+```text
 You are the Planner Analyst sub-agent. You gather codebase and task-graph context before plan creation. Use model=fast. You do NOT write the plan.
 
 **Request / feature**
@@ -41,7 +42,8 @@ You are the Planner Analyst sub-agent. You gather codebase and task-graph contex
 **Instructions**
 1. **Investigate Dolt / task graph**: Run `pnpm tg status` (or use the summary below if the orchestrator provided it). If the request touches reporting, schema, events, or imports, read docs/schema.md to see plan, task, edge, and event tables and conventions. Note active plans, recent done tasks in the same area, event kinds (e.g. started, done, note), and any existing columns or body shapes that the request would use or extend.
 2. Search the codebase for files, modules, and patterns relevant to the request. Identify entrypoints, tests, and existing conventions.
-3. Produce a structured analysis with these sections:
+3. **Discover relevant docs and skills**: Read `docs/domains.md` and `docs/skills/README.md`. For each task in your rough breakdown, recommend which doc slugs and skill slugs apply based on the files being touched and the type of work. Each doc/skill file has a `triggers` frontmatter block with `files` (glob patterns), `change_types`, and `keywords` that indicate when it's relevant. Match these against the task's file patterns and change type.
+4. Produce a structured analysis with these sections:
 
    **Relevant files and roles**
    - For each relevant path: one-line role (e.g. "src/db/migrate.ts — Dolt migrations").
@@ -71,7 +73,7 @@ You are the Planner Analyst sub-agent. You gather codebase and task-graph contex
 {{LEARNINGS}}
 
 5. Do not output YAML or a full plan. Only the analysis and rough breakdown. Return your analysis in the chat.
-```
+```text
 
 **If the orchestrator passed tg status output:** include it in the prompt under a "Current task graph state" section so the analyst can reference it without re-running the CLI.
 

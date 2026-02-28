@@ -1,7 +1,7 @@
-import { ResultAsync, ok, err } from "neverthrow";
+import type { ResultAsync } from "neverthrow";
+import type { AppError } from "../domain/errors";
 import { doltSql } from "./connection";
 import { sqlEscape } from "./escape";
-import { AppError, buildError, ErrorCode } from "../domain/errors";
 
 export type JsonValue =
   | string

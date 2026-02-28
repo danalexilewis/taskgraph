@@ -1,3 +1,10 @@
+---
+triggers:
+  files: ["src/plan-import/**"]
+  change_types: ["create", "modify"]
+  keywords: ["import", "parser", "cursor format"]
+---
+
 # Plan Import
 
 The Task Graph system supports importing tasks and dependencies directly from markdown files, allowing for a seamless transition from narrative planning to structured task management. This feature is particularly useful for initial plan creation or for incorporating plans drafted externally.

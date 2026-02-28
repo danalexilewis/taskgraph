@@ -1,16 +1,29 @@
 # Sub-Agent Definitions
 
-This directory contains **prompt templates** for specialized sub-agents. The orchestrating agent reads these templates, interpolates them with task-specific data from `tg context --json`, and dispatches sub-agents via the Cursor Task tool, the `agent` CLI, or mcp_task (same prompt; mechanism chosen by what's available). See [docs/cursor-agent-cli.md](../docs/cursor-agent-cli.md) and `.cursor/rules/subagent-dispatch.mdc`.
+**Leads vs workers:** Some agents are **leads** (orchestration from skills; e.g. planner-analyst, investigator); others are **workers** (task-level execution; e.g. implementer, reviewer). See [docs/leads/README.md](../docs/leads/README.md).
+
+This directory contains **prompt templates** for specialized sub-agents. The orchestrating agent reads these templates, interpolates them with task-specific data from `tg context --json`, and dispatches sub-agents via the Cursor Task tool, the `agent` CLI, or mcp_task (same prompt; mechanism chosen by what's available). Before dispatching tg tasks, call TodoWrite with the task list and emit N Task/mcp_task calls in the same turn when batching. See [docs/cursor-agent-cli.md](../docs/cursor-agent-cli.md) and `.cursor/rules/subagent-dispatch.mdc`.
 
 ## Directory layout
 
 - **README.md** (this file) — format, conventions, and how to add agents
 - **explorer.md** — codebase exploration and context gathering (no code writing)
 - **implementer.md** — execute a single task (tg start → work → tg done)
-- **reviewer.md** — spec compliance and quality check (PASS/FAIL)
+- **spec-reviewer.md** — spec compliance check (PASS/FAIL): intent, scope, suggested_changes (planned; add when present)
+- **quality-reviewer.md** — code quality check (PASS/FAIL): patterns, tests, errors (planned; add when present)
+- **reviewer.md** — single reviewer; dispatch rule currently references this; the two-stage flow will use spec-reviewer + quality-reviewer once those agents exist
 - **planner-analyst.md** — pre-plan codebase analysis for the planning model
 
 Agent files are **prompt templates**, not executable code. The orchestrator injects context at dispatch time.
+
+### Two-stage review flow
+
+After an implementer completes, the orchestrator runs a **two-stage review**:
+
+1. **spec-reviewer** — Checks that the implementation matches the task intent, stays in scope, and follows suggested_changes. Returns PASS or FAIL.
+2. **quality-reviewer** — Only invoked if spec-reviewer returns PASS. Checks code quality: patterns, error handling, test coverage. Returns PASS or FAIL.
+
+If either reviewer returns FAIL, the orchestrator re-dispatches the implementer once with the feedback. The old `reviewer.md` combined both concerns; the split allows spec compliance to be validated before investing in quality checks. The two-stage flow uses the split agents once spec-reviewer and quality-reviewer exist.
 
 ## Agent file format
 
@@ -60,7 +73,7 @@ Example:
 
 ## How dispatch works
 
-1. Orchestrator runs `tg next --json --limit 4` to get unblocked tasks.
+1. Orchestrator runs `tg next --json --limit 20` to get unblocked tasks.
 2. For each task, orchestrator runs `tg context <taskId> --json` and optionally runs the explorer.
 3. Orchestrator reads the appropriate agent template (e.g. `implementer.md`), replaces placeholders with the task's context.
 4. Orchestrator dispatches the sub-agent: Task tool, `agent` CLI, or mcp_task with the same description and interpolated prompt (see docs/cursor-agent-cli.md).

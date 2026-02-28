@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { AppError, buildError, ErrorCode } from "../../src/domain/errors";
+import { describe, expect, it } from "bun:test";
+import { type AppError, buildError, ErrorCode } from "../../src/domain/errors";
 
 describe("Error Module", () => {
   it("should create an AppError with the correct properties", () => {

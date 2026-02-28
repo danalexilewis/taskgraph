@@ -1,18 +1,18 @@
-import { Command } from "commander";
-import { existsSync, mkdirSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync } from "node:fs";
+import * as path from "node:path";
+import type { Command } from "commander";
 import { execa } from "execa";
+import { ResultAsync } from "neverthrow";
 import {
   applyMigrations,
-  applyTaskDimensionsMigration,
-  applyPlanRichFieldsMigration,
-  applyTaskSuggestedChangesMigration,
-  applyTaskDomainSkillJunctionMigration,
   applyNoDeleteTriggersMigration,
+  applyPlanRichFieldsMigration,
+  applyTaskDimensionsMigration,
+  applyTaskDomainSkillJunctionMigration,
+  applyTaskSuggestedChangesMigration,
 } from "../db/migrate";
-import * as path from "path";
-import { readConfig, writeConfig } from "./utils";
-import { ResultAsync } from "neverthrow";
-import { AppError, buildError, ErrorCode } from "../domain/errors";
+import { type AppError, buildError, ErrorCode } from "../domain/errors";
+import { writeConfig } from "./utils";
 
 const TASKGRAPH_DIR = ".taskgraph";
 const CONFIG_FILE = path.join(TASKGRAPH_DIR, "config.json");

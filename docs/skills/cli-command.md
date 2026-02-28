@@ -1,3 +1,10 @@
+---
+triggers:
+  files: ["src/cli/**"]
+  change_types: ["create", "modify"]
+  keywords: ["command", "subcommand"]
+---
+
 # Skill: CLI command
 
 ## Purpose

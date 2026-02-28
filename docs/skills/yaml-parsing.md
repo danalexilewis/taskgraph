@@ -1,3 +1,10 @@
+---
+triggers:
+  files: ["src/plan-import/parser.ts", "src/plan-import/**"]
+  change_types: ["create", "modify"]
+  keywords: ["YAML", "parse", "frontmatter", "js-yaml"]
+---
+
 # Skill: YAML parsing
 
 ## Purpose

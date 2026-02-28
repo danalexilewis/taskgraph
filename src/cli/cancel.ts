@@ -1,12 +1,13 @@
-import { Command } from "commander";
+import type { Command } from "commander";
+import { ResultAsync } from "neverthrow";
 import { v4 as uuidv4 } from "uuid";
 import { doltCommit } from "../db/commit";
-import { readConfig, Config, parseIdList } from "./utils";
+import { jsonObj, now, query } from "../db/query";
+import { syncBlockedStatusForTask } from "../domain/blocked-status";
+import { type AppError, buildError, ErrorCode } from "../domain/errors";
 import { checkValidTransition } from "../domain/invariants";
-import { TaskStatus } from "../domain/types";
-import { ResultAsync } from "neverthrow";
-import { AppError, buildError, ErrorCode } from "../domain/errors";
-import { query, now, jsonObj } from "../db/query";
+import type { TaskStatus } from "../domain/types";
+import { type Config, parseIdList, readConfig } from "./utils";
 
 type PlanRow = { plan_id: string; status: string };
 type TaskRow = { task_id: string; status: TaskStatus };
@@ -113,6 +114,21 @@ async function cancelOne(
             created_at: currentTimestamp,
           });
           if (insertEventResult.isErr()) throw insertEventResult.error;
+
+          // Sync blocked status for dependents (blocks from this task)
+          const blocksResult = await q.select<{ to_task_id: string }>("edge", {
+            columns: ["to_task_id"],
+            where: { from_task_id: task.task_id, type: "blocks" },
+          });
+          if (blocksResult.isOk() && blocksResult.value.length > 0) {
+            for (const row of blocksResult.value) {
+              const syncResult = await syncBlockedStatusForTask(
+                config.doltRepoPath,
+                row.to_task_id,
+              );
+              if (syncResult.isErr()) throw syncResult.error;
+            }
+          }
 
           const commitResult = await doltCommit(
             `cancel: task ${task.task_id}`,

@@ -1,6 +1,6 @@
 import { execa } from "execa";
-import { ResultAsync, err, errAsync, ok } from "neverthrow";
-import { AppError, ErrorCode, buildError } from "../domain/errors";
+import { err, errAsync, ok, ResultAsync } from "neverthrow";
+import { type AppError, buildError, ErrorCode } from "../domain/errors";
 
 const PROTECTED_TABLES = ["plan", "task", "edge", "event"];
 const destructivePattern =
@@ -16,6 +16,7 @@ const doltPath = () => process.env.DOLT_PATH || "dolt";
 export function doltSql(
   query: string,
   repoPath: string,
+  // biome-ignore lint/suspicious/noExplicitAny: dolt JSON rows are untyped; callers cast to their row shape
 ): ResultAsync<any[], AppError> {
   const match = query.match(destructivePattern);
   if (match && PROTECTED_TABLES.includes(match[2].toLowerCase())) {

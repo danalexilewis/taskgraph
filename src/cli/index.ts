@@ -1,26 +1,26 @@
 import { Command } from "commander";
-import { initCommand } from "./init";
-import { planCommand } from "./plan";
-import { taskCommand } from "./task";
-import { edgeCommand } from "./edge";
-import { nextCommand } from "./next";
-import { showCommand } from "./show";
-import { startCommand } from "./start";
-import { doneCommand } from "./done";
-import { blockCommand } from "./block";
-import { cancelCommand } from "./cancel";
-import { splitCommand } from "./split";
-import { exportCommand } from "./export";
-import { portfolioCommand } from "./portfolio";
-import { importCommand } from "./import";
-import { statusCommand } from "./status";
-import { contextCommand } from "./context";
-import { noteCommand } from "./note";
-import { setupCommand } from "./setup";
-import { crossplanCommand } from "./crossplan";
-import { readConfig, rootOpts } from "./utils";
 import { ensureMigrations } from "../db/migrate";
 import { ErrorCode } from "../domain/errors";
+import { blockCommand } from "./block";
+import { cancelCommand } from "./cancel";
+import { contextCommand } from "./context";
+import { crossplanCommand } from "./crossplan";
+import { doneCommand } from "./done";
+import { edgeCommand } from "./edge";
+import { exportCommand } from "./export";
+import { importCommand } from "./import";
+import { initCommand } from "./init";
+import { nextCommand } from "./next";
+import { noteCommand } from "./note";
+import { planCommand } from "./plan";
+import { portfolioCommand } from "./portfolio";
+import { setupCommand } from "./setup";
+import { showCommand } from "./show";
+import { splitCommand } from "./split";
+import { startCommand } from "./start";
+import { statusCommand } from "./status";
+import { taskCommand } from "./task";
+import { readConfig, rootOpts } from "./utils";
 
 const program = new Command();
 
@@ -29,7 +29,7 @@ const SKIP_MIGRATE_COMMANDS = new Set(["init", "setup"]);
 
 function topLevelCommand(cmd: Command): Command {
   let c: Command = cmd;
-  while (c.parent && c.parent.parent) {
+  while (c.parent?.parent) {
     c = c.parent;
   }
   return c;

@@ -39,9 +39,13 @@
 
 - **Planning MUST use the planner-analyst sub-agent first.** AGENT.md and plan-authoring.mdc state this explicitly. Skipping the analyst when the user asks for a plan is a critical failure. The agent in consuming projects gets AGENT.md from the template; it must see the mandatory two-step flow (1. dispatch analyst, 2. write plan from analyst output).
 
-## Execution — sub-agents mandatory, max 3
+## Execution — sub-agents mandatory, Cursor decides concurrency
 
-- **Task execution MUST use implementer (and reviewer) sub-agents.** AGENT.md and subagent-dispatch.mdc require it; max 3 tasks in flight. Direct execution only after 2 sub-agent failures or when task is explicitly exploratory. Skipping dispatch during execution is a critical failure.
+- **Task execution MUST use implementer (and reviewer) sub-agents.** AGENT.md and subagent-dispatch.mdc require it. Feed all runnable non-conflicting tasks; Cursor decides how many run in parallel. Direct execution only after 2 sub-agent failures or when task is explicitly exploratory. Skipping dispatch during execution is a critical failure.
+
+## Task orchestration UI (sub-agent management)
+
+- **Required:** (1) Call TodoWrite with the task list from tg next before dispatching sub-agents; update statuses via TodoWrite(merge=true) as tasks complete. (2) When dispatching a batch of N tg tasks, emit N Task (or mcp_task) calls in the same turn — do not dispatch one per turn. This triggers Cursor's orchestration panel and parallel execution. See subagent-dispatch.mdc, work skill, AGENT.md.
 
 ## Dispatch mechanisms (choose by environment)
 
@@ -72,6 +76,16 @@
 - **Rebuild when src/ changes:** An on-stop hook (`.cursor/hooks/rebuild-if-src-changed.js`) runs at end of turn. If `git status` shows any changes under `src/`, it runs `pnpm build` so `dist/` is not stale for the next session or for integration tests. Rule: we rebuild when changes are detected in src at the end of a session/operation sequence; the hook implements that.
 - New hooks go in `.cursor/hooks/` and are registered in `.cursor/hooks.json`. Use the create-hook skill (`.cursor/skills/create-hook/SKILL.md`) to add or document hooks.
 
+## Integration tests — next output and task id
+
+- **`tg next`** prints `hash_id ?? task_id` (short hash when present). Tests that parsed a UUID from the human "ID: ..." line broke when hash_id was introduced. Fix: use **`tg next --json`** and take `task_id` from the parsed JSON (by title); use that UUID for `tg context` and for raw SQL. See `docs/research/integration-test-next-output-format.md`.
+
+## Typecheck (tsconfig)
+
+- **tsconfig uses only `"types": ["node"]`** so `tsc --noEmit` passes in node-only environments (no bun-types required). If typecheck still fails elsewhere (e.g. another clone or CI with different tsconfig), that's a local/env issue; the repo is set up for node-only typecheck.
+- **OpenTUI / bun:ffi:** OpenTUI is Bun-only (bun-ffi-structs). We keep it out of type scope via `include: src/**/*.ts`, exclude node_modules, and `types: ["node"]`. Do not add bun-types to the app tsconfig used by the gate. Full analysis: `docs/research/cheap-gate-typecheck-lint-failures.md`.
+- **Changed-files default:** `pnpm typecheck` runs typecheck only on changed `src/**/*.ts` (via `scripts/typecheck.sh`); `pnpm typecheck:all` runs full repo. Gate and sub-agents use the default. Rule: `.cursor/rules/changed-files-default.mdc`.
+
 ## Plan re-import (Dolt read-only)
 
 - During bulk plan import, Dolt can report "cannot update manifest: database is read only", causing partial imports. If that happens, prefer **restoring from Dolt history** (or git): the DB is versioned in git (.taskgraph/dolt is committed). Use `dolt log -n 50` to find a commit before the loss (e.g. "plan-import: upsert tasks and edges" after the last plan create), then `dolt checkout <commit> -b restore_xxx`, `dolt checkout main`, `dolt reset --hard restore_xxx`, `dolt branch -d restore_xxx` to make that state main.
@@ -79,6 +93,7 @@
 ## tg export markdown
 
 - Export writes to **exports/** by default (exports/<planId>.md). It **never** writes into plans/ — writing to plans/ is blocked to avoid overwriting plan files.
+- For **completed plans**, export may require the **plan ID** (UUID), not the plan title. "Plan … not found" can occur when passing a title for a done plan. Use `tg export markdown --plan <planId>` with the plan_id from `tg plan list --json`. Output goes to exports/<planId>.md.
 - The exported content is frontmatter-only (todos + statuses); it is not a full round-trip of fileTree, risks, or body. Use exports/ as the destination; keep plan files in plans/ as the source of truth.
 - Review triggers after implementer, explorer, or planner-analyst completes — not after reviewer.
 - Learnings go in each agent's `## Learnings` section, injected as `{{LEARNINGS}}` placeholder. Consolidate into prompt template when >10 entries.
@@ -90,7 +105,25 @@
 - **File trees**: Use the same tree connectors in YAML `fileTree` fields. Group by directory.
 - **Mermaid**: Still use for data flows, state machines, and supplementary views. Complements but does not replace the tree-style graphs.
 
+## Follow-up from sub-agent notes (orchestrator)
+
+- When an implementer (or sub-agent) completes and reports environment limitations, gate failures, or suggested follow-up in their return message or via `tg note`, the **orchestrator** decides whether to investigate. If warranted: `tg task new "<title>" --plan <planId>` then delegate the new task(s). See subagent-dispatch.mdc → "Follow-up from notes/evidence". Implementers should leave a `tg note` when they hit issues they could not fix so the orchestrator can spawn follow-up tasks.
+- **Sub-agents often have no Bun:** They may report "bun not available" and skip `pnpm test` / `pnpm test:integration`. When evidence says tests weren't run, the orchestrator or user should run tests locally to confirm.
+
 ## Skills
 
+- **Work skill — plan import first:** When /work is invoked in a thread where a plan was just created or approved (e.g. user said "proceed" after a plan), the skill now requires importing that plan before the execution loop so work runs against the intended plan. See .cursor/skills/work/SKILL.md "Before the loop — plan import (context)".
 - Test-review skill: produces a report and a Cursor-format plan with tasks; each task has an `agent` field so execution uses `tg start <taskId> --agent <agent>`. Plan format supports optional todo field `agent` (docs/plan-format.md, plan-authoring.mdc).
 - **[2026-02-27]** Updated sub-agent dispatch rule and agent templates to reference `agent` field and rename `domain_docs` to `doc_paths`.
+- **[2026-02-27]** Created `/work` skill (`.cursor/skills/work/SKILL.md`) for autonomous task execution loop with sub-agent dispatch, timeout checks, and human escalation.
+- **[2026-02-27]** Rewrote `/plan` skill to include mandatory planner-analyst dispatch, rich plan formatting (fileTree, risks, tests, per-task intent, dependency graphs), orchestrator critique checklist, and validation phase before user review.
+- **[2026-02-27]** Fixed bug in `renderTable` scaling calculation in `src/cli/table.ts`, corrected widths.reduce to sum column widths properly.
+
+## Plan auto-completion
+
+- **[2026-02-27]** Plans are now auto-completed when `tg done` marks the last task. Logic in `src/domain/plan-completion.ts` (`autoCompletePlanIfDone`), hooked into `src/cli/done.ts`. Condition: all tasks done/canceled AND at least 1 done. Ran a one-time sweep to mark 24 historical plans as done.
+
+## Status command enhancements
+
+- **[2026-02-27]** `tg status` now shows: vanity metrics (completed plans/tasks/canceled), active plans table (with Done column, only in-flight plans), active work table (Task/Plan/Agent), next runnable (limit 3). Completed plans hidden from active plans table. Health-check functions in `src/skills/health-check/index.ts` (stale, orphaned, unresolved deps).
+- **[2026-02-27]** `tg status` uses chalk colors (bold blue headings, green metrics, yellow table headers, cyan/red/green status values) and responsive tables via `cli-table3` in `src/cli/table.ts`. Tables respect terminal width (`getTerminalWidth()` from `src/cli/terminal.ts`). The first column is the flex column that absorbs width reduction. With many columns + enforced minimums, total width may exceed `maxWidth` — that's by design (hard floor).

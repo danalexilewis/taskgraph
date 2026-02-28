@@ -1,6 +1,6 @@
 ---
 name: assess-risk
-description: Assess the risk profile of code changes or proposed features using the project's risk framework. Use when evaluating a feature proposal, reviewing implementation plans, or when the user asks about risk, impact, or safety of changes.
+description: Assess the risk profile of code changes or proposed features using the project's risk model. Use when evaluating a feature proposal, reviewing implementation plans, or when the user asks about risk, impact, or safety of changes.
 ---
 
 # Assess Risk
@@ -17,9 +17,11 @@ This skill is **read-only**: it queries the task graph (Dolt) via `tg crossplan 
 
 1. **Gather cross-plan data**  
    Run:
+
    ```bash
    pnpm tg crossplan summary --json
    ```
+
    This returns plans, tasks, domains, skills, file overlaps, and proposed edges. If the command is not yet available, use `tg status`, `tg next`, and plan files to infer scope.
 
 2. **Read plan files**  
@@ -28,7 +30,7 @@ This skill is **read-only**: it queries the task graph (Dolt) via `tg crossplan 
 3. **Rate the 8 risk metrics per plan**  
    For each plan, rate **Entropy**, **Surface Area**, **Backwards Compat**, **Reversibility**, **Complexity Concentration**, **Testing Surface**, **Performance Risk**, and **Blast Radius** as **Low**, **Medium**, or **High**. Use the definitions in **CODE_RISK_ASSESSMENT.md** in this directory.
 
-4. **Account for cross-plan interactions**  
+4. **Account for cross-plan interactions**
    - If two or more plans modify the same file(s), elevate **Complexity Concentration** for those plans and note the overlap.
    - Use domain/skill clusters and file overlaps to inform **recommended execution order**.
 
@@ -37,16 +39,16 @@ This skill is **read-only**: it queries the task graph (Dolt) via `tg crossplan 
 
 ## Risk metrics (quick reference)
 
-| Metric | Low | Medium | High |
-|--------|-----|--------|------|
-| **Entropy** | Localized; few files | Multiple modules | Broad, scattered |
-| **Surface Area** | Small API/surface | Moderate surface | Large surface |
-| **Backwards Compat** | Additive only | Some behavior change | Breaking changes |
-| **Reversibility** | Easy rollback | Rollback with effort | Hard to reverse |
-| **Complexity Concentration** | Spread or isolated | Some hotspots | Heavy concentration; many plans on same file |
-| **Testing Surface** | Well covered | Partial coverage | Large untested surface |
-| **Performance Risk** | No critical paths | Some hot paths | Critical path / high traffic |
-| **Blast Radius** | Contained | Bounded impact | Wide impact |
+| Metric                       | Low                  | Medium               | High                                         |
+| ---------------------------- | -------------------- | -------------------- | -------------------------------------------- |
+| **Entropy**                  | Localized; few files | Multiple modules     | Broad, scattered                             |
+| **Surface Area**             | Small API/surface    | Moderate surface     | Large surface                                |
+| **Backwards Compat**         | Additive only        | Some behavior change | Breaking changes                             |
+| **Reversibility**            | Easy rollback        | Rollback with effort | Hard to reverse                              |
+| **Complexity Concentration** | Spread or isolated   | Some hotspots        | Heavy concentration; many plans on same file |
+| **Testing Surface**          | Well covered         | Partial coverage     | Large untested surface                       |
+| **Performance Risk**         | No critical paths    | Some hot paths       | Critical path / high traffic                 |
+| **Blast Radius**             | Contained            | Bounded impact       | Wide impact                                  |
 
 ## Output template
 
@@ -58,8 +60,8 @@ Produce markdown in this structure:
 ### Summary
 
 | Plan / Scope | Entropy | Surface Area | Backwards Compat | Reversibility | Complexity Concentration | Testing Surface | Performance Risk | Blast Radius | Overall |
-|--------------|---------|--------------|------------------|---------------|---------------------------|-----------------|------------------|--------------|---------|
-| ...         | L/M/H   | L/M/H        | L/M/H            | L/M/H         | L/M/H                     | L/M/H           | L/M/H            | L/M/H        | L/M/H   |
+| ------------ | ------- | ------------ | ---------------- | ------------- | ------------------------ | --------------- | ---------------- | ------------ | ------- |
+| ...          | L/M/H   | L/M/H        | L/M/H            | L/M/H         | L/M/H                    | L/M/H           | L/M/H            | L/M/H        | L/M/H   |
 
 ### Cross-Plan Interactions
 

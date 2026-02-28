@@ -1,10 +1,10 @@
-import { Command } from "commander";
+import type { Command } from "commander";
+import { err } from "neverthrow";
 import { v4 as uuidv4 } from "uuid";
 import { doltCommit } from "../db/commit";
-import { readConfig, parseIdList } from "./utils";
-import { err } from "neverthrow";
-import { AppError, buildError, ErrorCode } from "../domain/errors";
-import { query, now, jsonObj } from "../db/query";
+import { jsonObj, now, query } from "../db/query";
+import { type AppError, buildError, ErrorCode } from "../domain/errors";
+import { parseIdList, readConfig } from "./utils";
 
 type NoteResult =
   | { id: string; status?: string }

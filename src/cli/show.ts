@@ -1,16 +1,16 @@
-import { Command } from "commander";
-import { readConfig, Config } from "./utils"; // Import Config
-import { ResultAsync, ok, err } from "neverthrow";
-import { AppError, buildError, ErrorCode } from "../domain/errors";
-import { Task, Edge, Event, TaskStatus } from "../domain/types";
+import type { Command } from "commander";
+import { ResultAsync } from "neverthrow";
 import { query } from "../db/query";
+import { type AppError, buildError, ErrorCode } from "../domain/errors";
+import type { Edge, Event, Task, TaskStatus } from "../domain/types";
+import { type Config, readConfig } from "./utils"; // Import Config
 
 export function showCommand(program: Command) {
   program
     .command("show")
     .description("Prints task details, blockers, dependents, and recent events")
     .argument("<taskId>", "ID of the task to show")
-    .action(async (taskId, options, cmd) => {
+    .action(async (taskId, _options, cmd) => {
       const result = await readConfig().asyncAndThen((config: Config) => {
         const q = query(config.doltRepoPath);
 
@@ -114,7 +114,9 @@ export function showCommand(program: Command) {
           };
           if (!cmd.parent?.opts().json) {
             const task = resultData.taskDetails;
-            console.log(`Task Details (ID: ${task.task_id}):`);
+            const taskIdDisplay =
+              (task as { hash_id?: string | null }).hash_id ?? task.task_id;
+            console.log(`Task Details (ID: ${taskIdDisplay}):`);
             console.log(`  Title: ${task.title}`);
             console.log(`  Plan: ${task.plan_title} (ID: ${task.plan_id})`);
             console.log(`  Status: ${task.status}`);

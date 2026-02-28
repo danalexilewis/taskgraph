@@ -8,7 +8,14 @@ alwaysApply: true
 ## Build and dist
 
 - **Integration tests** run the built CLI from `dist/`. After changing anything under `src/`, run `pnpm build` before `pnpm test:integration` if you need tests to see the latest code.
-- **On-stop hook:** `.cursor/hooks/rebuild-if-src-changed.js` runs when the agent stops. If there are uncommitted changes under `src/`, it runs `pnpm build` so dist stays in sync. Rely on this at end of session; no need to manually rebuild unless you are about to run integration tests mid-session.
+- **On-stop hook:** `.cursor/hooks/rebuild-if-src-changed.js` runs when the agent stops. If there are uncommitted changes under `src/`, it runs `pnpm build` then `bash scripts/cheap-gate.sh` so dist stays in sync and lint/typecheck/affected-tests run. Rely on this at end of session; no need to manually rebuild unless you are about to run integration tests mid-session.
+
+## Validation pipeline
+
+- **Lint:** `pnpm lint` (biome check), `pnpm lint:fix` (biome check --write).
+- **Typecheck:** `pnpm typecheck` runs typecheck only on **changed** `src/**/*.ts` (from git); `pnpm typecheck:all` runs full `tsc --noEmit`. Default is changed-files so sub-agents and gate stay fast. See `.cursor/rules/changed-files-default.mdc`.
+- **Gate:** `pnpm gate` runs `scripts/cheap-gate.sh` (lint + typecheck on changed files + affected tests). `pnpm gate:full` runs lint + full typecheck + full test suite.
+- **Recommendation:** After making changes, run `pnpm gate` (or `bash scripts/cheap-gate.sh`) to validate before committing.
 
 ## Orientation
 
@@ -37,10 +44,13 @@ pnpm tg import plans/<file> --plan "<Plan Name>" --format cursor
 
 Task execution uses sub-agents. Follow `.cursor/rules/subagent-dispatch.mdc` Pattern 1 (parallel) or Pattern 2 (sequential). The orchestrator coordinates; sub-agents do the work.
 
-1. `pnpm tg next --plan "<Plan>" --json --limit 5` — get runnable tasks
+**Task orchestration UI**: Before dispatching sub-agents for tg tasks, call TodoWrite with the task list from `tg next` and update statuses as tasks complete. When dispatching a batch, emit N Task (or mcp_task) calls in the same turn. See subagent-dispatch.mdc for the full TodoWrite and batch-in-one-turn protocol.
+
+1. `pnpm tg next --plan "<Plan>" --json --limit 20` — get runnable tasks; batch all non-conflicting (Cursor decides concurrency)
 2. For each task: build implementer prompt from `tg context` and `.cursor/agents/implementer.md`; dispatch via Task tool, agent CLI, or mcp_task.
 3. After implementer completes: dispatch reviewer with task context + diff.
 4. If reviewer FAILs, re-dispatch implementer once. After 2 failures, fall back to direct execution.
+5. **Follow-up from notes/evidence**: If the implementer's return or task notes mention environment issues, gate failures, or suggested follow-up, the orchestrator decides whether to investigate — if yes, create task(s) with `tg task new ... --plan <planId>` and delegate them (see subagent-dispatch.mdc → Follow-up from notes/evidence).
 
 ### Fallback: direct execution
 

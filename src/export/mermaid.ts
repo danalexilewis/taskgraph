@@ -1,6 +1,6 @@
-import { ResultAsync } from "neverthrow";
-import { AppError } from "../domain/errors";
-import { getGraphData, GraphNode, GraphEdge } from "./graph-data";
+import type { ResultAsync } from "neverthrow";
+import type { AppError } from "../domain/errors";
+import { type GraphEdge, type GraphNode, getGraphData } from "./graph-data";
 
 export function formatMermaidGraph(
   nodes: GraphNode[],
@@ -11,7 +11,7 @@ export function formatMermaidGraph(
   nodes.forEach((node) => {
     // Node IDs in Mermaid typically cannot have special characters or spaces
     const nodeId = node.id.replace(/[^a-zA-Z0-9]/g, "");
-    mermaid += `  ${nodeId}[\"${node.label}\"]\n`;
+    mermaid += `  ${nodeId}["${node.label}"]\n`;
   });
 
   edges.forEach((edge) => {

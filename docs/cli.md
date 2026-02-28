@@ -1,3 +1,10 @@
+---
+triggers:
+  files: ["src/cli/**"]
+  change_types: ["create", "modify"]
+  keywords: ["command", "CLI"]
+---
+
 # CLI overview
 
 The Task Graph CLI (`tg`) is the primary interface for plans, tasks, and the execution loop.

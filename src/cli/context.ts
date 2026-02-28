@@ -1,9 +1,10 @@
-import { Command } from "commander";
-import { readConfig, Config, rootOpts } from "./utils";
-import { ResultAsync, errAsync } from "neverthrow";
-import { AppError, buildError, ErrorCode } from "../domain/errors";
-import { query } from "../db/query";
+import type { Command } from "commander";
+import { errAsync, ResultAsync } from "neverthrow";
 import { sqlEscape } from "../db/escape";
+import { query } from "../db/query";
+import { type AppError, buildError, ErrorCode } from "../domain/errors";
+import { estimateJsonTokens } from "../domain/token-estimate";
+import { type Config, readConfig, rootOpts } from "./utils";
 
 export function contextCommand(program: Command) {
   program
@@ -12,7 +13,7 @@ export function contextCommand(program: Command) {
       "Output doc paths, skill guide paths, and related done tasks for a task (run before starting work)",
     )
     .argument("<taskId>", "Task ID")
-    .action(async (taskId, options, cmd) => {
+    .action(async (taskId, _options, cmd) => {
       const result = await readConfig().asyncAndThen((config: Config) => {
         const q = query(config.doltRepoPath);
         return q
@@ -153,15 +154,20 @@ export function contextCommand(program: Command) {
               plan_id: string;
             }>;
           };
+          const token_estimate = estimateJsonTokens(d);
           if (rootOpts(cmd).json) {
-            console.log(JSON.stringify(d, null, 2));
+            console.log(JSON.stringify({ ...d, token_estimate }, null, 2));
             return;
           }
           console.log(`Task: ${d.title} (${d.task_id})`);
           if (d.agent) console.log(`Agent: ${d.agent}`);
           if (d.change_type) console.log(`Change type: ${d.change_type}`);
-          d.doc_paths.forEach((path) => console.log(`Doc: ${path}`));
-          d.skill_docs.forEach((doc) => console.log(`Skill guide: ${doc}`));
+          d.doc_paths.forEach((path) => {
+            console.log(`Doc: ${path}`);
+          });
+          d.skill_docs.forEach((doc) => {
+            console.log(`Skill guide: ${doc}`);
+          });
           if (d.suggested_changes) {
             console.log(`Suggested changes:`);
             console.log(d.suggested_changes);
@@ -177,24 +183,26 @@ export function contextCommand(program: Command) {
                 description?: string;
                 severity?: string;
                 mitigation?: string;
-              }) =>
+              }) => {
                 console.log(
                   `  - ${r.severity ?? "?"}: ${r.description ?? ""} (${r.mitigation ?? ""})`,
-                ),
+                );
+              },
             );
           }
           if (d.related_done_by_doc.length > 0) {
             console.log(`Related done (same doc):`);
-            d.related_done_by_doc.forEach((t) =>
-              console.log(`  ${t.task_id}  ${t.title}`),
-            );
+            d.related_done_by_doc.forEach((t) => {
+              console.log(`  ${t.task_id}  ${t.title}`);
+            });
           }
           if (d.related_done_by_skill.length > 0) {
             console.log(`Related done (same skill):`);
-            d.related_done_by_skill.forEach((t) =>
-              console.log(`  ${t.task_id}  ${t.title}`),
-            );
+            d.related_done_by_skill.forEach((t) => {
+              console.log(`  ${t.task_id}  ${t.title}`);
+            });
           }
+          console.log(`Context size: ~${token_estimate} tokens`);
         },
         (error: AppError) => {
           console.error(`Error: ${error.message}`);

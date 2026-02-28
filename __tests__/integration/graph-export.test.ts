@@ -1,9 +1,8 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { setupIntegrationTest, teardownIntegrationTest } from "./test-utils";
-import { generateMermaidGraph } from "../../src/export/mermaid";
-import { generateDotGraph } from "../../src/export/dot";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { doltSql } from "../../src/db/connection";
-import { sqlEscape } from "../../src/db/escape";
+import { generateDotGraph } from "../../src/export/dot";
+import { generateMermaidGraph } from "../../src/export/mermaid";
+import { setupIntegrationTest, teardownIntegrationTest } from "./test-utils";
 
 describe("Graph Export Integration Tests", () => {
   let context: Awaited<ReturnType<typeof setupIntegrationTest>> | undefined;
@@ -96,13 +95,13 @@ describe("Graph Export Integration Tests", () => {
     const dotGraph = result._unsafeUnwrap();
     expect(dotGraph).toContain("digraph TaskGraph {");
     expect(dotGraph).toContain(
-      '\"b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11\" [label=\"Task 1 (todo)\"];',
+      '"b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11" [label="Task 1 (todo)"];',
     );
     expect(dotGraph).toContain(
-      '\"c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11\" [label=\"Task 2 (doing)\"];',
+      '"c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11" [label="Task 2 (doing)"];',
     );
     expect(dotGraph).toContain(
-      '\"b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11\" -> \"c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11\" [label=\"blocks\"];',
+      '"b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11" -> "c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11" [label="blocks"];',
     );
   });
 });

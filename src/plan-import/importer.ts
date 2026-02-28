@@ -1,10 +1,19 @@
+import * as path from "node:path";
+import { ResultAsync } from "neverthrow";
 import { v4 as uuidv4 } from "uuid";
 import { doltCommit } from "../db/commit";
-import { Task, Edge, Event } from "../domain/types";
-import { ResultAsync, ok, err } from "neverthrow";
-import { AppError, buildError, ErrorCode } from "../domain/errors";
-import { query, now, jsonObj } from "../db/query";
 import { sqlEscape } from "../db/escape";
+import { allocateHashId } from "../db/hash-id";
+import { jsonObj, now, query } from "../db/query";
+import { syncBlockedStatusForTask } from "../domain/blocked-status";
+import {
+  loadRegistry,
+  matchDocsForTask,
+  matchSkillsForTask,
+  type RegistryEntry,
+} from "../domain/doc-skill-registry";
+import type { AppError } from "../domain/errors";
+import type { Task } from "../domain/types";
 
 interface ParsedTask {
   stableKey: string;
@@ -34,12 +43,56 @@ interface ImportResult {
   createdPlansCount: number;
 }
 
+/** Derive repo root from Dolt repo path (e.g. .taskgraph/dolt -> repo root). */
+function repoRootFromDoltPath(repoPath: string): string {
+  const resolved = path.resolve(repoPath);
+  return path.join(path.dirname(resolved), "..");
+}
+
+/** Extract file paths from plan fileTree string (lines with .ts, .md, .mdc; strip tree chars and (create)/(modify)). */
+function extractFilePathsFromFileTree(fileTree: string | null): string[] {
+  if (!fileTree || typeof fileTree !== "string") return [];
+  const paths: string[] = [];
+  const extRe = /\.(ts|md|mdc)(?:\s|$|[(\s])/;
+  for (const line of fileTree.split("\n")) {
+    if (!extRe.test(line)) continue;
+    const s = line
+      .replace(/^[\s│├└─]*/, "")
+      .trim()
+      .replace(/\s*\((?:create|modify|delete|refactor)\)\s*$/i, "")
+      .trim();
+    if (s) paths.push(s);
+  }
+  return paths;
+}
+
+/** Extract path-like strings ending in .ts, .md, .mdc from suggestedChanges text. */
+function extractFilePathsFromSuggestedChanges(
+  suggestedChanges: string | undefined,
+): string[] {
+  if (!suggestedChanges || typeof suggestedChanges !== "string") return [];
+  const paths: string[] = [];
+  const re = /[^\s[\](){}'"]*\.(ts|md|mdc)(?:\s|$|[)\]\s,])/g;
+  let m: RegExpExecArray | null = re.exec(suggestedChanges);
+  while (m !== null) {
+    const p = m[0]
+      .replace(/\s*$/, "")
+      .replace(/[,)\]\s]+$/, "")
+      .trim();
+    if (p) paths.push(p);
+    m = re.exec(suggestedChanges);
+  }
+  return paths;
+}
+
 export function upsertTasksAndEdges(
   planId: string,
   parsedTasks: ParsedTask[],
   repoPath: string,
   noCommit: boolean = false,
   externalKeyPrefix?: string,
+  fileTree?: string | null,
+  suggest: boolean = true,
 ): ResultAsync<ImportResult, AppError> {
   const currentTimestamp = now();
   const q = query(repoPath);
@@ -58,12 +111,54 @@ export function upsertTasksAndEdges(
             if (task.external_key) {
               const normalizedKey =
                 externalKeyPrefix &&
-                task.external_key.startsWith(externalKeyPrefix + "-")
+                task.external_key.startsWith(`${externalKeyPrefix}-`)
                   ? task.external_key.slice(externalKeyPrefix.length + 1)
                   : task.external_key;
               externalKeyToTaskId.set(normalizedKey, task.task_id);
             }
           });
+
+          // Auto-suggest docs/skills when both empty (registry load failure => skip silently)
+          let registry: RegistryEntry[] = [];
+          if (suggest) {
+            const repoRoot = repoRootFromDoltPath(repoPath);
+            const registryResult = loadRegistry(repoRoot);
+            if (registryResult.isOk()) registry = registryResult.value;
+            const planFilePatterns = extractFilePathsFromFileTree(
+              fileTree ?? null,
+            );
+            for (const parsedTask of parsedTasks) {
+              const docsEmpty = (parsedTask.docs ?? []).length === 0;
+              const skillsEmpty = (parsedTask.skills ?? []).length === 0;
+              if (!docsEmpty || !skillsEmpty) continue;
+              const taskPaths = extractFilePathsFromSuggestedChanges(
+                parsedTask.suggestedChanges,
+              );
+              const filePatterns = [
+                ...new Set([...planFilePatterns, ...taskPaths]),
+              ];
+              if (filePatterns.length === 0) continue;
+              const matchedDocs = matchDocsForTask(
+                registry,
+                filePatterns,
+                parsedTask.changeType ?? null,
+                parsedTask.title,
+              );
+              const matchedSkills = matchSkillsForTask(
+                registry,
+                filePatterns,
+                parsedTask.changeType ?? null,
+                parsedTask.title,
+              );
+              if (matchedDocs.length > 0 || matchedSkills.length > 0) {
+                console.warn(
+                  `[import] Auto-suggested for task "${parsedTask.title}" (${parsedTask.stableKey}): docs=[${matchedDocs.join(", ")}], skills=[${matchedSkills.join(", ")}]`,
+                );
+                parsedTask.docs = matchedDocs;
+                parsedTask.skills = matchedSkills;
+              }
+            }
+          }
 
           let importedTasksCount = 0;
 
@@ -101,6 +196,9 @@ export function upsertTasksAndEdges(
               // Insert new task
               taskId = uuidv4();
               importedTasksCount++;
+              const hashIdRes = await allocateHashId(repoPath, taskId);
+              if (hashIdRes.isErr()) throw hashIdRes.error;
+              const hashId = hashIdRes.value;
               const taskStatus = parsedTask.status ?? "todo";
               const externalKey = externalKeyPrefix
                 ? `${externalKeyPrefix}-${parsedTask.stableKey}`
@@ -108,6 +206,7 @@ export function upsertTasksAndEdges(
               const insertResult = await q.insert("task", {
                 task_id: taskId,
                 plan_id: planId,
+                hash_id: hashId,
                 external_key: externalKey,
                 title: parsedTask.title,
                 feature_key: parsedTask.feature ?? null,
@@ -211,6 +310,13 @@ export function upsertTasksAndEdges(
                 }
               }
             }
+          }
+
+          // Sync blocked status for all plan tasks after edges are in place
+          const planTaskIds = Array.from(externalKeyToTaskId.values());
+          for (const taskId of planTaskIds) {
+            const syncResult = await syncBlockedStatusForTask(repoPath, taskId);
+            if (syncResult.isErr()) throw syncResult.error;
           }
 
           const commitResult = await doltCommit(

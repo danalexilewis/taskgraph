@@ -1,13 +1,13 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import * as fs from "fs";
-import * as path from "path";
-import {
-  setupIntegrationTest,
-  teardownIntegrationTest,
-  runTgCli,
-} from "./test-utils";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { doltSql } from "../../src/db/connection";
 import { ErrorCode } from "../../src/domain/errors";
+import {
+  runTgCli,
+  setupIntegrationTest,
+  teardownIntegrationTest,
+} from "./test-utils";
 
 describe("No hard deletes: guard and cancel", () => {
   let context: Awaited<ReturnType<typeof setupIntegrationTest>> | undefined;
@@ -54,7 +54,7 @@ isProject: false
     }>;
     const plan = plans.find((p) => p.title === "No Hard Deletes Test Plan");
     expect(plan).toBeDefined();
-    planId = plan!.plan_id;
+    planId = plan?.plan_id;
 
     const tasksResult = await doltSql(
       `SELECT task_id, external_key FROM \`task\` WHERE plan_id = '${planId}' ORDER BY external_key`,
@@ -121,7 +121,7 @@ isProject: false
     }>;
     const plan = plans.find((p) => p.plan_id === planId);
     expect(plan).toBeDefined();
-    expect(plan!.status).toBe("abandoned");
+    expect(plan?.status).toBe("abandoned");
   }, 30000);
 
   it("5) tg cancel <taskId> sets task status to canceled", async () => {
@@ -165,7 +165,7 @@ isProject: false
       nextTasks: Array<{ task_id: string }>;
     };
     // Default view filters out canceled; canceled count may be 0 or absent
-    const canceledCount = data.statusCounts["canceled"] ?? 0;
+    const canceledCount = data.statusCounts.canceled ?? 0;
     expect(canceledCount).toBe(0);
     // Next runnable should not include the canceled task
     const nextIds = (data.nextTasks || []).map((t) => t.task_id);
@@ -179,7 +179,7 @@ isProject: false
       statusCounts: Record<string, number>;
       plansCount: number;
     };
-    expect(data.statusCounts["canceled"]).toBeGreaterThanOrEqual(1);
+    expect(data.statusCounts.canceled).toBeGreaterThanOrEqual(1);
     // With --all, abandoned plan is included so plansCount >= 1
     expect(data.plansCount).toBeGreaterThanOrEqual(1);
   });

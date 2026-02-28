@@ -1,19 +1,9 @@
-import * as fs from "fs";
-import * as os from "os";
-import * as path from "path";
-import { execa, ExecaError } from "execa";
-import {
-  applyMigrations,
-  applyTaskDimensionsMigration,
-  applyTaskDomainSkillJunctionMigration,
-  applyPlanRichFieldsMigration,
-  applyTaskSuggestedChangesMigration,
-  applyDomainToDocRenameMigration,
-  applyTaskAgentMigration,
-} from "../../src/db/migrate";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { type ExecaError, execa } from "execa";
 import { writeConfig } from "../../src/cli/utils";
-import { Config } from "../../src/cli/utils";
-import { doltSql } from "../../src/db/connection";
+import { GOLDEN_TEMPLATE_PATH_FILE } from "./global-setup";
 
 export interface IntegrationTestContext {
   tempDir: string;
@@ -24,31 +14,24 @@ export interface IntegrationTestContext {
 const DOLT_PATH = process.env.DOLT_PATH || "dolt";
 if (!process.env.DOLT_PATH) process.env.DOLT_PATH = DOLT_PATH;
 
+function getGoldenTemplatePath(): string {
+  if (process.env.TG_GOLDEN_TEMPLATE) return process.env.TG_GOLDEN_TEMPLATE;
+  if (!fs.existsSync(GOLDEN_TEMPLATE_PATH_FILE)) {
+    throw new Error(
+      "TG_GOLDEN_TEMPLATE not set and golden template path file not found. Run integration tests via vitest with integration config (globalSetup creates the template).",
+    );
+  }
+  return fs.readFileSync(GOLDEN_TEMPLATE_PATH_FILE, "utf8").trim();
+}
+
 export async function setupIntegrationTest(): Promise<IntegrationTestContext> {
+  const templatePath = getGoldenTemplatePath();
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tg-integration-"));
   const doltRepoPath = path.join(tempDir, ".taskgraph", "dolt");
   const cliPath = path.resolve(__dirname, "../../dist/cli/index.js");
 
-  // Create .taskgraph/dolt directory
-  fs.mkdirSync(doltRepoPath, { recursive: true });
-
-  // Initialize Dolt repo (use DOLT_PATH so CI/local match)
-  await execa(DOLT_PATH, ["init"], {
-    cwd: doltRepoPath,
-    env: { ...process.env, DOLT_PATH },
-  });
-
-  // Write config
-  writeConfig({ doltRepoPath: doltRepoPath }, tempDir)._unsafeUnwrap(); // Corrected signature
-
-  // Apply all migrations so test schema matches production
-  (await applyMigrations(doltRepoPath))._unsafeUnwrap();
-  (await applyTaskDimensionsMigration(doltRepoPath))._unsafeUnwrap();
-  (await applyTaskDomainSkillJunctionMigration(doltRepoPath))._unsafeUnwrap();
-  (await applyDomainToDocRenameMigration(doltRepoPath))._unsafeUnwrap();
-  (await applyTaskAgentMigration(doltRepoPath))._unsafeUnwrap();
-  (await applyPlanRichFieldsMigration(doltRepoPath))._unsafeUnwrap();
-  (await applyTaskSuggestedChangesMigration(doltRepoPath))._unsafeUnwrap();
+  fs.cpSync(templatePath, tempDir, { recursive: true });
+  writeConfig({ doltRepoPath }, tempDir)._unsafeUnwrap();
 
   return { tempDir, doltRepoPath, cliPath };
 }

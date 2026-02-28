@@ -1,6 +1,6 @@
 {
   "name": "@danalexilewis/taskgraph",
-  "version": "1.5.0",
+  "version": "2.0.0",
   "description": "Task Graph CLI for Centaur Development",
   "main": "dist/cli/index.js",
   "bin": {
@@ -16,9 +16,16 @@
     "build": "tsc && node -e \"require('fs').cpSync('src/template','dist/template',{recursive:true})\"",
     "prepublishOnly": "npm run build",
     "start": "node dist/cli/index.js",
-    "test": "vitest run --dir __tests__",
-    "test:e2e": "vitest run --dir __tests__/e2e",
-    "test:integration": "vitest run --dir __tests__/integration",
+    "lint": "biome check src/ __tests__/",
+    "lint:fix": "biome check --write src/ __tests__/",
+    "typecheck": "bash scripts/typecheck.sh",
+    "typecheck:all": "tsc --noEmit",
+    "gate": "bash scripts/cheap-gate.sh",
+    "gate:full": "bash scripts/cheap-gate.sh --full",
+    "test": "bun test __tests__/db __tests__/domain __tests__/export __tests__/plan-import",
+    "test:integration": "bun test __tests__/integration",
+    "test:e2e": "bun test __tests__/e2e",
+    "test:all": "bun test __tests__",
     "precommit": "node scripts/pre-commit.js",
     "publish": "npm publish"
   },
@@ -35,7 +42,8 @@
   "author": "danalexilewis",
   "license": "MIT",
   "engines": {
-    "node": ">=18"
+    "node": ">=18",
+    "bun": ">=1"
   },
   "repository": {
     "type": "git",
@@ -43,20 +51,30 @@
   },
   "homepage": "https://github.com/danalexilewis/taskgraph",
   "dependencies": {
+    "@opentui/core": "^0.1.84",
+    "boxen": "^8.0.1",
+    "chalk": "^5.6.2",
+    "cli-table3": "^0.6.5",
     "commander": "^12.0.0",
     "execa": "^9.0.0",
+    "jest-diff": "^30.2.0",
     "js-yaml": "^4.1.1",
+    "log-symbols": "^7.0.1",
+    "minimatch": "^10.2.4",
     "neverthrow": "^6.0.0",
+    "strip-ansi": "^7.2.0",
+    "terminal-link": "^5.0.0",
     "uuid": "^9.0.0",
+    "wrap-ansi": "^10.0.0",
     "zod": "^3.22.4"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.4",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.11.17",
     "@types/uuid": "^9.0.8",
+    "bun-types": "latest",
     "tsx": "^4.7.1",
-    "typescript": "^5.3.3",
-    "vitest": "^1.0.0",
-    "prettier": "^3.2.0"
+    "typescript": "^5.3.3"
   }
 }

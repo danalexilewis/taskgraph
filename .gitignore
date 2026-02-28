@@ -5,6 +5,7 @@ node_modules/
 dist/
 build/
 *.tsbuildinfo
+.tsconfig.changed.json
 
 # Export output (tg export markdown writes here by default)
 exports/

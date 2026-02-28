@@ -1,3 +1,5 @@
+**Agent architecture:** See [docs/agent-strategy.md](docs/agent-strategy.md) for the canonical agent architecture doc.
+
 Plan creation and review
 
 **Planning uses the planner-analyst sub-agent first. Do not skip this.**
@@ -14,10 +16,12 @@ Plan creation and review
 
 Agent operating loop
 
-**Task execution uses sub-agents. Do not do the work yourself.** You MUST dispatch implementer (and reviewer) sub-agents per `.cursor/rules/subagent-dispatch.mdc`. Max 3 tasks in flight at a time. Direct execution (you code) only after a sub-agent fails twice or the task is explicitly exploratory/ambiguous. When using direct execution, log the reason: `tg note <taskId> --msg "Direct execution: <reason>"`.
+**Task execution uses sub-agents. Do not do the work yourself.** You MUST dispatch implementer (and reviewer) sub-agents per `.cursor/rules/subagent-dispatch.mdc`. Feed all runnable, non-conflicting tasks; Cursor decides how many run in parallel. Direct execution (you code) only after a sub-agent fails twice or the task is explicitly exploratory/ambiguous. When using direct execution, log the reason: `tg note <taskId> --msg "Direct execution: <reason>"`.
+
+**Task orchestration UI**: You MUST call TodoWrite with the task list from tg next before dispatching sub-agents (this triggers Cursor's orchestration panel). Update TodoWrite statuses as tasks complete. When dispatching a batch of N tasks, emit N Task (or mcp_task) calls in the same turn. See .cursor/rules/subagent-dispatch.mdc for the full protocol.
 
 - Always begin with: tg status to orient — surface stale tasks, plan state, and other agents' active work (if any).
-- Then: tg next --plan "<Plan>" --limit 3 (or tg next --limit 3). Get up to 3 runnable tasks. Follow Pattern 1 (parallel, max 3) or Pattern 2 (sequential) in subagent-dispatch.mdc.
+- Then: tg next --plan "<Plan>" --limit 20 (or tg next --limit 20). Get runnable tasks; include all that don't share files. Follow Pattern 1 (parallel batch) or Pattern 2 (sequential) in subagent-dispatch.mdc. Cursor decides concurrency.
 - For each task: build implementer prompt from tg context and `.cursor/agents/implementer.md`; dispatch implementer (Task tool, agent CLI, or mcp_task per subagent-dispatch). After implementer completes, dispatch reviewer with task context + diff; if FAIL, re-dispatch implementer once; after 2 failures, do that task yourself.
 - Sub-agents run tg start and tg done; you coordinate. Do not run tg start / tg done yourself for a task you delegated.
 - Evidence (tests run, commands, git ref) is supplied by the implementer in tg done; you verify via reviewer.
@@ -60,6 +64,15 @@ When blocked
 Data safety (task graph)
 
 - Never run DELETE, DROP TABLE, or TRUNCATE on the task graph database. Use `tg cancel <planId|taskId> --reason "..."` for soft-delete (plan→abandoned, task→canceled). See `.cursor/rules/no-hard-deletes.mdc`.
+
+Validation pipeline (development)
+
+- **Bun is required for development** as the test runner. Vitest is no longer used.
+- **Pipeline order**: (1) `biome check` — lint/format on `src/`, `__tests__/`, `scripts/`; (2) typecheck (default: changed files only); (3) targeted tests (affected by changed files) or full test suite.
+- **Changed-files default**: Typecheck and tests default to **changed files** (git). Unmodified code is assumed already validated. Use `pnpm typecheck:all` or `pnpm gate:full` for full repo. See `.cursor/rules/changed-files-default.mdc`.
+- **cheap-gate.sh** (`pnpm gate`): runs biome → typecheck (changed) → affected tests. Use for pre-commit or CI quick check; sub-agents use this.
+- **Full suite** (`pnpm gate:full` or `bash scripts/cheap-gate.sh --full`): same lint + full typecheck + `bun test __tests__`. Use before release or when validating the whole codebase.
+- **Manual steps**: `pnpm lint` / `pnpm lint:fix`, `pnpm typecheck` (changed) or `pnpm typecheck:all`, `bun test __tests__` (or `pnpm test` / `pnpm test:integration` / `pnpm test:all` per package.json).
 
 Decisions
 

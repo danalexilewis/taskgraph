@@ -1,7 +1,7 @@
-import { readFileSync } from "fs";
+import { readFileSync } from "node:fs";
 import yaml from "js-yaml";
-import { Result, ok, err } from "neverthrow";
-import { AppError, ErrorCode, buildError } from "../domain/errors";
+import { err, ok, type Result } from "neverthrow";
+import { type AppError, buildError, ErrorCode } from "../domain/errors";
 
 export interface ParsedTask {
   stableKey: string;
@@ -88,7 +88,7 @@ export function parsePlanMarkdown(
       } else if (line.startsWith("INTENT:")) {
         planIntent = line.substring("INTENT:".length).trim();
       } else if (trimmedLine.startsWith("TASK:")) {
-        if (currentTask && currentTask.stableKey) {
+        if (currentTask?.stableKey) {
           tasks.push(currentTask as ParsedTask);
         }
         currentTask = {
@@ -161,7 +161,7 @@ export function parsePlanMarkdown(
       }
     }
 
-    if (currentTask && currentTask.stableKey) {
+    if (currentTask?.stableKey) {
       tasks.push(currentTask as ParsedTask);
     }
 

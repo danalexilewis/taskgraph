@@ -1,32 +1,50 @@
-import type { Mock } from "vitest";
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { query, now, jsonObj, JsonObj } from "../../src/db/query";
-import { doltSql } from "../../src/db/connection";
-import { ResultAsync, ok, okAsync } from "neverthrow";
+import { beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
+import { okAsync } from "neverthrow";
 
-vi.mock("../../src/db/connection", () => ({
-  doltSql: vi.fn(),
+const mockDoltSql = mock((sql: string, _repoPath: string) => {
+  if (sql.startsWith("SELECT COUNT(*)")) {
+    return okAsync([{ "COUNT(*)": 0 }]);
+  }
+  return okAsync([]);
+});
+
+mock.module("../../src/db/connection", () => ({
+  doltSql: mockDoltSql,
 }));
+
+const { query, now, jsonObj } = await import("../../src/db/query");
 
 describe("query builder", () => {
   const repoPath = "./test_repo";
-  const mockDoltSql = doltSql as Mock;
 
   beforeEach(() => {
     mockDoltSql.mockClear();
     mockDoltSql.mockImplementation((sql: string) => {
-      console.log("MOCKED DOLT SQL:", sql);
       if (sql.startsWith("SELECT COUNT(*)")) {
-        return okAsync([{ "COUNT(*)": 0 }]); // Default count to 0 unless overridden
+        return okAsync([{ "COUNT(*)": 0 }]);
       }
       return okAsync([]);
     });
   });
 
   it("should format now() correctly", () => {
-    const date = new Date("2026-02-25T10:00:00.000Z");
-    vi.setSystemTime(date);
-    expect(now()).toBe("2026-02-25 10:00:00");
+    const OriginalDate = globalThis.Date;
+    const dateSpy = spyOn(globalThis, "Date").mockImplementation(function (
+      this: unknown,
+      ...args: unknown[]
+    ) {
+      if (args.length === 0) {
+        return new OriginalDate("2026-02-25T10:00:00.000Z");
+      }
+      return new (OriginalDate as new (...a: unknown[]) => Date)(
+        ...(args as [string]),
+      );
+    });
+    try {
+      expect(now()).toBe("2026-02-25 10:00:00");
+    } finally {
+      dateSpy.mockRestore();
+    }
   });
 
   it("should correctly format a simple INSERT statement", async () => {

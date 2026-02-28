@@ -1,16 +1,19 @@
+---
+triggers:
+  files: [".cursor/rules/**"]
+  change_types: ["create", "modify"]
+  keywords: ["rule", "mdc", "cursor rule"]
+---
+
 # Skill: Rule authoring
 
 ## Purpose
 
-Write or update Cursor rules (`.cursor/rules/*.mdc`) so agents consistently follow workflow and project conventions.
+Write/update Cursor rules.
 
-## Examples
+## Steps
 
-- Use frontmatter: `description`, `globs` or `alwaysApply: true`.
-- Keep rules short: bullet lists and one table; link to AGENT.md or docs for full detail.
-- For workflow, state the exact commands and order (e.g. `tg start` then `tg context` then work then `tg done`).
+1. Create or update `.cursor/rules/*.md` files.
+2. Follow rule formatting conventions in docs.
 
-## Gotchas
-
-- Rules are additive; avoid contradicting AGENT.md. Prefer “do X” over “do not Y” where possible.
-- If a rule is `alwaysApply: true`, keep it small so it stays in context every time.
+...

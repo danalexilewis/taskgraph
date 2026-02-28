@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import { execa } from "execa";
-import * as fs from "fs";
-import * as os from "os";
-import * as path from "path";
 
 const CLI_PATH = path.resolve(__dirname, "../../dist/cli/index.js");
 const TG_BIN = `node ${CLI_PATH} `;
@@ -37,12 +37,18 @@ async function runTg(
       );
     }
     return { stdout, stderr, exitCode: exitCode ?? 0 };
-  } catch (error: any) {
+  } catch (error: unknown) {
     if (expectError) {
+      const e = error as {
+        stdout?: string;
+        stderr?: string;
+        message?: string;
+        exitCode?: number;
+      };
       return {
-        stdout: error.stdout || "",
-        stderr: error.stderr || error.message,
-        exitCode: error.exitCode ?? 1,
+        stdout: e.stdout ?? "",
+        stderr: e.stderr ?? e.message ?? "",
+        exitCode: e.exitCode ?? 1,
       };
     }
     throw error;
@@ -51,12 +57,12 @@ async function runTg(
 
 describe("Task Graph CLI E2E Tests", () => {
   let tempDir: string;
-  let doltRepoPath: string;
+  let _doltRepoPath: string;
 
   beforeAll(async () => {
     // Create a temporary directory for each test suite
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tg-e2e-"));
-    doltRepoPath = path.join(tempDir, ".taskgraph", "dolt");
+    _doltRepoPath = path.join(tempDir, ".taskgraph", "dolt");
 
     // Ensure CLI is built (run from package root)
     await execa("pnpm run build", {
@@ -85,7 +91,7 @@ describe("Task Graph CLI E2E Tests", () => {
 
   it("should create a new plan", async () => {
     const { stdout, exitCode } = await runTg(
-      'plan new \"Auth Feature\" --intent \"Implement authentication\"',
+      'plan new "Auth Feature" --intent "Implement authentication"',
       tempDir,
     );
     expect(exitCode).toBe(0);
@@ -93,11 +99,11 @@ describe("Task Graph CLI E2E Tests", () => {
 
     const planIdMatch = stdout.match(/Plan created with ID: (.*)/);
     expect(planIdMatch).not.toBeNull();
-    const planId = planIdMatch![1].trim();
+    const _planId = planIdMatch?.[1].trim();
 
     // Verify plan new --json returns valid output (basic check)
     const { stdout: jsonStdout } = await runTg(
-      `plan new \"Temp Plan\" --json`,
+      `plan new "Temp Plan" --json`,
       tempDir,
     );
     const planObj = JSON.parse(jsonStdout);
@@ -108,31 +114,28 @@ describe("Task Graph CLI E2E Tests", () => {
   let planId: string;
   let task1Id: string;
   let task2Id: string;
-  let task3Id: string;
+  let _task3Id: string;
 
   it("should create tasks and establish a blocking dependency", async () => {
-    const planResult = await runTg(
-      'plan new \"Core Flow Plan\" --json',
-      tempDir,
-    );
+    const planResult = await runTg('plan new "Core Flow Plan" --json', tempDir);
     planId = JSON.parse(planResult.stdout).plan_id;
 
     const task1Result = await runTg(
-      `task new \"Design API\" --plan ${planId} --feature auth --area backend --json`,
+      `task new "Design API" --plan ${planId} --feature auth --area backend --json`,
       tempDir,
     );
     task1Id = JSON.parse(task1Result.stdout).task_id;
     expect(task1Id).toBeDefined();
 
     const task2Result = await runTg(
-      `task new \"Implement API\" --plan ${planId} --feature auth --area backend --json`,
+      `task new "Implement API" --plan ${planId} --feature auth --area backend --json`,
       tempDir,
     );
     task2Id = JSON.parse(task2Result.stdout).task_id;
     expect(task2Id).toBeDefined();
 
     const edgeResult = await runTg(
-      `edge add ${task1Id} blocks ${task2Id} --reason \"API must be designed first\"`,
+      `edge add ${task1Id} blocks ${task2Id} --reason "API must be designed first"`,
       tempDir,
     );
     expect(edgeResult.exitCode).toBe(0);
@@ -181,7 +184,7 @@ describe("Task Graph CLI E2E Tests", () => {
 
   it("should complete a task", async () => {
     const { stdout, exitCode } = await runTg(
-      `done ${task1Id} --evidence \"API designed and spec'd\"`,
+      `done ${task1Id} --evidence "API designed and spec'd"`,
       tempDir,
     );
     expect(exitCode).toBe(0);
@@ -200,11 +203,11 @@ describe("Task Graph CLI E2E Tests", () => {
   });
 
   it("should complete the second task", async () => {
-    const { stdout, exitCode } = await runTg(`start ${task2Id}`, tempDir);
+    const { exitCode } = await runTg(`start ${task2Id}`, tempDir);
     expect(exitCode).toBe(0);
 
     const { stdout: doneOutput, exitCode: doneExitCode } = await runTg(
-      `done ${task2Id} --evidence \"API implemented and tested\"`,
+      `done ${task2Id} --evidence "API implemented and tested"`,
       tempDir,
     );
     expect(doneExitCode).toBe(0);
@@ -219,10 +222,10 @@ describe("Task Graph CLI E2E Tests", () => {
     expect(exitCode).toBe(0);
     expect(stdout).toContain("graph TD");
     expect(stdout).toContain(
-      `${task1Id.replace(/[^a-zA-Z0-9]/g, "")}[\"Design API (done)\"]`,
+      `${task1Id.replace(/[^a-zA-Z0-9]/g, "")}["Design API (done)"]`,
     );
     expect(stdout).toContain(
-      `${task2Id.replace(/[^a-zA-Z0-9]/g, "")}[\"Implement API (done)\"]`,
+      `${task2Id.replace(/[^a-zA-Z0-9]/g, "")}["Implement API (done)"]`,
     );
     expect(stdout).toContain(
       `${task1Id.replace(/[^a-zA-Z0-9]/g, "")} --> ${task2Id.replace(/[^a-zA-Z0-9]/g, "")}`,
@@ -232,7 +235,7 @@ describe("Task Graph CLI E2E Tests", () => {
   it("should handle error when running command before init", async () => {
     const newTempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tg-e2e-err-"));
     const { stderr, exitCode } = await runTg(
-      'plan new \"Error Plan\"',
+      'plan new "Error Plan"',
       newTempDir,
       true,
     );
@@ -243,19 +246,19 @@ describe("Task Graph CLI E2E Tests", () => {
 
   it("should detect and prevent a blocking cycle", async () => {
     const cyclePlanResult = await runTg(
-      'plan new \"Cycle Test Plan\" --json',
+      'plan new "Cycle Test Plan" --json',
       tempDir,
     );
     const cyclePlanId = JSON.parse(cyclePlanResult.stdout).plan_id;
 
     const taskA_Result = await runTg(
-      `task new \"Task A\" --plan ${cyclePlanId} --json`,
+      `task new "Task A" --plan ${cyclePlanId} --json`,
       tempDir,
     );
     const taskA_Id = JSON.parse(taskA_Result.stdout).task_id;
 
     const taskB_Result = await runTg(
-      `task new \"Task B\" --plan ${cyclePlanId} --json`,
+      `task new "Task B" --plan ${cyclePlanId} --json`,
       tempDir,
     );
     const taskB_Id = JSON.parse(taskB_Result.stdout).task_id;
@@ -276,19 +279,19 @@ describe("Task Graph CLI E2E Tests", () => {
 
   it("should split a task into multiple subtasks", async () => {
     const splitPlanResult = await runTg(
-      'plan new \"Split Test Plan\" --json',
+      'plan new "Split Test Plan" --json',
       tempDir,
     );
     const splitPlanId = JSON.parse(splitPlanResult.stdout).plan_id;
 
     const originalTaskResult = await runTg(
-      `task new \"Original Task\" --plan ${splitPlanId} --json`,
+      `task new "Original Task" --plan ${splitPlanId} --json`,
       tempDir,
     );
     const originalTaskId = JSON.parse(originalTaskResult.stdout).task_id;
 
     const { stdout, exitCode } = await runTg(
-      `split ${originalTaskId} --into \"Subtask 1|Subtask 2\" --keep-original`,
+      `split ${originalTaskId} --into "Subtask 1|Subtask 2" --keep-original`,
       tempDir,
     );
     expect(exitCode).toBe(0);
@@ -306,8 +309,8 @@ describe("Task Graph CLI E2E Tests", () => {
     const subtask2IdMatch = stdout.match(/- Subtask 2 \(ID: (.*)\)/);
     expect(subtask1IdMatch).not.toBeNull();
     expect(subtask2IdMatch).not.toBeNull();
-    const subtask1Id = subtask1IdMatch![1].trim();
-    const subtask2Id = subtask2IdMatch![1].trim();
+    const subtask1Id = subtask1IdMatch?.[1].trim();
+    const subtask2Id = subtask2IdMatch?.[1].trim();
 
     const showSubtask1Result = await runTg(`show ${subtask1Id}`, tempDir);
     expect(showSubtask1Result.stdout).toContain(`Title: Subtask 1`);

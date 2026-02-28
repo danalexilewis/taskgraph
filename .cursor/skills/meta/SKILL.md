@@ -1,6 +1,6 @@
 ---
 name: pattern-tasks
-description: Enrich task graph with cross-plan edges and notes. Use when you have multiple plans loaded and want to find file conflicts, domain clusters, architectural opportunities, and execution ordering. Run after assess-risk.
+description: Enrich task graph with cross-project edges and notes. Use when you have multiple projects loaded and want to find file conflicts, domain clusters, architectural opportunities, and execution ordering. Run after assess-risk.
 ---
 
 # Pattern-Tasks Skill
@@ -29,12 +29,12 @@ This returns domains, skills, file overlaps, and proposed edges across all plans
 
 From the summary, identify:
 
-| Pattern | What to look for | Proposed action |
-| ------- | ---------------- | --------------- |
-| **File conflicts** | Tasks from different plans touching the same files | Propose `blocks` edges (e.g. "Plan A task X blocks Plan B task Y on file F") with a short rationale. |
-| **Domain clusters** | Tasks sharing domains across plans | Propose `relates` edges between tasks that share a domain. |
+| Pattern                         | What to look for                                                                                            | Proposed action                                                                                                                |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| **File conflicts**              | Tasks from different plans touching the same files                                                          | Propose `blocks` edges (e.g. "Plan A task X blocks Plan B task Y on file F") with a short rationale.                           |
+| **Domain clusters**             | Tasks sharing domains across plans                                                                          | Propose `relates` edges between tasks that share a domain.                                                                     |
 | **Architectural opportunities** | Tasks in multiple plans that could share a common abstraction (e.g. same area of code, same kind of change) | Propose `relates` edges and/or suggest a note on one or both tasks (e.g. "Consider shared abstraction with task T in plan P"). |
-| **Ordering opportunities** | Which plans (or plan roots) should execute first to unblock others | Present ordering recommendations; optionally propose `blocks` edges to encode dependencies. |
+| **Ordering opportunities**      | Which plans (or plan roots) should execute first to unblock others                                          | Present ordering recommendations; optionally propose `blocks` edges to encode dependencies.                                    |
 
 ### 3. Present proposals to the user
 

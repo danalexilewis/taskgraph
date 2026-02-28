@@ -1,9 +1,8 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { setupIntegrationTest, teardownIntegrationTest } from "./test-utils";
-import { checkRunnable } from "../../src/domain/invariants";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { doltSql } from "../../src/db/connection";
-import { sqlEscape } from "../../src/db/escape";
 import { ErrorCode } from "../../src/domain/errors";
+import { checkRunnable } from "../../src/domain/invariants";
+import { setupIntegrationTest, teardownIntegrationTest } from "./test-utils";
 
 describe("Invariants (DB Dependent) Integration Tests", () => {
   let context: Awaited<ReturnType<typeof setupIntegrationTest>> | undefined;
