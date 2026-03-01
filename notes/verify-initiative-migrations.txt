@@ -1,0 +1,6 @@
+Verified that both applyInitiativeMigration and applyDefaultInitiativeMigration are executed:
+
+- In src/cli/init.ts, initCommand action chains include applyInitiativeMigration and applyDefaultInitiativeMigration after schema migrations.
+- In src/db/migrate.ts, ensureMigrations chains likewise include applyInitiativeMigration (line 1738) and applyDefaultInitiativeMigration (line 1745).
+
+No code changes required.
