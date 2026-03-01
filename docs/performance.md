@@ -46,6 +46,14 @@ Shows: number of plans with gate failures on the designated "run-full-suite" tas
 - Low fix rate → issues in recovery workflow or flaky fixes; may need improved debugging strategies or tester integration.
 - High fix rate → reliable investigator workflows and robust corrections.
 
+## Productivity Benchmark
+
+For custom minimal productivity benchmarking (Option C), see `.benchmark/README.md`. The `.benchmark/` directory is gitignored and contains self-contained problems for measuring agent productivity (success = run.sh exit 0, wall-clock time, and optional token usage via `tg done` flags).
+
+## Runbooks
+
+- [Benchmarking Runbook](benchmarking.md)
+
 ## Optimization Patterns
 
 ... rest of document unchanged ...
