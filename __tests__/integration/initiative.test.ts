@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import * as os from "node:os";
 import {
   runTgCli,
   setupIntegrationTest,
@@ -150,4 +151,26 @@ todos:
     expect(exitCode).toBe(0);
     expect(stdout).toMatch(/Cycle:|Sprint 1|initiatives|Active Plans/);
   }, 15000);
+});
+
+describe("tg initiative commands without init", () => {
+  it("initiative list without init errors with run tg init message", async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "no-init-"));
+    const { exitCode, stdout } = await runTgCli(
+      `initiative list`,
+      tempDir,
+    );
+    expect(exitCode).toBe(1);
+    expect(stdout).toMatch(/run tg init/i);
+  });
+
+  it("initiative show without init errors with run tg init message", async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "no-init-"));
+    const { exitCode, stdout } = await runTgCli(
+      `initiative show 00000000-0000-0000-0000-000000000000`,
+      tempDir,
+    );
+    expect(exitCode).toBe(1);
+    expect(stdout).toMatch(/run tg init/i);
+  });
 });

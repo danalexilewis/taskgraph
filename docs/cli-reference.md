@@ -533,6 +533,7 @@ Resets stale doing tasks back to todo. A task is "stale" when its most recent `s
 **Self-healing:** `tg next` automatically calls `tg recover` with the default 2-hour threshold before returning runnable tasks, so orphaned doing tasks (e.g. from an aborted agent session) are silently unstuck whenever an agent asks for work.
 
 **Options:**
+
 - `--threshold <hours>` — Inactivity threshold in hours. Default: `2`. Must be a positive number.
 - `--dry-run` — Preview stale tasks without making any changes.
 
@@ -763,7 +764,7 @@ tg dashboard [--tasks] [--projects]
 
 Quick overview: project count, task counts by status, next runnable tasks.
 
-**Dashboard and focused views:** By default, `tg status` shows the **dashboard** (Completed, Active Projects, Active & next). When a **current cycle** exists (today between a cycle's start and end date), the default view may show a **cycle banner** (e.g. current cycle name and dates). Focused views: `--tasks` (single-table tasks: Id, Title, Project, Status, Owner), `--projects` (single-table projects: Project name, Status, Todo, Doing, Blocked, Done), `--initiatives` (initiatives table when the `initiative` table exists). Use `--filter active` with `--tasks` or `--projects` to restrict to active items (tasks: todo/doing/blocked; projects: not done/abandoned). Use `--filter upcoming` with `--initiatives` for draft or future cycles. Only one of `--tasks`, `--projects`, or `--initiatives` may be used at a time. Add `--dashboard` for a live-updating TUI (2s refresh) for any of these views.
+**Dashboard and focused views:** By default, `tg status` shows the **dashboard** (Completed, Active Projects, Active & next). When a **current cycle** exists (today between a cycle's start and end date), the default view may show a **cycle banner** (e.g. current cycle name and dates). Focused views: `--tasks` (single-table tasks: Id, Title, Project, Status, Owner), `--projects` (single-table projects: Project name, Initiative, Status, Todo, Doing, Blocked, Done), `--initiatives` (initiatives table when the `initiative` table exists). Use `--filter active` with `--tasks` or `--projects` to restrict to active items (tasks: todo/doing/blocked; projects: not done/abandoned). Use `--filter upcoming` with `--initiatives` for draft or future cycles. Only one of `--tasks`, `--projects`, or `--initiatives` may be used at a time. Add `--dashboard` for a live-updating TUI (2s refresh) for any of these views.
 
 ```bash
 tg status [--plan <planId>] [--domain <domain>] [--skill <skill>] [--change-type <type>] [--tasks] [--projects] [--initiatives] [--filter active|upcoming] [--stale-threshold <hours>] [--dashboard]
@@ -777,7 +778,7 @@ tg status [--plan <planId>] [--domain <domain>] [--skill <skill>] [--change-type
 - `--change-type <type>`: Filter by change type.
 - `--all`: Include canceled tasks and abandoned plans.
 - `--tasks`: Show a single table of tasks: columns Id (hash or task_id), Title, Project, Status, Owner. Reuses `--plan`, `--domain`, `--skill`, `--change-type`, `--all`. With `--filter active`, restrict to task status in (todo, doing, blocked). One-shot or with `--dashboard` (refreshes every 2s).
-- `--projects`: Show a single table of projects: columns Project name, Status, Todo, Doing, Blocked, Done. Uses the `project` table; filters `--plan`, `--domain`, `--skill`, `--all` apply.
+- `--projects`: Show a single table of projects: columns Project name, Initiative, Status, Todo, Doing, Blocked, Done. Initiative is the initiative title (when the `initiative` table exists). Uses the `project` table; filters `--plan`, `--domain`, `--skill`, `--all` apply.
 - `--initiatives`: Show initiatives table (Initiative, Status, Cycle Start, Cycle End, Projects). Requires the `initiative` table; if it does not exist, prints a stub message and exits 0. One-shot or with `--dashboard`.
 - `--filter <filter>`: For `--projects`, use `active` to show only plans whose status is not `done` or `abandoned`. For `--tasks`, use `active` to show only tasks with status todo, doing, or blocked. For `--initiatives`, use `upcoming` to show initiatives with status `draft` or `cycle_start` &gt; today.
 - `--stale-threshold <hours>`: Hours threshold for the stale doing-task warning (default: 2). When any task has been in `doing` status for longer than this threshold, a yellow "⚠ Stale Doing Tasks" warning section appears in the dashboard. With `--json`, stale tasks are included as `stale_tasks` array.
@@ -799,7 +800,7 @@ Use `tg done <taskId> --evidence "completed previously" --force` to clear stale 
 
 - **Dashboard (default):** Two section boxes (via boxen): **Active Projects** (top) and **Active tasks and upcoming** (bottom). Each is wrapped in a rounded box; row counts are limited by terminal height. One-line completed summary (and stale count if any) at the end. Inner text uses chalk for colors.
 - **Tasks view (`--tasks`):** A single boxen-wrapped table with columns Id, Title, Project, Status, Owner. One-shot or with `--dashboard` (refreshes every 2s).
-- **Projects view (`--projects`):** A single boxen-wrapped table with columns Project name, Status, Todo, Doing, Blocked, Done. One-shot or with `--dashboard` (refreshes every 2s).
+- **Projects view (`--projects`):** A single boxen-wrapped table with columns Project name, Initiative, Status, Todo, Doing, Blocked, Done. One-shot or with `--dashboard` (refreshes every 2s).
 - **Initiatives view (`--initiatives`):** If the `initiative` table does not exist, prints a stub message (e.g. "Initiatives view requires the Initiative-Project hierarchy...") and exits 0. If it exists, a single boxen-wrapped table with columns Initiative, Status, Cycle Start, Cycle End, Projects; one-shot or with `--dashboard` (refreshes every 2s).
 - Projects: count
 - Tasks: summary line with counts **not done**, **in progress**, **blocked**, **actionable** (e.g. `Tasks: 12 not done (3 in progress, 2 blocked, 4 actionable)`)
@@ -867,6 +868,16 @@ tg cycle list [--json]
 ```
 
 **Output (human):** Table with columns Id (first 8 chars), Name, Start, End, Status (Active / Upcoming / Past based on today). **Output (JSON):** Array of full cycle rows.
+
+### Initiative commands
+
+The following commands manage initiatives in the Task Graph:
+
+- `tg initiative new <title> [--cycle <cycleId>] [--cycle-start <date>] [--cycle-end <date>] [--json]`: Creates a new initiative. Optionally link to an existing cycle or set custom start/end dates.
+- `tg initiative list [--json]`: Lists initiatives with their ID, title, status, and cycle context. Requires the `initiative` table; if the table does not exist, prints a stub message and exits 0.
+- `tg initiative show <initiativeId> [--json]`: Displays detailed information about an initiative, including its projects.
+- `tg initiative assign-project <initiativeId> <planId> [--json]`: Assigns the specified project to the initiative.
+- `tg initiative backfill --cycle <cycleId> [--dry-run]`: Generates themed initiatives for a cycle and assigns existing projects; use `--dry-run` to preview without writing.
 
 ### `tg initiative new <title>`
 
