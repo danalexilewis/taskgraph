@@ -20,5 +20,6 @@ Tasks can set a `skill` that maps to a guide here. The agent reads `docs/skills/
 | [cli-command](cli-command.md) | Commander patterns; quick reference |
 | [yaml-parsing](yaml-parsing.md) | Parse YAML frontmatter; type guards, neverthrow |
 | [rule-authoring](rule-authoring.md) | Write/update Cursor rules |
+| evolve | Post-plan pattern mining; analyses task diffs from a completed plan to identify implementation anti-patterns and route learnings to agent templates and docs/skills. |
 
 Use the slug (e.g. `taskgraph-lifecycle-execution`) as the task's `skill` in plan YAML.

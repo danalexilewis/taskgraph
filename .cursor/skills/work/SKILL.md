@@ -110,7 +110,9 @@ while true:
 
 ## Plan-merge step
 
-When a plan completes (after the run-full-suite task passes and `tg next` returns no tasks for that plan), run this **before** the Final action (commit .taskgraph/dolt). In multi-plan mode, run it for **each plan that completed in this session**, using the stored `plan_id -> worktree_path` (and plan branch) from the orchestrator map.
+When a plan completes (after the run-full-suite task passes and `tg next` returns no tasks for that plan), run this **before** the Final action (commit .taskgraph/dolt).
+
+> **Optionally run `/evolve` before plan-merge** — reads the plan branch's diffs to surface implementation anti-patterns before the branch is deleted. Invoke if the plan had reviewer FAIL events, follow-up fix tasks, or you want to capture learnings from this execution. Syntax: read `.cursor/skills/evolve/SKILL.md` and follow the workflow with the just-completed plan as input. Must run BEFORE the plan-merge step. In multi-plan mode, run it for **each plan that completed in this session**, using the stored `plan_id -> worktree_path` (and plan branch) from the orchestrator map.
 
 1. **Preferred (Worktrunk available):**
 

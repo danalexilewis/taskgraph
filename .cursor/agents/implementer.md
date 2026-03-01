@@ -114,6 +114,7 @@ You have been given task context below. Read any domain docs and skill guides li
 - Do not modify files outside the task's scope
 - Do not run tests (dedicated plan-end tasks handle this)
 - Do not suppress type errors (`as any`, `@ts-ignore`, `@ts-expect-error`)
+- Do not write raw SQL template literals for single-table INSERT or UPDATE — use `query(repoPath).insert(table, data)` / `.update(table, data, where)` from `src/db/query.ts`. Reserve `doltSql()` and `query.raw()` for complex queries (multi-join, subquery, complex WHERE) or `migrate.ts` migrations. Do not call `doltSql()` directly in `src/cli/` files; route through `query(repoPath)`.
 - Do not leave empty catch blocks
 - Do not refactor while fixing bugs (fix the bug only)
 - Do not write or edit documentation files (README, CHANGELOG, docs/) — note for orchestrator instead
@@ -132,3 +133,4 @@ If you cannot complete (blocked, unfixable gate/env issue): use the structured f
 ## Learnings
 
 - **Do not run tests.** Implementers do not run tests; tests are added and run in dedicated plan-end tasks (add-tests task(s) and run-full-suite task).
+- **[2026-03-01]** Wrote raw SQL template literals for plan_worktree INSERT (`VALUES ('${sqlEscape(planId)}',...)`). Use query(repoPath).insert(table, { col: value, ... }) for single-table inserts — it handles escaping internally. Only use sqlEscape inside query.raw() template literals for values the builder cannot express.

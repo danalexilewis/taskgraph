@@ -115,3 +115,16 @@ Spec compliance check sub-agent (PASS/FAIL). First stage of two-stage review. Se
 ## quality-reviewer
 
 Code quality check sub-agent (PASS/FAIL). Second stage of two-stage review. See `.cursor/agents/quality-reviewer.md`.
+
+---
+
+## Skills
+
+Invokable skills (read `.cursor/skills/<name>/SKILL.md` and follow the workflow):
+
+| Skill | Trigger | Purpose |
+| ----- | ------- | ------- |
+| `/work` | "work", "go", "execute", "grind" | Autonomous task execution loop |
+| `/plan` | "plan", "make a plan", "/plan" | Create a rich project plan with codebase analysis |
+| `/investigate` | "/investigate", "investigate what to do next" | High-level investigation; dispatches reviewer in research mode |
+| `/evolve` | "/evolve", "evolve the last plan", after plan completion | Post-plan pattern mining; analyses task diffs to surface implementation anti-patterns and route learnings to agent templates and docs |
