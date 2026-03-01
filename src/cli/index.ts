@@ -21,6 +21,7 @@ import { nextCommand } from "./next";
 import { noteCommand } from "./note";
 import { planCommand } from "./plan";
 import { portfolioCommand } from "./portfolio";
+import { recoverCommand } from "./recover";
 import { detectAndApplyServerPort, serverCommand } from "./server";
 import { setupCommand } from "./setup";
 import { showCommand } from "./show";
@@ -105,6 +106,7 @@ export function createProgram(): Command {
   exportCommand(program);
   gateCommand(program);
   portfolioCommand(program);
+  recoverCommand(program);
   importCommand(program);
   statusCommand(program);
   dashboardCommand(program);

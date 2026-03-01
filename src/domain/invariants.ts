@@ -156,7 +156,7 @@ export function checkValidTransition(
 ): Result<void, AppError> {
   const validTransitions: Record<TaskStatus, TaskStatus[]> = {
     todo: ["doing", "blocked", "canceled"],
-    doing: ["done", "blocked", "canceled"],
+    doing: ["done", "blocked", "canceled", "todo"], // todo = recovery path — stale/orphaned task reset
     blocked: ["todo", "canceled"], // Can only go to todo when unblocked, or canceled
     done: [], // Terminal state
     canceled: [], // Terminal state
