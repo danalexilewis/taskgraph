@@ -7,6 +7,47 @@ alwaysApply: true
 
 Lead types and their docs are listed in **docs/leads/**.
 
+## Agent role reference
+
+Quick-pick table — use this before deciding which agent to dispatch:
+
+| Agent                            | Read/Write | Dispatched when                                   | Output                                    |
+| -------------------------------- | ---------- | ------------------------------------------------- | ----------------------------------------- |
+| **implementer**                  | read-write | Normal task execution from `tg next`              | Code changes + `tg done` evidence         |
+| **reviewer** (PASS/FAIL mode)    | read-only  | After implementer completes a task                | `VERDICT: PASS` or `FAIL` with issues     |
+| **reviewer** (research mode)     | read-only  | `/investigate` skill needs architectural research | Structured findings + suggested tasks     |
+| **investigator** (hunter-killer) | read-write | `gate:full` fails at plan end                     | `STATUS` report: root cause + fix applied |
+| **debugger**                     | read-write | Single debugging task in the task graph           | `tg done` with root-cause evidence        |
+| **fixer**                        | read-write | Implementer has failed twice on same task         | `tg done` with fix evidence               |
+| **planner-analyst**              | read-only  | Before writing any plan                           | Structured analysis for orchestrator      |
+| **documenter**                   | read-write | Doc-only tasks (`agent: documenter` in plan)      | Updated docs + `tg done`                  |
+| **spec-reviewer**                | read-only  | Two-stage review: spec compliance check           | `VERDICT: PASS` or `FAIL`                 |
+| **quality-reviewer**             | read-only  | Two-stage review: code quality check              | `VERDICT: PASS` or `FAIL`                 |
+
+### Key boundaries to avoid confusion
+
+**investigator vs debugger:** Both are read-write bug hunters. Difference:
+
+- **investigator** — parallelisable, dispatched per failure cluster when `gate:full` fails, no task-graph overhead (no `tg start`/`tg done`), reports back to orchestrator
+- **debugger** — single task in the task graph (`tg start` → 4 phases → `tg done`), 3-attempt limit, escalates via `tg note`
+
+**investigator vs reviewer (research):** Opposite permissions and purpose:
+
+- **investigator** — read-write, fixes things, dispatched after failures
+- **reviewer (research)** — read-only, gathers findings only, dispatched before creating a plan
+
+**reviewer vs spec-reviewer/quality-reviewer:** Scoping:
+
+- **reviewer** — general single-stage review; use when the task is clear and you want one PASS/FAIL verdict
+- **spec-reviewer + quality-reviewer** — two-stage: spec first, quality second; use when you want explicit separation of "did it do what it was asked" vs "is the code good"
+
+**fixer vs implementer:** Escalation ladder:
+
+- **implementer** — first attempt at a task (fast model)
+- **fixer** — escalation after 2 implementer failures (inherits session model = Sonnet/Opus); amends existing changes rather than redoing
+
+---
+
 ## generalPurpose
 
 General-purpose agent for researching complex questions, searching for code, and executing multi-step tasks.
@@ -25,7 +66,9 @@ Browser automation specialist for performing UI interactions, web testing, and b
 
 ## investigator
 
-Read-only investigation specialist. Receives a tactical directive and investigates files, function chains, ASTs, stack traces, architecture, schemas, and API facades. Used by the investigate skill only (`.cursor/agents/investigator.md`). Lead doc: [docs/leads/investigator.md](../../docs/leads/investigator.md).
+**Hunter-killer debug-and-fix specialist. Read-write.** Dispatched when `gate:full` fails at plan end. Receives a failure cluster (test suite + stack traces), investigates root cause, applies a targeted fix (max 3 attempts), and verifies. One investigator per failure cluster, dispatched in parallel. Reports STATUS: FIXED | PARTIAL | ESCALATE back to orchestrator. See `.cursor/agents/investigator.md`. Lead doc: [docs/leads/investigator.md](../../docs/leads/investigator.md).
+
+**Not the research agent** — for read-only architectural investigation use the reviewer in research mode (dispatched by `/investigate` skill).
 
 ## planner-analyst
 
@@ -41,7 +84,7 @@ Documentation-only agent for tasks limited to markdown/docs (README, CHANGELOG, 
 
 ## reviewer
 
-Quality-check sub-agent that evaluates implementations against specifications (`.cursor/agents/reviewer.md`).
+**Two modes, always read-only.** (1) **PASS/FAIL mode** — quality-check sub-agent that evaluates implementations against specifications, called after an implementer completes a task. (2) **Research mode** — read-only investigation specialist used by the `/investigate` skill; receives a tactical directive and returns structured findings (files, function chains, schemas, API facades, suggested follow-up tasks). Template at `.cursor/agents/reviewer.md`.
 
 ## test-quality-auditor
 
@@ -57,16 +100,18 @@ Sub-agent that scans test coverage and highlights gaps (`.cursor/agents/test-cov
 
 ## debugger
 
-Systematic debugging sub-agent for hypothesis-driven investigation. See `.cursor/agents/debugger.md`. Lead doc: [docs/leads/debug.md](../../docs/leads/debug.md).
+Systematic debugging sub-agent for hypothesis-driven investigation of **individual task-graph tasks**. Read-write. Operates inside the task graph (`tg start` → 4 phases → `tg done`), max 3 fix attempts before escalating via `tg note`. See `.cursor/agents/debugger.md`. Lead doc: [docs/leads/debug.md](../../docs/leads/debug.md).
+
+**Not the same as investigator** — investigator is dispatched dynamically by the work skill when gate:full fails; debugger is assigned explicitly to a task in a plan.
 
 ## fixer
 
-Escalation agent; resolves tasks after implementer/reviewer failure using a stronger model. See `.cursor/agents/fixer.md`.
+Escalation agent; resolves tasks after implementer/reviewer failure using a stronger model (inherits session model). See `.cursor/agents/fixer.md`.
 
 ## spec-reviewer
 
-Spec compliance check sub-agent (PASS/FAIL). See `.cursor/agents/spec-reviewer.md`.
+Spec compliance check sub-agent (PASS/FAIL). First stage of two-stage review. See `.cursor/agents/spec-reviewer.md`.
 
 ## quality-reviewer
 
-Code quality check sub-agent (PASS/FAIL). See `.cursor/agents/quality-reviewer.md`.
+Code quality check sub-agent (PASS/FAIL). Second stage of two-stage review. See `.cursor/agents/quality-reviewer.md`.

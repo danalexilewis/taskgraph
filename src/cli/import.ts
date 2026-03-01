@@ -2,6 +2,7 @@ import type { Command } from "commander";
 import { ResultAsync } from "neverthrow";
 import { v4 as uuidv4 } from "uuid";
 import { doltCommit } from "../db/commit";
+import { sqlEscape } from "../db/escape";
 import { now, query, type SqlValue } from "../db/query";
 import { type AppError, buildError, ErrorCode } from "../domain/errors";
 import {
@@ -216,6 +217,29 @@ export function importCommand(program: Command) {
                 options.suggest !== false,
               );
               if (upsertResult.isErr()) throw upsertResult.error;
+
+              // If plan has any task in doing or done, set project to active (not draft).
+              const countResult = await q.raw<{ c: number }>(
+                `SELECT COUNT(*) AS c FROM \`task\` WHERE plan_id = '${sqlEscape(planId)}' AND \`status\` IN ('doing','done')`,
+              );
+              if (
+                countResult.isOk() &&
+                countResult.value.length > 0 &&
+                (countResult.value[0]?.c ?? 0) > 0
+              ) {
+                const updateResult = await q.update(
+                  "project",
+                  { status: "active", updated_at: currentTimestamp },
+                  { plan_id: planId, status: "draft" },
+                );
+                if (updateResult.isOk() && !cmd.parent?.opts().noCommit) {
+                  const commitResult = await doltCommit(
+                    "plan: set active (has doing/done tasks)",
+                    config.doltRepoPath,
+                  );
+                  if (commitResult.isErr()) throw commitResult.error;
+                }
+              }
 
               return {
                 filePath,

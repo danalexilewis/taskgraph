@@ -42,7 +42,7 @@ if [[ -n "$FULL" ]]; then
   bun run scripts/run-integration-global-setup.ts
   echo "=== [TEST:full] bun test __tests__ ==="
   set +e
-  bun test __tests__ --concurrent
+  bun test __tests__
   EXIT=$?
   set -e
   bun run scripts/run-integration-global-teardown.ts

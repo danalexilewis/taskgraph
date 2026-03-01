@@ -132,7 +132,11 @@ todos:
     );
     expect(exitCode).toBe(0);
     const data = JSON.parse(stdout) as {
-      immediate_blockers: Array<{ task_id: string; title: string; status: string }>;
+      immediate_blockers: Array<{
+        task_id: string;
+        title: string;
+        status: string;
+      }>;
       plan_name: string | null;
     };
     expect(Array.isArray(data.immediate_blockers)).toBe(true);

@@ -5,8 +5,11 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { execa } from "execa";
 import {
+  applyCycleMigration,
   applyDomainToDocRenameMigration,
   applyHashIdMigration,
+  applyInitiativeCycleIdMigration,
+  applyInitiativeMigration,
   applyMigrations,
   applyPlanRichFieldsMigration,
   applyTaskAgentMigration,
@@ -85,6 +88,9 @@ export default async function globalSetup(): Promise<void> {
   (await applyPlanRichFieldsMigration(doltRepoPath))._unsafeUnwrap();
   (await applyTaskSuggestedChangesMigration(doltRepoPath))._unsafeUnwrap();
   (await applyHashIdMigration(doltRepoPath))._unsafeUnwrap();
+  (await applyInitiativeMigration(doltRepoPath))._unsafeUnwrap();
+  (await applyCycleMigration(doltRepoPath))._unsafeUnwrap();
+  (await applyInitiativeCycleIdMigration(doltRepoPath))._unsafeUnwrap();
 
   // Expose paths for test runners (project-relative so all Bun workers see the same file)
   fs.mkdirSync(path.dirname(GOLDEN_TEMPLATE_PATH_FILE), { recursive: true });

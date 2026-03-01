@@ -79,7 +79,12 @@ describe("token-estimate", () => {
       doc_paths: [],
       skill_docs: [],
       immediate_blockers: [
-        { task_id: "b1", title: "Blocker 1", status: "done", evidence: longEvidence },
+        {
+          task_id: "b1",
+          title: "Blocker 1",
+          status: "done",
+          evidence: longEvidence,
+        },
         { task_id: "b2", title: "Blocker 2", status: "todo", evidence: null },
       ],
       ...overrides,
@@ -106,7 +111,10 @@ describe("token-estimate", () => {
     it("stage 2: truncates file_tree to 500 chars when still over budget", () => {
       const ctx = baseCtx({ immediate_blockers: [] });
       // Budget smaller than ctx but large enough for stage2 output
-      const stage2Size = estimateJsonTokens({ ...ctx, file_tree: longFileTree.slice(0, 501) });
+      const stage2Size = estimateJsonTokens({
+        ...ctx,
+        file_tree: longFileTree.slice(0, 501),
+      });
       const budget = stage2Size + 10;
       const out = compactContext(ctx, budget);
       expect(out.file_tree?.length).toBeLessThanOrEqual(502); // 500 + "…"

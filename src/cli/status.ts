@@ -1,6 +1,6 @@
 import chalk from "chalk";
 import type { Command } from "commander";
-import type { ResultAsync } from "neverthrow";
+import { okAsync, type ResultAsync } from "neverthrow";
 import { sqlEscape } from "../db/escape";
 import { tableExists } from "../db/migrate";
 import { query } from "../db/query";
@@ -142,6 +142,13 @@ export interface StatusData {
   plansCount: number;
   statusCounts: Record<string, number>;
   actionableCount: number;
+  /** When in default dashboard view: current cycle (today between start and end), if any. */
+  currentCycle?: {
+    name: string;
+    start_date: string;
+    end_date: string;
+    initiative_count: number;
+  } | null;
 }
 
 export function fetchStatusData(
@@ -415,29 +422,61 @@ export function fetchStatusData(
                                                   fetchStaleDoingTasks(
                                                     config.doltRepoPath,
                                                     options.staleThreshold ?? 2,
-                                                  ).map(
-                                                    (
-                                                      staleDoingTasks,
-                                                    ): StatusData => ({
-                                                      completedPlans,
-                                                      completedTasks,
-                                                      canceledTasks,
-                                                      activePlans,
-                                                      staleTasks: staleRows,
-                                                      staleDoingTasks,
-                                                      nextTasks,
-                                                      next7RunnableTasks,
-                                                      last7CompletedTasks,
-                                                      next7UpcomingPlans,
-                                                      last7CompletedPlans,
-                                                      activeWork,
-                                                      plansCount:
-                                                        plansRes[0]?.count ?? 0,
-                                                      statusCounts,
-                                                      actionableCount:
-                                                        actionableRes[0]
-                                                          ?.count ?? 0,
-                                                    }),
+                                                  ).andThen(
+                                                    (staleDoingTasks) => {
+                                                      const base: StatusData = {
+                                                        completedPlans,
+                                                        completedTasks,
+                                                        canceledTasks,
+                                                        activePlans,
+                                                        staleTasks: staleRows,
+                                                        staleDoingTasks,
+                                                        nextTasks,
+                                                        next7RunnableTasks,
+                                                        last7CompletedTasks,
+                                                        next7UpcomingPlans,
+                                                        last7CompletedPlans,
+                                                        activeWork,
+                                                        plansCount:
+                                                          plansRes[0]?.count ??
+                                                          0,
+                                                        statusCounts,
+                                                        actionableCount:
+                                                          actionableRes[0]
+                                                            ?.count ?? 0,
+                                                      };
+                                                      return tableExists(
+                                                        config.doltRepoPath,
+                                                        "cycle",
+                                                      ).andThen(
+                                                        (cycleExists) => {
+                                                          if (!cycleExists)
+                                                            return okAsync(
+                                                              base,
+                                                            );
+                                                          const currentCycleSql = `
+                                                      SELECT c.name, c.start_date, c.end_date,
+                                                             COUNT(DISTINCT i.initiative_id) AS initiative_count
+                                                      FROM ${bt("cycle")} c
+                                                      LEFT JOIN ${bt("initiative")} i ON i.cycle_id = c.cycle_id
+                                                      WHERE CURDATE() BETWEEN c.start_date AND c.end_date
+                                                      GROUP BY c.cycle_id, c.name, c.start_date, c.end_date
+                                                      LIMIT 1`;
+                                                          return q
+                                                            .raw<{
+                                                              name: string;
+                                                              start_date: string;
+                                                              end_date: string;
+                                                              initiative_count: number;
+                                                            }>(currentCycleSql)
+                                                            .map((rows) => ({
+                                                              ...base,
+                                                              currentCycle:
+                                                                rows[0] ?? null,
+                                                            }));
+                                                        },
+                                                      );
+                                                    },
                                                   ),
                                                 ),
                                             ),
@@ -616,9 +655,11 @@ export function fetchInitiativesTableData(
 
   const initiativesSql = `
     SELECT i.initiative_id, i.title, i.status, i.cycle_start, i.cycle_end,
-      0 AS project_count
+      COUNT(p.plan_id) AS project_count
     FROM ${bt("initiative")} i
+    LEFT JOIN ${bt("project")} p ON p.initiative_id = i.initiative_id
     WHERE 1=1 ${filterUpcoming}
+    GROUP BY i.initiative_id, i.title, i.status, i.cycle_start, i.cycle_end
     ORDER BY i.cycle_start ASC, i.title ASC
   `;
 
@@ -760,8 +801,9 @@ export function statusCommand(program: Command) {
           console.error("tg status --dashboard does not support --json");
           process.exit(1);
         }
-        const { runOpenTUILiveInitiatives } =
-          await import("./tui/live-opentui.js");
+        const { runOpenTUILiveInitiatives } = await import(
+          "./tui/live-opentui.js"
+        );
         try {
           await runOpenTUILiveInitiatives(config, statusOptions);
           return;
@@ -890,8 +932,9 @@ export function statusCommand(program: Command) {
         const config = configResult.value;
 
         if (viewMode === "projects") {
-          const { runOpenTUILiveProjects } =
-            await import("./tui/live-opentui.js");
+          const { runOpenTUILiveProjects } = await import(
+            "./tui/live-opentui.js"
+          );
           try {
             await runOpenTUILiveProjects(config, statusOptions);
             return;
@@ -1489,6 +1532,16 @@ function printHumanStatus(
 ): void {
   const w = getTerminalWidth();
   const dashboard = options?.dashboard === true;
+
+  if (dashboard && d.currentCycle) {
+    const c = d.currentCycle;
+    const startShort = c.start_date.slice(0, 10);
+    const endShort = c.end_date.slice(0, 10);
+    const line = chalk.cyan(
+      `◆ Cycle: ${c.name}  (${startShort} – ${endShort})  │  ${c.initiative_count} initiatives`,
+    );
+    console.log(`\n  ${line}\n`);
+  }
 
   if (!dashboard) {
     console.log(

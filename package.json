@@ -23,10 +23,10 @@
     "typecheck:all": "tsc --noEmit",
     "gate": "bash scripts/cheap-gate.sh",
     "gate:full": "bash scripts/cheap-gate.sh --full",
-    "test": "bun test __tests__/db __tests__/domain __tests__/export __tests__/plan-import",
-    "test:integration": "bun run scripts/run-integration-global-setup.ts && (bun test __tests__/integration; r=$?; bun run scripts/run-integration-global-teardown.ts; exit $r)",
-    "test:e2e": "bun test __tests__/e2e",
-    "test:all": "bun test __tests__ --concurrent",
+    "test": "npm run build && bun test __tests__/db __tests__/domain __tests__/export __tests__/plan-import",
+    "test:integration": "npm run build && bun run scripts/run-integration-global-setup.ts && (bun test __tests__/integration; r=$?; bun run scripts/run-integration-global-teardown.ts; exit $r)",
+    "test:e2e": "npm run build && bun test __tests__/e2e",
+    "test:all": "npm run build && bun test __tests__ --concurrent",
     "precommit": "node scripts/pre-commit.js",
     "publish": "npm publish"
   },
@@ -52,6 +52,7 @@
   },
   "homepage": "https://github.com/danalexilewis/taskgraph",
   "dependencies": {
+    "@clack/prompts": "^1.0.1",
     "@modelcontextprotocol/sdk": "^1.27.0",
     "@opentui/core": "^0.1.84",
     "boxen": "^8.0.1",

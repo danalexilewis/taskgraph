@@ -12,6 +12,7 @@ When you need to add a dependency, **check this list first**. These are curated,
 
 | Category      | Package     | npm name                | When to use it                                                                              |
 | ------------- | ----------- | ----------------------- | ------------------------------------------------------------------------------------------- |
+| CLI prompts   | clack       | `@clack/prompts`        | Interactive terminal prompts (text, select, multiselect); use for tg init and other interactive flows. |
 | Validation    | Zod         | `zod`                   | Schema declaration and validation; use for all input/output validation at boundaries.       |
 | Data fetching | React Query | `@tanstack/react-query` | Server state management; use for any API data fetching in React.                            |
 | Utilities     | Lodash      | `lodash-es`             | Collection/object manipulation; prefer lodash-es for tree-shaking.                          |

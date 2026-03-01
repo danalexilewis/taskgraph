@@ -289,7 +289,7 @@ tg show b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11
 
 ### `tg start <taskIds...>`
 
-Moves one or more tasks from `todo` to `doing` status, indicating active work has begun. Each task is only allowed if runnable (no unmet blockers). If a task is already `doing`, returns `TASK_ALREADY_CLAIMED` unless `--force` is used. Options (e.g. `--agent`, `--force`) apply to all IDs. Exit code is 1 if any task fails. With `--json`, outputs an array of `{ id, status? }` or `{ id, error? }`.
+Moves one or more tasks from `todo` to `doing` status, indicating active work has begun. If the task’s project is still `draft`, the project is set to `active` so status reflects work in progress. Each task is only allowed if runnable (no unmet blockers). If a task is already `doing`, returns `TASK_ALREADY_CLAIMED` unless `--force` is used. Options (e.g. `--agent`, `--force`) apply to all IDs. Exit code is 1 if any task fails. With `--json`, outputs an array of `{ id, status? }` or `{ id, error? }`.
 
 ```bash
 tg start <taskIds...> [--agent <name>] [--force] [--branch] [--worktree]
@@ -304,7 +304,7 @@ tg start <taskIds...> [--agent <name>] [--force] [--branch] [--worktree]
 - `--agent <name>`: Agent identifier for multi-agent visibility. Recorded in the started event body. Applies to all IDs.
 - `--force`: Override claim when a task is already being worked by another agent (human override). Applies to all IDs.
 - `--branch`: Create and checkout a Dolt agent branch for this task (e.g. `agent-<taskId-prefix>`). The branch name is stored in the started event; `tg done` will merge it into main (or `mainBranch` from config) and delete the branch. If merge conflicts occur, `tg done` reports an error and leaves the branch for manual resolution.
-- `--worktree`: Create a worktree for the task so the implementer runs in an isolated directory. **Worktrunk (wt)** is used when `"useWorktrunk": true` in `.taskgraph/config.json` or `wt` is on PATH (auto-detect); otherwise raw git worktrees at `.taskgraph/worktrees/<taskId>/`. The started event body stores `worktree_path`, `worktree_branch`, and (Worktrunk) `worktree_repo_root`. The orchestrator should pass the worktree path to implementers as **WORKTREE_PATH** so they run all work and `tg done` from that directory.
+- `--worktree`: Create a worktree for the task so the implementer runs in an isolated directory. **Worktrunk (wt)** is used when `"useWorktrunk": true` in `.taskgraph/config.json` or `wt` is on PATH (auto-detect); otherwise raw git worktrees at `.taskgraph/worktrees/<taskId>/`. When the task's plan has a `hash_id`, a **plan branch** (`plan-<hash_id>`) and plan-level worktree are created or reused first (recorded in the `plan_worktree` table); the per-task worktree then branches from the plan branch rather than from `main`. The started event body stores `worktree_path`, `worktree_branch`, `worktree_repo_root`, and (when a plan branch was created/reused) `plan_branch` and `plan_worktree_path`. The orchestrator should pass the worktree path to implementers as **WORKTREE_PATH** so they run all work and `tg done` from that directory.
 
 **Example:**
 
@@ -319,7 +319,7 @@ tg start id1 id2 --agent bob --worktree --json
 
 ### `tg done <taskIds...> --evidence <text>`
 
-Marks one or more tasks as `done`. Requires evidence of completion. Multiple IDs can be passed space-separated or comma-separated in one token. Options (e.g. `--evidence`, `--checks`) apply to all IDs. Exit code is 1 if any operation fails. With `--json`, outputs an array of `{ id, status? }` or `{ id, error? }`. If the task was started with `tg start --branch`, `tg done` merges the agent branch into main (or `mainBranch` from `.taskgraph/config.json`); on merge conflict an error is reported and the branch is left for manual resolution. If the task was started with `tg start --worktree`, `tg done` removes the worktree; with `--merge` it first merges the worktree branch (`tg/<taskId>`) into the base branch (main or `mainBranch` from config), then removes the worktree and deletes the branch. Without `--merge`, only the worktree directory is removed and the branch is left.
+Marks one or more tasks as `done`. Requires evidence of completion. Multiple IDs can be passed space-separated or comma-separated in one token. Options (e.g. `--evidence`, `--checks`) apply to all IDs. Exit code is 1 if any operation fails. With `--json`, outputs an array of `{ id, status? }` or `{ id, error? }`. If the task was started with `tg start --branch`, `tg done` merges the agent branch into main (or `mainBranch` from `.taskgraph/config.json`); on merge conflict an error is reported and the branch is left for manual resolution. If the task was started with `tg start --worktree`, `tg done` removes the per-task worktree; with `--merge` it first merges the worktree branch (`tg/<taskId>`) into the plan branch (`plan-<hash_id>` from `plan_worktree`) when one exists, or into `main` / `mainBranch` as a fallback, then removes the task worktree. The plan worktree is not removed by `tg done`. Without `--merge`, only the task worktree directory is removed and the branch is left.
 
 ```bash
 tg done <taskIds...> --evidence "<text>" [--merge]
@@ -334,7 +334,7 @@ tg done <taskIds...> --evidence "<text>" [--merge]
 - `--evidence <text>`: **(Required)** A description of the evidence of completion (e.g., tests run, commands output summary, git commit hash). Applies to all IDs.
 - `--checks <json>`: An optional JSON array of acceptance checks that were verified. Applies to all IDs.
 - `--force`: Force the task to `done` status even if it's not currently `doing` (discouraged). Applies to all IDs.
-- `--merge`: When the task has an associated worktree (started with `--worktree`), merge the worktree branch into the base branch before removing the worktree and deleting the branch. If omitted, only the worktree directory is removed; the branch `tg/<taskId>` remains.
+- `--merge`: When the task has an associated worktree (started with `--worktree`), merge the worktree branch into the **plan branch** (if the plan has an active `plan_worktree` entry) or into `main` (or `mainBranch` from config) as a fallback. The plan worktree itself is never removed by `tg done`; only the per-task worktree directory is cleaned up after the merge. If omitted, only the worktree directory is removed; the branch `tg/<taskId>` remains.
 
 **Example:**
 
@@ -371,7 +371,7 @@ tg worktree list
 
 ### Git worktree integration (parallel tasks)
 
-When running **parallel implementers**, use `tg start --worktree` so each task gets an isolated worktree. **Worktrunk (wt) is the standard backend** for sub-agent work: set `"useWorktrunk": true` in `.taskgraph/config.json` or ensure `wt` is on PATH (auto-detect). With Worktrunk, worktrees are wt-managed (e.g. `<repo>.tg-<hash_id>`); with raw git, worktrees live at `.taskgraph/worktrees/<taskId>/` on branch `tg/<taskId>` or `tg-<hash_id>`. The **started event body** stores `worktree_path`, `worktree_branch`, and (Worktrunk) `worktree_repo_root`. The **orchestrator** must pass the worktree path (e.g. from `tg worktree list --json`) to implementers as **WORKTREE_PATH** so they run all work and `tg done` from that directory. When the task is complete, run `tg done --evidence "..."`; add `--merge` to merge the worktree branch into the base branch before removing the worktree. **Worktrunk remove gotcha:** `wt remove <branch> -C <repoRoot>` can fail with "No branch named" when the repo path differs from the path used at create. Reliable fix: run `wt remove` with **no branch argument** and **cwd = worktree path** (the path to the worktree to remove). The CLI passes `worktreePathOverride` from `tg done` into `removeWorktree()` and uses it for worktrunk. See `.cursor/rules/subagent-dispatch.mdc` and [multi-agent.md](multi-agent.md).
+When running **parallel implementers**, use `tg start --worktree` so each task gets an isolated worktree. **Per-plan model:** when the plan has a `hash_id`, all task worktrees for that plan share a common plan branch (`plan-<hash_id>`) and branch from it rather than from `main`. Multiple tasks can run in parallel, each on its own task branch; `tg done --merge` accumulates their work on the plan branch. **Worktrunk (wt) is the standard backend** for sub-agent work: set `"useWorktrunk": true` in `.taskgraph/config.json` or ensure `wt` is on PATH (auto-detect). With Worktrunk, worktrees are wt-managed (e.g. `<repo>.tg-<hash_id>`); with raw git, worktrees live at `.taskgraph/worktrees/<taskId>/` on branch `tg/<taskId>` or `tg-<hash_id>`. The **started event body** stores `worktree_path`, `worktree_branch`, `worktree_repo_root`, and (when a plan branch was used) `plan_branch` and `plan_worktree_path`. The **orchestrator** must pass the worktree path (e.g. from `tg worktree list --json`) to implementers as **WORKTREE_PATH** so they run all work and `tg done` from that directory. When the task is complete, run `tg done --evidence "..."`; add `--merge` to merge the task worktree branch into the plan branch (or `main` as fallback). The plan worktree is not removed by `tg done`. **Worktrunk remove gotcha:** `wt remove <branch> -C <repoRoot>` can fail with "No branch named" when the repo path differs from the path used at create. Reliable fix: run `wt remove` with **no branch argument** and **cwd = worktree path** (the path to the worktree to remove). The CLI passes `worktreePathOverride` from `tg done` into `removeWorktree()` and uses it for worktrunk. See `.cursor/rules/subagent-dispatch.mdc` and [multi-agent.md](multi-agent.md).
 
 ### `tg gate create <name>`
 
@@ -679,10 +679,10 @@ tg dashboard [--tasks] [--projects]
 
 Quick overview: plans count, task counts by status, next runnable tasks.
 
-**Dashboard and focused views:** By default, `tg status` shows the **dashboard** (Completed, Active Plans, Active & next). Focused views: `--tasks` (single-table tasks: Id, Title, Plan, Status, Owner), `--projects` (single-table plans: Project, Status, Todo, Doing, Blocked, Done), `--initiatives` (initiatives table when the `initiative` table exists). Use `--filter active` with `--tasks` or `--projects` to restrict to active items (tasks: todo/doing/blocked; plans: not done/abandoned). Use `--filter upcoming` with `--initiatives` for draft or future cycles. Only one of `--tasks`, `--projects`, or `--initiatives` may be used at a time. Add `--dashboard` for a live-updating TUI (2s refresh) for any of these views.
+**Dashboard and focused views:** By default, `tg status` shows the **dashboard** (Completed, Active Plans, Active & next). When a **current cycle** exists (today between a cycle's start and end date), the default view may show a **cycle banner** (e.g. current cycle name and dates). Focused views: `--tasks` (single-table tasks: Id, Title, Plan, Status, Owner), `--projects` (single-table plans: Project, Status, Todo, Doing, Blocked, Done), `--initiatives` (initiatives table when the `initiative` table exists). Use `--filter active` with `--tasks` or `--projects` to restrict to active items (tasks: todo/doing/blocked; plans: not done/abandoned). Use `--filter upcoming` with `--initiatives` for draft or future cycles. Only one of `--tasks`, `--projects`, or `--initiatives` may be used at a time. Add `--dashboard` for a live-updating TUI (2s refresh) for any of these views.
 
 ```bash
-tg status [--plan <planId>] [--domain <domain>] [--skill <skill>] [--change-type <type>] [--tasks] [--projects] [--initiatives] [--filter active|upcoming] [--dashboard]
+tg status [--plan <planId>] [--domain <domain>] [--skill <skill>] [--change-type <type>] [--tasks] [--projects] [--initiatives] [--filter active|upcoming] [--stale-threshold <hours>] [--dashboard]
 ```
 
 **Options:**
@@ -696,8 +696,18 @@ tg status [--plan <planId>] [--domain <domain>] [--skill <skill>] [--change-type
 - `--projects`: Show a single table of projects (plans): columns Project, Status, Todo, Doing, Blocked, Done. Uses the `plan` table; filters `--plan`, `--domain`, `--skill`, `--all` apply.
 - `--initiatives`: Show initiatives table (Initiative, Status, Cycle Start, Cycle End, Projects). Requires the `initiative` table; if it does not exist, prints a stub message and exits 0. One-shot or with `--dashboard`.
 - `--filter <filter>`: For `--projects`, use `active` to show only plans whose status is not `done` or `abandoned`. For `--tasks`, use `active` to show only tasks with status todo, doing, or blocked. For `--initiatives`, use `upcoming` to show initiatives with status `draft` or `cycle_start` &gt; today.
+- `--stale-threshold <hours>`: Hours threshold for the stale doing-task warning (default: 2). When any task has been in `doing` status for longer than this threshold, a yellow "⚠ Stale Doing Tasks" warning section appears in the dashboard. With `--json`, stale tasks are included as `stale_tasks` array.
 - `--dashboard`: **(Deprecated.)** Open status dashboard (live-updating TUI; 2s refresh, q or Ctrl+C to quit). When no other view is selected, runs the full dashboard live path (OpenTUI when available, else setInterval + ANSI clear + boxen sections). With `--tasks`, `--projects`, or `--initiatives`, the table refreshes every 2s. **Deprecation:** `tg status --dashboard` is deprecated and will be removed in a future version; use `tg dashboard` instead. A warning is printed to stderr when this option is used.
 - `--json`: Output as JSON object (one-shot only; not supported with `--dashboard`).
+
+**Stale doing-task warning:** When any task has been in `doing` status for more than `--stale-threshold` hours (default 2), the dashboard renders a yellow warning section:
+```
+⚠  Stale Doing Tasks (>2h)
+┌──────────┬──────────────────────────┬────────┬─────────┐
+│ Id       │ Title                    │ Owner  │ Age     │
+└──────────┴──────────────────────────┴────────┴─────────┘
+```
+Use `tg done <taskId> --evidence "completed previously" --force` to clear stale tasks if the work is done.
 
 **Output (human):**
 
@@ -721,28 +731,97 @@ With `--json` (one-shot only; not with `--dashboard`): default view outputs an o
 - **Raw mode and exit.** On entering live mode, `process.stdin.setRawMode(true)` is set so that the "q" key can quit. On **SIGINT**, **SIGTERM**, or key **"q"**: clear the refresh interval, call `setRawMode(false)`, then `process.exit(0)`. **Ctrl+C** and **"q"** both quit live mode.
 - **`--json` with `--dashboard` unsupported.** If `--json` is passed with `--dashboard`, the CLI prints to stderr: `tg status --dashboard does not support --json`, then `process.exit(1)`.
 
-### `tg stats`
+### `tg cycle new <name>`
 
-Derives agent metrics from the event table: tasks completed per agent (from done + started events), review pass/fail counts (from note events whose message body is JSON with `"type": "review"`; see [multi-agent.md](multi-agent.md) for the review event convention), and average elapsed time per task (started → done).
+Creates a new cycle (time-bounded planning period). Requires the `cycle` table (see schema and migrations).
 
 ```bash
-tg stats [--agent <name>] [--plan <planId>] [--json]
+tg cycle new "<name>" --start-date <YYYY-MM-DD> [--end-date <YYYY-MM-DD> | --weeks <n>]
+```
+
+**Arguments:** `<name>` — display name for the cycle (e.g. "Sprint 1").
+
+**Options:** `--start-date <YYYY-MM-DD>` (required), `--end-date <YYYY-MM-DD>` or `--weeks <n>` (end = start + n weeks). At least one of `--end-date` or `--weeks` is required.
+
+**Output:** Prints cycle id and date range (e.g. "Cycle 'Sprint 1' created (id: \<cycle_id\>, \<start\> – \<end\>)").
+
+### `tg cycle list`
+
+Lists cycles (default: human table with Id, Name, Start, End, Status). Use `--json` for raw rows.
+
+```bash
+tg cycle list [--json]
+```
+
+**Output (human):** Table with columns Id (first 8 chars), Name, Start, End, Status (Active / Upcoming / Past based on today). **Output (JSON):** Array of full cycle rows.
+
+### `tg initiative new <title>`
+
+Creates a new initiative. Optionally link it to a cycle with `--cycle <cycleId>`; if provided, cycle start/end are derived from the cycle row (overridable with `--cycle-start` / `--cycle-end`).
+
+```bash
+tg initiative new "<title>" [--cycle <cycleId>] [--cycle-start <date>] [--cycle-end <date>] [--json]
+```
+
+**Options:** `--cycle <cycleId>` — set initiative.cycle_id and derive cycle_start/cycle_end from the cycle; `--cycle-start` / `--cycle-end` — override or set when not using `--cycle`; `--json` — output JSON.
+
+### `tg initiative list`
+
+Lists initiatives with optional cycle context (cycle name or inline dates). Human table: Id (first 8), Title, Status, Cycle (name or "—"); JSON: full rows.
+
+```bash
+tg initiative list [--json]
+```
+
+### `tg initiative assign-project <initiativeId> <planId>`
+
+Assigns a project (plan) to an initiative. Updates `project.initiative_id`. Use for manual reassignment.
+
+```bash
+tg initiative assign-project <initiativeId> <planId> [--json]
+```
+
+**Output:** "Project \<planId\> assigned to initiative '\<title\>' (\<initiativeId\>)". With `--json`: `{ ok: true, planId, initiativeId }`.
+
+### `tg initiative backfill --cycle <cycleId>`
+
+Creates five themed initiatives for the given cycle and assigns all existing projects to them (by plan_id mapping and keyword fallback). If any real initiatives already exist (other than the Unassigned sentinel), prints a warning and exits 0 without re-running.
+
+```bash
+tg initiative backfill --cycle <cycleId>
+```
+
+### `tg stats`
+
+Derives agent performance metrics from the event table: tasks completed per agent, average elapsed time per task (started → done), review pass/fail counts, and (when self-reported) token usage and tool-call aggregates. See [performance.md](performance.md) for interpretation guidance.
+
+```bash
+tg stats [--agent <name>] [--plan <planId>] [--timeline] [--json]
 ```
 
 **Options:**
 
 - `--agent <name>`: Restrict metrics to the given agent.
-- `--plan <planId>`: Restrict to tasks that belong to the given plan (plan ID or title).
-- `--json`: Output an array of objects: `agent`, `tasks_done`, `avg_seconds`, `review_pass`, `review_fail`.
+- `--plan <planId>` / `-p <planId>`: Show plan-level analytics — total duration, velocity (tasks/hr), and a per-task elapsed table sorted slowest-first. When self-report data is present (`tg done --tokens-in/out/tool-calls`), adds token and tool-call columns.
+- `--timeline`: Show cross-plan execution history sorted newest-first. Columns: started date, plan title, status, tasks completed/total, duration, velocity.
+- `--json`: Output structured JSON. Default view: `{ agents: [...] }`. With `--plan`: `{ planSummary: {...}, tasks: [...], token_usage?: [...] }`. With `--timeline`: `{ plans: [...] }`.
 
-**Output (human):** One line per agent: agent name, tasks_done, avg_elapsed (seconds or —), and review PASS/FAIL counts when present.
+**Token usage section (default view):** When any done event body includes `tokens_in`, a "Token Usage" table appears showing per-agent averages and totals. Omitted when no self-report data exists.
 
-**Example:**
+**Review pass/fail counts** are derived from note events whose `message` body is JSON with `"type": "review"` (see [multi-agent.md](multi-agent.md)).
+
+**Examples:**
 
 ```bash
 tg stats
-# Agent metrics (from event data):
-#   implementer-1  tasks_done: 5  avg_elapsed: 120s  review: 4 PASS, 0 FAIL
+# Agent metrics table + Token Usage table (if data present)
+
+tg stats --plan 74a61674
+# Plan summary: title, total duration, velocity, task count
+# Per-task elapsed table sorted slowest-first
+
+tg stats --timeline
+# Cross-plan history sorted newest-first
 
 tg stats --plan "My Plan" --json
 ```

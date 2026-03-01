@@ -1,6 +1,6 @@
 ---
 name: investigate
-description: Runs a quick high-level investigation from the end of the chat (summary, post-action, sub-agent/lead reports) and docs/, then creates a plan and tasks. Dispatches only the investigator sub-agent with tactical directives. Use when the user says /investigate or wants to investigate what to do next based on recent completed tasks or failures.
+description: Runs a quick high-level investigation from the end of the chat (summary, post-action, sub-agent/lead reports) and docs/, then creates a plan and tasks. Dispatches only the reviewer sub-agent in research mode (read-only). Use when the user says /investigate or wants to investigate what to do next based on recent completed tasks or failures. NOTE - the investigator sub-agent is the hunter-killer for gate:full failures; it is NOT used by this skill.
 ---
 
 # Investigate
@@ -9,20 +9,20 @@ description: Runs a quick high-level investigation from the end of the chat (sum
 
 ## Architecture
 
-- **You (orchestrator / investigator lead)**: Reads chat context, scans docs, drafts investigation plan, dispatches investigator, synthesizes findings.
+- **You (orchestrator / investigator lead)**: Reads chat context, scans docs, drafts investigation plan, dispatches reviewer in research mode, synthesizes findings.
 - **Sub-agents**:
 
-  | Agent | Purpose | Permission |
-  |-------|---------|------------|
-  | investigator | Tactical investigation (files, function chains, schemas, APIs) | read-only |
+  | Agent    | Mode     | Purpose                                                                                      | Permission |
+  | -------- | -------- | -------------------------------------------------------------------------------------------- | ---------- |
+  | reviewer | research | Tactical investigation (files, function chains, schemas, APIs) — read-only research findings | read-only  |
 
-**Constraint**: Only the investigator sub-agent is used. No other sub-agents in this skill.
+**Constraint**: Only the reviewer sub-agent (research mode) is used. No other sub-agents in this skill. The investigator sub-agent is NOT used here — investigator is the hunter-killer for gate:full failures.
 
 ## Permissions
 
 - **Lead**: read-only
 - **Propagation**: All sub-agents MUST use readonly=true.
-- **Rule**: No file edits, no destructive commands. Investigator gathers evidence only.
+- **Rule**: No file edits, no destructive commands. Reviewer gathers evidence only.
 
 ## Decision tree
 
@@ -32,7 +32,7 @@ flowchart TD
     B --> C[Step 2: Quick docs/ scan]
     C --> D[Step 3: Draft investigation areas + hypotheses]
     D --> E[Build tactical directives]
-    E --> F[Step 4: Dispatch investigator sub-agent]
+    E --> F[Step 4: Dispatch reviewer in research mode]
     F --> G[Receive structured findings]
     G --> H[Step 5: Synthesize + finalize plan and tasks]
     H --> I[Present investigation plan to user]
@@ -40,7 +40,7 @@ flowchart TD
 
 ## When to use
 
-Quick, high-level investigation that turns chat context and docs into a plan and tasks. Uses only the **investigator** sub-agent (read-only) for tactical digging.
+Quick, high-level investigation that turns chat context and docs into a plan and tasks. Uses only the **reviewer** sub-agent in **research mode** for tactical digging. (The **investigator** sub-agent is the hunter-killer for `gate:full` failures — it is not used here.)
 
 - User says `/investigate` or "investigate what we should do next."
 - User refers to a summary, post-action, or "what Cursor calls the end of the chat" to decide what to investigate.
@@ -65,14 +65,14 @@ Do a **fast** high-level pass over `docs/` (no need to read every file):
 
 - List or scan key docs (e.g. `docs/README.md`, `docs/architecture.md`, `docs/schema.md`, `docs/cli-reference.md`, `docs/skills/README.md`).
 - From titles and maybe first paragraphs, guess which **areas** might need investigation (e.g. "CLI status", "task graph DB", "subagent dispatch").
-- Combine with Step 1: produce a short list of **investigation areas** and, for each, a one-line **tactical directive** you will send to the investigator.
+- Combine with Step 1: produce a short list of **investigation areas** and, for each, a one-line **tactical directive** you will send to the reviewer.
 
 ## Step 3 — Plan and tasks (draft)
 
 From focus + hypotheses + investigation areas:
 
 - **Plan** — One short name and 1–2 sentence scope (e.g. "Investigation: Status dashboard and Dolt events — understand failures and remaining work").
-- **Tasks** — A list of **investigation tasks** (not implementation yet). Each task = one tactical directive you will give to the investigator (e.g. "Investigate status command: entrypoints, fetchStatusData and live path, and where Dolt is called for events").
+- **Tasks** — A list of **investigation tasks** (not implementation yet). Each task = one tactical directive you will give to the reviewer (e.g. "Investigate status command: entrypoints, fetchStatusData and live path, and where Dolt is called for events").
 
 Keep this draft plan and task list; you will refine it after the investigator returns.
 
@@ -107,7 +107,7 @@ Present the result as:
 
 - **Context used:** [What you took from end of chat + docs]
 - **Areas investigated:** [List + one line each]
-- **Key findings:** [Bullets from investigator]
+- **Key findings:** [Bullets from reviewer research]
 
 ### Tasks
 
@@ -122,6 +122,7 @@ Present the result as:
 ## Rules
 
 - **Context:** Start from the **end** of the chat (summary, post-action, reports); use the beginning only if needed for clarity.
-- **Sub-agent:** Call **only** the **investigator** sub-agent; no other sub-agents in this skill.
-- **Read-only:** The investigator does not edit or run destructive commands; you only synthesize and propose a plan and tasks.
+- **Sub-agent:** Call **only** the **reviewer** sub-agent (research mode); no other sub-agents in this skill.
+- **Read-only:** The reviewer in research mode does not edit or run destructive commands; you only synthesize and propose a plan and tasks.
 - **Docs pass:** Quick scan of `docs/` to guess areas; do not read every doc in full unless necessary.
+- **Not the investigator:** The investigator sub-agent is the hunter-killer (read-write, debug+fix) — it is dispatched by the **work** skill when `gate:full` fails, not here.

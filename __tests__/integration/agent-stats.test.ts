@@ -194,13 +194,16 @@ todos:
       context.tempDir,
     );
     expect(exitCode).toBe(0);
-    const out = JSON.parse(stdout) as Array<{
-      agent: string;
-      tasks_done: number;
-      avg_seconds: number | null;
-      review_pass: number;
-      review_fail: number;
-    }>;
+    const parsed = JSON.parse(stdout) as {
+      agent_metrics: Array<{
+        agent: string;
+        tasks_done: number;
+        avg_seconds: number | null;
+        review_pass: number;
+        review_fail: number;
+      }>;
+    };
+    const out = parsed.agent_metrics;
 
     const byTasksDone2 = out.find((r) => r.tasks_done === 2);
     const byTasksDone1 = out.find((r) => r.tasks_done === 1);
@@ -220,12 +223,15 @@ todos:
       context.tempDir,
     );
     expect(exitCode).toBe(0);
-    const out = JSON.parse(stdout) as Array<{
-      agent: string;
-      tasks_done: number;
-      review_pass: number;
-      review_fail: number;
-    }>;
+    const parsed = JSON.parse(stdout) as {
+      agent_metrics: Array<{
+        agent: string;
+        tasks_done: number;
+        review_pass: number;
+        review_fail: number;
+      }>;
+    };
+    const out = parsed.agent_metrics;
 
     const byReviewPass2 = out.find(
       (r) => r.review_pass === 2 && r.review_fail === 0,
@@ -263,10 +269,10 @@ todos:
       context.tempDir,
     );
     expect(exitCode).toBe(0);
-    const out = JSON.parse(stdout) as Array<{
-      agent: string;
-      tasks_done: number;
-    }>;
+    const parsed = JSON.parse(stdout) as {
+      agent_metrics: Array<{ agent: string; tasks_done: number }>;
+    };
+    const out = parsed.agent_metrics;
     expect(Array.isArray(out)).toBe(true);
     if (out.length > 0) {
       const rowWithTwo = out.find((r) => r.tasks_done === 2);

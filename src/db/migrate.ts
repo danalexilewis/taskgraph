@@ -114,6 +114,16 @@ export function tableExists(
   return doltSql(q, repoPath).map((rows) => rows.length > 0);
 }
 
+/** Returns true if the column exists on the table. */
+function columnExists(
+  repoPath: string,
+  tableName: string,
+  columnName: string,
+): ResultAsync<boolean, AppError> {
+  const q = `SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '${tableName}' AND COLUMN_NAME = '${columnName}' LIMIT 1`;
+  return doltSql(q, repoPath).map((rows) => rows.length > 0);
+}
+
 /** Returns true if a view with the given name exists. */
 function viewExists(
   repoPath: string,
@@ -438,7 +448,7 @@ export function applyDefaultInitiativeMigration(
         (rows: InitiativeRow[]) => {
           const unassignedId =
             rows.length > 0 ? rows[0].initiative_id : UNASSIGNED_INITIATIVE_ID;
-          let didInsert = rows.length === 0;
+          const didInsert = rows.length === 0;
           let didAlter = false;
 
           let chain: ResultAsync<void, AppError> = ResultAsync.fromSafePromise(
@@ -473,7 +483,8 @@ export function applyDefaultInitiativeMigration(
               ).map(() => undefined);
             })
             .andThen(() => {
-              if (!didInsert && !didAlter) return ResultAsync.fromSafePromise(Promise.resolve());
+              if (!didInsert && !didAlter)
+                return ResultAsync.fromSafePromise(Promise.resolve());
               return doltCommit(
                 "db: default Unassigned initiative; project.initiative_id NOT NULL",
                 repoPath,
@@ -581,6 +592,96 @@ export function applyPlanViewMigration(
   });
 }
 
+/** Create cycle table if missing (idempotent). */
+export function applyCycleMigration(
+  repoPath: string,
+  noCommit: boolean = false,
+): ResultAsync<void, AppError> {
+  return tableExists(repoPath, "cycle").andThen((exists) => {
+    if (exists) return ResultAsync.fromSafePromise(Promise.resolve());
+    const create =
+      "CREATE TABLE IF NOT EXISTS `cycle` (cycle_id CHAR(36) PRIMARY KEY, name VARCHAR(255) NOT NULL, start_date DATE NOT NULL, end_date DATE NOT NULL, created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL)";
+    return doltSql(create, repoPath)
+      .map(() => undefined)
+      .andThen(() => doltCommit("db: add cycle table", repoPath, noCommit))
+      .map(() => undefined);
+  });
+}
+
+/** Add initiative.cycle_id FK to cycle if missing (idempotent). Run after applyCycleMigration. */
+export function applyInitiativeCycleIdMigration(
+  repoPath: string,
+  noCommit: boolean = false,
+): ResultAsync<void, AppError> {
+  return columnExists(repoPath, "initiative", "cycle_id").andThen((exists) => {
+    if (exists) return ResultAsync.fromSafePromise(Promise.resolve());
+    return doltSql(
+      "ALTER TABLE `initiative` ADD COLUMN cycle_id CHAR(36) NULL, ADD CONSTRAINT fk_initiative_cycle FOREIGN KEY (cycle_id) REFERENCES `cycle`(cycle_id)",
+      repoPath,
+    )
+      .map(() => undefined)
+      .andThen(() =>
+        doltCommit(
+          "db: add initiative.cycle_id FK to cycle",
+          repoPath,
+          noCommit,
+        ),
+      )
+      .map(() => undefined);
+  });
+}
+
+/** Add hash_id column to plan/project and backfill (idempotent). Branch name basis: plan-<hash_id>. */
+export function applyPlanHashIdMigration(
+  repoPath: string,
+  noCommit: boolean = false,
+): ResultAsync<void, AppError> {
+  return planColumnExists(repoPath, "hash_id").andThen((hasCol) => {
+    if (hasCol) return ResultAsync.fromSafePromise(Promise.resolve());
+    return tableExists(repoPath, "project").andThen((hasProject) => {
+      const table = hasProject ? "project" : "plan";
+      return doltSql(
+        `ALTER TABLE \`${table}\` ADD COLUMN \`hash_id\` VARCHAR(20) NULL`,
+        repoPath,
+      )
+        .map(() => undefined)
+        .andThen(() =>
+          doltSql(
+            `UPDATE \`${table}\` SET hash_id = CONCAT('p-', LOWER(SUBSTR(HEX(plan_id), 1, 6))) WHERE hash_id IS NULL OR hash_id = ''`,
+            repoPath,
+          ),
+        )
+        .map(() => undefined)
+        .andThen(() =>
+          doltCommit(
+            "db: add plan hash_id column and backfill",
+            repoPath,
+            noCommit,
+          ),
+        )
+        .map(() => undefined);
+    });
+  });
+}
+
+/** Create plan_worktree table if missing (idempotent). */
+export function applyPlanWorktreeMigration(
+  repoPath: string,
+  noCommit: boolean = false,
+): ResultAsync<void, AppError> {
+  return tableExists(repoPath, "plan_worktree").andThen((exists) => {
+    if (exists) return ResultAsync.fromSafePromise(Promise.resolve());
+    const create =
+      "CREATE TABLE IF NOT EXISTS `plan_worktree` (plan_id CHAR(36) PRIMARY KEY, worktree_path VARCHAR(512) NOT NULL, worktree_branch VARCHAR(128) NOT NULL, created_at DATETIME NOT NULL)";
+    return doltSql(create, repoPath)
+      .map(() => undefined)
+      .andThen(() =>
+        doltCommit("db: add plan_worktree table", repoPath, noCommit),
+      )
+      .map(() => undefined);
+  });
+}
+
 /** Chains all idempotent migrations. Safe to run on every command. */
 export function ensureMigrations(
   repoPath: string,
@@ -598,7 +699,11 @@ export function ensureMigrations(
     .andThen(() => applyInitiativeMigration(repoPath, noCommit))
     .andThen(() => applyPlanToProjectRenameMigration(repoPath, noCommit))
     .andThen(() => applyPlanViewMigration(repoPath, noCommit))
+    .andThen(() => applyPlanHashIdMigration(repoPath, noCommit))
     .andThen(() => applyDefaultInitiativeMigration(repoPath, noCommit))
+    .andThen(() => applyCycleMigration(repoPath, noCommit))
+    .andThen(() => applyInitiativeCycleIdMigration(repoPath, noCommit))
+    .andThen(() => applyPlanWorktreeMigration(repoPath, noCommit))
     .map(() => undefined);
 }
 

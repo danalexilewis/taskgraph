@@ -19,7 +19,7 @@ function parseDate(s: string | undefined): string | null {
 
 /** Add n weeks to a YYYY-MM-DD date string; returns YYYY-MM-DD. */
 function addWeeks(dateStr: string, n: number): string {
-  const d = new Date(dateStr + "T12:00:00Z");
+  const d = new Date(`${dateStr}T12:00:00Z`);
   d.setUTCDate(d.getUTCDate() + n * 7);
   return d.toISOString().slice(0, 10);
 }
@@ -100,7 +100,12 @@ function cycleNewCommand(): Command {
                 rootOpts(cmd).noCommit,
               ),
             )
-            .map(() => ({ cycle_id, name, start_date: startDate, end_date: endDate }));
+            .map(() => ({
+              cycle_id,
+              name,
+              start_date: startDate,
+              end_date: endDate,
+            }));
         });
       });
 
@@ -139,7 +144,10 @@ interface CycleRow {
   end_date: string;
 }
 
-function cycleStatus(startDate: string, endDate: string): "Active" | "Upcoming" | "Past" {
+function cycleStatus(
+  startDate: string,
+  endDate: string,
+): "Active" | "Upcoming" | "Past" {
   const today = new Date().toISOString().slice(0, 10);
   if (today < startDate) return "Upcoming";
   if (today > endDate) return "Past";
@@ -150,7 +158,7 @@ function cycleListCommand(): Command {
   return new Command("list")
     .description("List cycles (newest first)")
     .option("--json", "Output full rows as JSON array")
-    .action(async (options, cmd) => {
+    .action(async (_options, cmd) => {
       const result = await readConfig().asyncAndThen((config: Config) =>
         tableExists(config.doltRepoPath, "cycle").andThen((exists) => {
           if (!exists) {

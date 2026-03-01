@@ -15,7 +15,33 @@ This document describes how Task-Graph supports 2–3 simultaneous agents workin
 
 ## Worktrunk — sub-agent worktree backend
 
-When delegating to implementer sub-agents, use worktree isolation so each task runs in its own directory. Task-Graph uses **Worktrunk (wt)** as the standard backend when available: set `"useWorktrunk": true` in `.taskgraph/config.json`, or ensure the `wt` CLI is on PATH (tg auto-detects). With Worktrunk, `tg start <taskId> --agent <name> --worktree` creates a wt-managed worktree; the orchestrator passes the worktree path to implementers (from `tg worktree list --json` or the started event) so they `cd` there and run all work and `tg done` from that directory. Raw git worktrees remain supported when `useWorktrunk` is false or wt is not installed. See [cli-reference.md](cli-reference.md) (worktree section) and `.cursor/rules/subagent-dispatch.mdc`.
+Task-Graph uses a **per-plan worktree model**: each plan gets a shared branch and worktree, and individual task worktrees branch from it. This allows parallel tasks in the same plan to accumulate their work on a single plan branch before it is merged to main.
+
+### Per-plan branch and worktree
+
+When `tg start <taskId> --worktree` is called and the plan has a `hash_id`, the CLI:
+
+1. **Creates or reuses a plan branch and worktree.** The branch is named `plan-<hash_id>` (e.g. `plan-p-a1b2c3`). If a row already exists in `plan_worktree` and the path is live, the existing worktree is reused. Otherwise a new worktree is created from `main` and recorded in the `plan_worktree` table.
+2. **Creates a per-task worktree branching from the plan branch** (not from main). Each task gets its own isolated directory (`tg/<taskId>` or `tg-<hash_id>` with Worktrunk).
+3. **Records `plan_branch` and `plan_worktree_path`** in the started event body alongside the task's `worktree_path` and `worktree_branch`.
+
+### Merge target is the plan branch
+
+When `tg done <taskId> --merge` is called on a task that was started with `--worktree`:
+
+- If the task's plan has an entry in `plan_worktree`, the task branch is merged into the **plan branch**, not into `main`.
+- If no plan worktree exists (e.g. the plan had no `hash_id`), the merge target falls back to `main` (or `mainBranch` from config).
+- The **plan worktree is never removed** by `tg done`. It accumulates merged task work and is cleaned up separately when the plan is complete.
+
+### Parallel task handling
+
+Multiple implementers working on tasks in the same plan each get their own task worktree (all branching from the plan branch). As each task finishes, `tg done --merge` merges the task branch into the plan branch. Because they all target the same plan branch, their changes accumulate there without touching main until the plan is ready to merge.
+
+### Backend selection
+
+Task-Graph uses **Worktrunk (wt)** as the standard backend when available: set `"useWorktrunk": true` in `.taskgraph/config.json`, or ensure the `wt` CLI is on PATH (auto-detect). Raw git worktrees are supported when `useWorktrunk` is false or `wt` is not installed. The orchestrator passes the worktree path (from `tg worktree list --json` or the started event) to implementers as **WORKTREE_PATH** so they `cd` there and run all work and `tg done` from that directory.
+
+See [cli-reference.md](cli-reference.md) (worktree section) and `.cursor/rules/subagent-dispatch.mdc`.
 
 ## CLI Additions
 

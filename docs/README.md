@@ -58,6 +58,7 @@ For more detailed information, refer to the following documentation sections:
 
 **Agent**
 
+- [Agent Field Guide](agent-field-guide.md) — **start here** — patterns, gotchas, checklists for implementation work
 - [Agent Contract](agent-contract.md)
 - [Agent strategy](agent-strategy.md)
 - [Multi-agent](multi-agent.md) — coordination, worktrees, notes

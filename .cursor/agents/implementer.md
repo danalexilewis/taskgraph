@@ -70,6 +70,8 @@ Use a unique agent name (e.g. implementer-1) when running in parallel.
 **Step 2 — Load context**
 You have been given task context below. Read any domain docs and skill guides listed — they are paths relative to the repo root (e.g. docs/backend.md, docs/skills/plan-authoring.md). Read those files before coding.
 
+**Also read `docs/agent-field-guide.md`** before any implementation work — it contains patterns and gotchas specific to this codebase (Dolt datetime coercion, JSON column read/write, table name branching, --json output shape conventions, worktree lifecycle, etc.).
+
 **Assess before following:** If the area you're working in has inconsistent patterns (mixed styles, conflicting approaches), note the inconsistency in your completion message rather than blindly following a bad pattern. Follow the *better* pattern when two conflict.
 
 **Task**
@@ -106,18 +108,18 @@ You have been given task context below. Read any domain docs and skill guides li
 - Do not modify files outside the task's scope. If the file tree or intent names specific files, prefer those.
 - Implement only; optionally run lint or typecheck if in scope. Implementers do not run tests; tests are added and run in dedicated plan-end tasks.
 - Follow the repo's code standards and patterns.
+- **Commit (worktree only):** When running in a worktree ({{WORKTREE_PATH}} passed or obtained in Step 1), after implementation work and before `tg done`, run from the worktree directory: `git add -A && git commit -m "task(<hash_id>): <brief one-line description of what was done>"`. If no worktree was used, skip this step. The contract is: always commit in a worktree so the merge in Step 4 has a commit to squash.
 
 **MUST NOT DO:**
 - Do not modify files outside the task's scope
 - Do not run tests (dedicated plan-end tasks handle this)
 - Do not suppress type errors (`as any`, `@ts-ignore`, `@ts-expect-error`)
-- Do not commit unless the task explicitly requires it
 - Do not leave empty catch blocks
 - Do not refactor while fixing bugs (fix the bug only)
 - Do not write or edit documentation files (README, CHANGELOG, docs/) — note for orchestrator instead
 
 **Step 4 — Complete the task**
-From the **worktree directory** (you must be in the worktree path when using worktree isolation), run: `pnpm tg done {{TASK_ID}} --evidence "<brief evidence: commands run, git ref, or implemented; no test run>"`. If the task was started with `--merge` intent, the orchestrator will run done with `--merge`; you only run `tg done` with evidence.
+When using a worktree, the commit in Step 3 must have happened before `tg done`, so that `tg done --merge` (when the orchestrator uses it) has a commit to squash. From the **worktree directory** (you must be in the worktree path when using worktree isolation), run: `pnpm tg done {{TASK_ID}} --evidence "<brief evidence: commands run, git ref, or implemented; no test run>"`. If the task was started with `--merge` intent, the orchestrator will run done with `--merge`; you only run `tg done` with evidence.
 
 If your environment exposes token usage, append the optional self-report flags (all optional, skip if unavailable — do not estimate):
 `--tokens-in <n> --tokens-out <n> --tool-calls <n> --attempt <n>`

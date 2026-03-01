@@ -373,7 +373,9 @@ function runFiles(
       plan_id: string;
       title: string;
       file_tree: string | null;
-    }>("SELECT plan_id, title, file_tree FROM `project` WHERE status != 'abandoned'")
+    }>(
+      "SELECT plan_id, title, file_tree FROM `project` WHERE status != 'abandoned'",
+    )
     .map((plans) => {
       const fileToPlans = new Map<
         string,

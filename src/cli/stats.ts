@@ -2,9 +2,9 @@ import type { Command } from "commander";
 import { sqlEscape } from "../db/escape";
 import { query } from "../db/query";
 import type { AppError } from "../domain/errors";
-import { readConfig, rootOpts } from "./utils";
 import { renderTable } from "./table";
 import { getTerminalWidth } from "./terminal";
+import { readConfig, rootOpts } from "./utils";
 
 interface AgentRow {
   agent: string | null;
@@ -85,7 +85,10 @@ export function statsCommand(program: Command) {
       "Derive agent metrics from event data: tasks completed, review pass/fail counts, average elapsed time per task",
     )
     .option("--agent <name>", "Filter by agent name")
-    .option("--plan <planId>", "Show per-task elapsed table and plan summary for a specific plan")
+    .option(
+      "--plan <planId>",
+      "Show per-task elapsed table and plan summary for a specific plan",
+    )
     .option("--timeline", "Show cross-plan execution history sorted by date")
     .action(async (options, cmd) => {
       const configResult = readConfig();
@@ -128,7 +131,8 @@ export function statsCommand(program: Command) {
                 status: r.status,
                 started_at: r.started_at ?? null,
                 completed_at: r.completed_at ?? null,
-                total_elapsed_s: r.total_elapsed_s != null ? Number(r.total_elapsed_s) : null,
+                total_elapsed_s:
+                  r.total_elapsed_s != null ? Number(r.total_elapsed_s) : null,
                 task_count: Number(r.task_count),
                 done_count: Number(r.done_count),
               }));
@@ -141,7 +145,7 @@ export function statsCommand(program: Command) {
             }
             const w = getTerminalWidth();
             const tableRows = rows.map((r) => [
-              r.started_at ? r.started_at.slice(0, 10) : "—",
+              r.started_at ? String(r.started_at).slice(0, 10) : "—",
               r.title,
               r.status,
               `${Number(r.done_count)}/${Number(r.task_count)}`,
@@ -149,7 +153,14 @@ export function statsCommand(program: Command) {
               formatVelocity(Number(r.done_count), r.total_elapsed_s),
             ]);
             const table = renderTable({
-              headers: ["Started", "Plan", "Status", "Tasks", "Duration", "Velocity"],
+              headers: [
+                "Started",
+                "Plan",
+                "Status",
+                "Tasks",
+                "Duration",
+                "Velocity",
+              ],
               rows: tableRows,
               maxWidth: w,
               flexColumnIndex: 1,
@@ -160,7 +171,13 @@ export function statsCommand(program: Command) {
           (e: AppError) => {
             console.error(`Error fetching timeline: ${e.message}`);
             if (json) {
-              console.log(JSON.stringify({ status: "error", code: e.code, message: e.message }));
+              console.log(
+                JSON.stringify({
+                  status: "error",
+                  code: e.code,
+                  message: e.message,
+                }),
+              );
             }
             process.exit(1);
           },
@@ -175,7 +192,9 @@ export function statsCommand(program: Command) {
           /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/i.test(
             options.plan,
           );
-        const planCondition = isUUID ? `p.plan_id = '${planRaw}'` : `p.title = '${planRaw}'`;
+        const planCondition = isUUID
+          ? `p.plan_id = '${planRaw}'`
+          : `p.title = '${planRaw}'`;
         const tableName = "project";
 
         const planSummarySql = `
@@ -239,8 +258,10 @@ export function statsCommand(program: Command) {
                     title: r.title,
                     elapsed_s: r.elapsed_s != null ? Number(r.elapsed_s) : null,
                     tokens_in: r.tokens_in != null ? Number(r.tokens_in) : null,
-                    tokens_out: r.tokens_out != null ? Number(r.tokens_out) : null,
-                    tool_calls: r.tool_calls != null ? Number(r.tool_calls) : null,
+                    tokens_out:
+                      r.tokens_out != null ? Number(r.tokens_out) : null,
+                    tool_calls:
+                      r.tool_calls != null ? Number(r.tool_calls) : null,
                   }));
                   console.log(JSON.stringify({ planSummary, tasks }, null, 2));
                   return;
@@ -252,7 +273,10 @@ export function statsCommand(program: Command) {
                 }
 
                 const duration = formatDuration(summary.total_elapsed_s);
-                const velocity = formatVelocity(Number(summary.task_count), summary.total_elapsed_s);
+                const velocity = formatVelocity(
+                  Number(summary.task_count),
+                  summary.total_elapsed_s,
+                );
                 console.log(
                   `Plan: ${summary.title} | Duration: ${duration} | Velocity: ${velocity} | Tasks: ${Number(summary.task_count)}`,
                 );
@@ -267,10 +291,21 @@ export function statsCommand(program: Command) {
                 );
                 const w = getTerminalWidth();
                 const headers = hasTokens
-                  ? ["Id", "Task", "Elapsed", "Tokens In", "Tokens Out", "Tool Calls"]
+                  ? [
+                      "Id",
+                      "Task",
+                      "Elapsed",
+                      "Tokens In",
+                      "Tokens Out",
+                      "Tool Calls",
+                    ]
                   : ["Id", "Task", "Elapsed"];
                 const tableRows = taskRows.map((r) => {
-                  const base = [r.hash_id, r.title, formatDuration(r.elapsed_s)];
+                  const base = [
+                    r.hash_id,
+                    r.title,
+                    formatDuration(r.elapsed_s),
+                  ];
                   if (hasTokens) {
                     base.push(
                       r.tokens_in != null ? String(r.tokens_in) : "N/A",
@@ -291,7 +326,13 @@ export function statsCommand(program: Command) {
               (e: AppError) => {
                 console.error(`Error fetching plan tasks: ${e.message}`);
                 if (json)
-                  console.log(JSON.stringify({ status: "error", code: e.code, message: e.message }));
+                  console.log(
+                    JSON.stringify({
+                      status: "error",
+                      code: e.code,
+                      message: e.message,
+                    }),
+                  );
                 process.exit(1);
               },
             );
@@ -299,7 +340,13 @@ export function statsCommand(program: Command) {
           (e: AppError) => {
             console.error(`Error fetching plan summary: ${e.message}`);
             if (json)
-              console.log(JSON.stringify({ status: "error", code: e.code, message: e.message }));
+              console.log(
+                JSON.stringify({
+                  status: "error",
+                  code: e.code,
+                  message: e.message,
+                }),
+              );
             process.exit(1);
           },
         );
@@ -411,8 +458,9 @@ export function statsCommand(program: Command) {
                             review_fail: 0,
                           });
                         } else {
-                          (agents.get(agent) as { avg_seconds: number | null }).avg_seconds =
-                            Number(r.avg_seconds);
+                          (
+                            agents.get(agent) as { avg_seconds: number | null }
+                          ).avg_seconds = Number(r.avg_seconds);
                         }
                       }
                       for (const r of reviewRows) {
@@ -429,38 +477,57 @@ export function statsCommand(program: Command) {
                         if (!entry) continue;
                         const v = (r.verdict ?? "").toUpperCase();
                         if (v === "PASS") entry.review_pass += Number(r.cnt);
-                        else if (v === "FAIL") entry.review_fail += Number(r.cnt);
+                        else if (v === "FAIL")
+                          entry.review_fail += Number(r.cnt);
                       }
 
-                      const out = Array.from(agents.entries()).map(([agent, m]) => ({
-                        agent,
-                        tasks_done: m.tasks_done,
-                        avg_seconds: m.avg_seconds,
-                        review_pass: m.review_pass,
-                        review_fail: m.review_fail,
-                      }));
+                      const out = Array.from(agents.entries()).map(
+                        ([agent, m]) => ({
+                          agent,
+                          tasks_done: m.tasks_done,
+                          avg_seconds: m.avg_seconds,
+                          review_pass: m.review_pass,
+                          review_fail: m.review_fail,
+                        }),
+                      );
 
                       const tokenUsage = tokenRows.map((r) => ({
                         agent: r.agent ?? "unknown",
                         tasks_done: Number(r.tasks_done),
-                        avg_tokens_in: r.avg_tokens_in != null ? Number(r.avg_tokens_in) : null,
+                        avg_tokens_in:
+                          r.avg_tokens_in != null
+                            ? Number(r.avg_tokens_in)
+                            : null,
                         avg_tokens_out:
-                          r.avg_tokens_out != null ? Number(r.avg_tokens_out) : null,
+                          r.avg_tokens_out != null
+                            ? Number(r.avg_tokens_out)
+                            : null,
                         avg_tool_calls:
-                          r.avg_tool_calls != null ? Number(r.avg_tool_calls) : null,
+                          r.avg_tool_calls != null
+                            ? Number(r.avg_tool_calls)
+                            : null,
                         total_tokens_in:
-                          r.total_tokens_in != null ? Number(r.total_tokens_in) : null,
+                          r.total_tokens_in != null
+                            ? Number(r.total_tokens_in)
+                            : null,
                         total_tokens_out:
-                          r.total_tokens_out != null ? Number(r.total_tokens_out) : null,
+                          r.total_tokens_out != null
+                            ? Number(r.total_tokens_out)
+                            : null,
                       }));
 
                       if (json) {
-                        const result: Record<string, unknown> = { agent_metrics: out };
-                        if (tokenUsage.length > 0) result.token_usage = tokenUsage;
+                        const result: Record<string, unknown> = {
+                          agent_metrics: out,
+                        };
+                        if (tokenUsage.length > 0)
+                          result.token_usage = tokenUsage;
                         console.log(JSON.stringify(result, null, 2));
                       } else {
                         if (out.length === 0) {
-                          console.log("No agent metrics (no done/started events).");
+                          console.log(
+                            "No agent metrics (no done/started events).",
+                          );
                         } else {
                           console.log("Agent metrics (from event data):");
                           for (const row of out) {
@@ -492,7 +559,11 @@ export function statsCommand(program: Command) {
                       console.error(`Error fetching token stats: ${e.message}`);
                       if (json)
                         console.log(
-                          JSON.stringify({ status: "error", code: e.code, message: e.message }),
+                          JSON.stringify({
+                            status: "error",
+                            code: e.code,
+                            message: e.message,
+                          }),
                         );
                       process.exit(1);
                     },
@@ -502,7 +573,11 @@ export function statsCommand(program: Command) {
                   console.error(`Error fetching review stats: ${e.message}`);
                   if (json)
                     console.log(
-                      JSON.stringify({ status: "error", code: e.code, message: e.message }),
+                      JSON.stringify({
+                        status: "error",
+                        code: e.code,
+                        message: e.message,
+                      }),
                     );
                   process.exit(1);
                 },
@@ -512,7 +587,11 @@ export function statsCommand(program: Command) {
               console.error(`Error fetching elapsed stats: ${e.message}`);
               if (json)
                 console.log(
-                  JSON.stringify({ status: "error", code: e.code, message: e.message }),
+                  JSON.stringify({
+                    status: "error",
+                    code: e.code,
+                    message: e.message,
+                  }),
                 );
               process.exit(1);
             },
@@ -522,7 +601,11 @@ export function statsCommand(program: Command) {
           console.error(`Error fetching tasks-done stats: ${e.message}`);
           if (json)
             console.log(
-              JSON.stringify({ status: "error", code: e.code, message: e.message }),
+              JSON.stringify({
+                status: "error",
+                code: e.code,
+                message: e.message,
+              }),
             );
           process.exit(1);
         },

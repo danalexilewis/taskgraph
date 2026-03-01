@@ -311,17 +311,18 @@ export function removeWorktree(
 }
 
 /**
- * Merge a worktree branch into the base branch (e.g. main) in the git repo.
- * - Worktrunk: `wt merge <mainBranch> -C <worktreePath>` does squash + rebase + merge + worktree removal + branch deletion in one step. Caller must NOT call removeWorktree afterward.
- * - Git: `git checkout main && git merge <branch>`. Caller must call removeWorktree separately.
+ * Merge a worktree branch into a target branch (default main) in the git repo.
+ * - Worktrunk: `wt merge <targetBranch> -C <worktreePath> --no-verify -y` does squash + rebase + merge + worktree removal + branch deletion in one step. Caller must NOT call removeWorktree afterward.
+ * - Git: `git checkout <targetBranch> && git merge <branch>`. Caller must call removeWorktree separately.
  *
+ * @param targetBranch - Branch to merge into. Defaults to "main".
  * @param worktreePath - Required when backend is worktrunk. Path to the worktree directory (for -C).
  * @param backendOverride - When provided, use this backend instead of resolving from config.
  */
 export function mergeWorktreeBranchIntoMain(
   repoPath: string,
   branchName: string,
-  mainBranch: string = "main",
+  targetBranch: string = "main",
   worktreePath?: string,
   backendOverride?: "worktrunk" | "git",
 ): ResultAsync<void, AppError> {
@@ -340,23 +341,23 @@ export function mergeWorktreeBranchIntoMain(
     return ResultAsync.fromPromise(
       execa(
         "wt",
-        ["merge", mainBranch, "-C", resolvedWorktree, "--no-verify", "-y"],
+        ["merge", targetBranch, "-C", resolvedWorktree, "--no-verify", "-y"],
         { cwd: resolvedRepo },
       ),
       (e) =>
         buildError(
           ErrorCode.UNKNOWN_ERROR,
-          `Worktrunk merge ${branchName} into ${mainBranch} failed${execaErrDetail(e)}`,
+          `Worktrunk merge ${branchName} into ${targetBranch} failed${execaErrDetail(e)}`,
           e,
         ),
     ).map(() => undefined);
   }
   return ResultAsync.fromPromise(
-    execa("git", ["checkout", mainBranch], { cwd: repoPath }),
+    execa("git", ["checkout", targetBranch], { cwd: repoPath }),
     (e) =>
       buildError(
         ErrorCode.UNKNOWN_ERROR,
-        `Git checkout ${mainBranch} failed`,
+        `Git checkout ${targetBranch} failed`,
         e,
       ),
   )
@@ -372,6 +373,114 @@ export function mergeWorktreeBranchIntoMain(
       ),
     )
     .map(() => undefined);
+}
+
+const PLAN_BRANCH_PREFIX = "plan-";
+
+/**
+ * Creates branch `plan-<planHashId>` and a worktree for it from baseBranch (default main).
+ * If the branch/worktree already exists, returns the existing worktree path.
+ *
+ * - Worktrunk: `wt switch <baseBranch> -C <repo>` then `wt switch --create plan-<planHashId> -C <repo>`, then resolve path via `wt list`.
+ * - Git: `git worktree add -b plan-<planHashId> <path> <baseBranch>` at .taskgraph/worktrees/plan-<planHashId>.
+ *
+ * @param planHashId - Plan hash id (e.g. short hash) for branch name plan-<planHashId>.
+ * @param repoPath - Git repo root. Defaults to process.cwd().
+ * @param baseBranch - Branch to create from. Defaults to "main".
+ * @returns The worktree path (existing or newly created).
+ */
+export function createPlanBranchAndWorktree(
+  planHashId: string,
+  repoPath: string = process.cwd(),
+  baseBranch: string = "main",
+): ResultAsync<string, AppError> {
+  const branchName = `${PLAN_BRANCH_PREFIX}${planHashId}`;
+  let backend: "worktrunk" | "git";
+  try {
+    backend = resolveBackendFromConfig(repoPath);
+  } catch (e) {
+    return errAsync(
+      buildError(
+        ErrorCode.UNKNOWN_ERROR,
+        "Worktrunk requested but not available",
+        e,
+      ),
+    );
+  }
+
+  return listWorktrees(repoPath, backend).andThen((entries) => {
+    const existing = entries.find((e) => e.branch === branchName);
+    if (existing?.path) {
+      return okAsync(existing.path);
+    }
+
+    const resolvedRepo = fs.realpathSync(path.resolve(repoPath));
+
+    if (backend === "worktrunk") {
+      return ResultAsync.fromPromise(
+        execa("wt", ["switch", baseBranch, "-C", resolvedRepo], {
+          cwd: resolvedRepo,
+        }),
+        (e) =>
+          buildError(
+            ErrorCode.UNKNOWN_ERROR,
+            `Worktrunk switch to ${baseBranch} failed`,
+            e,
+          ),
+      )
+        .andThen(() =>
+          ResultAsync.fromPromise(
+            execa(
+              "wt",
+              [
+                "switch",
+                "--create",
+                branchName,
+                "--no-cd",
+                "--no-verify",
+                "-y",
+                "-C",
+                resolvedRepo,
+              ],
+              { cwd: resolvedRepo },
+            ),
+            (e) =>
+              buildError(
+                ErrorCode.UNKNOWN_ERROR,
+                `Worktrunk worktree create failed for ${branchName}`,
+                e,
+              ),
+          ),
+        )
+        .andThen(() =>
+          listWorktrees(repoPath, backend).andThen((list) => {
+            const entry = list.find((e) => e.branch === branchName);
+            if (!entry?.path) {
+              return errAsync(
+                buildError(
+                  ErrorCode.UNKNOWN_ERROR,
+                  `Could not find worktree path for branch ${branchName} after creation`,
+                ),
+              );
+            }
+            return okAsync(entry.path);
+          }),
+        );
+    }
+
+    const wtPath = path.join(resolvedRepo, WORKTREES_DIR, branchName);
+    return ResultAsync.fromPromise(
+      execa("git", ["worktree", "add", "-b", branchName, wtPath, baseBranch], {
+        cwd: resolvedRepo,
+      }),
+      (e) =>
+        buildError(
+          ErrorCode.UNKNOWN_ERROR,
+          `Git worktree create failed for ${branchName}`,
+          e,
+        ),
+    ).map(() => wtPath);
+  });
 }
 
 export interface WorktreeEntry {

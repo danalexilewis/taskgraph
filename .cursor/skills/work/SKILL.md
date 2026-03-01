@@ -85,17 +85,19 @@ If no plan is indicated by context or the user, skip import and use multi-plan m
 
 ## Loop
 
+**Orchestrator state:** Maintain a map `plan_id -> { worktree_path, plan_branch }` for every plan that uses worktrees. Populate it on the first `tg start --worktree` per plan; use it for `{{PLAN_BRANCH}}` and for the plan-merge step when the plan completes.
+
 ```
 while true:
   1. tasks = tg next [--plan <planId|planName>] --json --limit 20
-  2. if tasks is empty → plan complete, report summary, stop
+  2. if tasks is empty → for each plan that completed this session, run **Plan-merge step** (below); then report summary, then run **Final action — commit .taskgraph/dolt**; stop
   3. batch = all non-conflicting tasks from tasks (no file overlap); do not cap size — Cursor decides concurrency
   4. TodoWrite with the task list (from step 1) before dispatching — this is the orchestration panel progress report.
   5. Emit all Task/mcp_task calls for this batch in the same turn (batch-in-one-turn).
   6. for each task in batch:
        a. context = tg context <taskId> --json
-       b. (Worktrunk) Run tg start <taskId> --agent <name> --worktree from repo root; get worktree path from tg worktree list --json (or started event). Inject as {{WORKTREE_PATH}} in implementer prompt.
-       c. build implementer prompt from .cursor/agents/implementer.md + context + {{WORKTREE_PATH}}
+       b. (Worktrunk) Run tg start <taskId> --agent <name> --worktree from repo root. Get worktree path from tg worktree list --json (or started event). On the first tg start --worktree for a plan, capture the plan branch from the started event or from tg worktree list --json and store it in the plan_id map. Inject {{WORKTREE_PATH}} and {{PLAN_BRANCH}} in the implementer prompt (so the implementer has plan branch context even though each task has its own worktree).
+       c. build implementer prompt from .cursor/agents/implementer.md + context + {{WORKTREE_PATH}} + {{PLAN_BRANCH}}
        d. dispatch sub-agent (Task tool or mcp_task, model=fast)
   7. wait for all sub-agents to complete
   8. for each completed sub-agent:
@@ -105,6 +107,26 @@ while true:
        d. if FAIL again → apply **escalation ladder** (see subagent-dispatch.mdc “Escalation decision tree”): consider **fixer agent** (stronger model), **direct execution** (orchestrator does the task), or **escalate to human**; see Escalation below.
   9. loop back to step 1
 ```
+
+## Plan-merge step
+
+When a plan completes (after the run-full-suite task passes and `tg next` returns no tasks for that plan), run this **before** the Final action (commit .taskgraph/dolt). In multi-plan mode, run it for **each plan that completed in this session**, using the stored `plan_id -> worktree_path` (and plan branch) from the orchestrator map.
+
+1. **Preferred (Worktrunk available):**
+
+   ```bash
+   wt merge main -C <plan-worktree-path> --no-verify -y
+   ```
+
+   This squash-merges the plan branch into main from the plan worktree.
+
+2. **Fallback (wt not on PATH):**
+   ```bash
+   git checkout main && git merge --squash <plan-branch> && git commit -m "plan: <plan-name>"
+   ```
+   Run from repo root; use the plan branch name from the orchestrator map and the plan's display name for the commit message.
+
+Order: run plan-merge for all completed plans first, then **Final action — commit .taskgraph/dolt** (so the dolt commit runs after plan-merge, not before).
 
 ## Sub-Agent Timeout
 
@@ -155,12 +177,84 @@ At the end of the loop (plan complete or all tasks done), emit a full summary:
   Duration: ~4 min
 ```
 
+## Final action — commit task graph state
+
+After the full summary and **after** the **Plan-merge step** has run for all completed plans, commit the Dolt task graph state so the DB is tracked in git alongside the code changes it describes. This runs **once per work session**, after all tasks are done, plan-merge has been run, and the full test suite has passed (or was skipped).
+
+**Steps:**
+
+1. **Collect context** for the commit message:
+
+   ```bash
+   # List all tasks completed in this work session (from plans that just finished)
+   pnpm tg status --tasks --json 2>/dev/null | node -e "
+     const d = JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));
+     const done = (d.tasks||[]).filter(t=>t.status==='done');
+     console.log(done.map(t=>'- '+t.title+' ('+t.task_id+')').join('\n'));
+   " 2>/dev/null || echo "(task list unavailable)"
+
+   # If gh is available, collect merged PR URLs for this session's branches
+   gh pr list --state merged --limit 10 --json url,title 2>/dev/null || true
+   ```
+
+2. **Stage and commit:**
+
+   ```bash
+   git add .taskgraph/dolt
+   git commit -m "$(cat <<'COMMITMSG'
+   chore(taskgraph): persist task graph state after <plan-name>
+
+   Completed <N> tasks in plan "<plan-name>":
+   <paste bullet list from step 1>
+
+   <If GitHub PRs exist, add a "Merged PRs:" section:>
+   Merged PRs:
+   - <PR title>: <URL>
+
+   COMMITMSG
+   )"
+   ```
+
+   Substitute real values: replace `<plan-name>` with the plan title, `<N>` with count of tasks done, and the bullet list with the output from step 1. If `gh pr list` returned URLs, include them under "Merged PRs:". If no PRs exist (no GitHub PR workflow), omit that section.
+
+3. **Skip if nothing to commit:**
+
+   ```bash
+   git diff --cached --quiet .taskgraph/dolt && echo "[work] No dolt changes to commit." || git commit ...
+   ```
+
+   Use `git diff --staged .taskgraph/dolt` first; only run the commit if there are staged changes.
+
+**Important:** Do NOT include other modified files in this commit — only `.taskgraph/dolt`. Code changes should have been committed separately (by implementers or as part of the plan's merge step).
+
 ## Multi-Plan Mode
 
-If no plan was imported or scoped in **Before the loop**, work across all active plans. Use `tg next --json --limit 20` (no plan filter) and process all non-conflicting tasks; Cursor decides concurrency.
+If no plan was imported or scoped in **Before the loop**, work across all active plans. Use `tg next --json --limit 20` (no plan filter) and process all non-conflicting tasks; Cursor decides concurrency. The orchestrator maintains the map `plan_id -> { worktree_path, plan_branch }` for **all** active plans that use worktrees. When the loop exits (tasks empty), run the **Plan-merge step** for each plan that completed in this session, then the **Final action — commit .taskgraph/dolt**.
 
-## Per-batch gate vs full test suite
+## Gate strategy — cheap gate per batch, gate:full once at plan end
 
-- **Per-batch gate (optional/lightweight):** If `scripts/cheap-gate.sh` exists, you may run it after each batch to catch regressions early (`bash scripts/cheap-gate.sh`). This is optional or lightweight; the orchestrator does not run the full test suite after every batch.
-- **Full test suite:** The full test suite is run only as the **dedicated final plan task** (the run-full-suite task), not by the orchestrator after every batch.
-- **When the final run-full-suite task fails:** Follow **Follow-up from notes/evidence** in `.cursor/rules/subagent-dispatch.mdc`: the implementer marks the task done with evidence (e.g. `gate:full failed: <reason>`) and adds a `tg note`; the orchestrator evaluates and creates fix tasks or escalates (lead-informed protocol).
+**Never run `gate:full` after each batch.** The full integration suite is expensive and only meaningful as final QA across the whole plan's changes.
+
+| When                              | Command                      | Who runs it                                                       |
+| --------------------------------- | ---------------------------- | ----------------------------------------------------------------- |
+| After each batch (optional, fast) | `bash scripts/cheap-gate.sh` | Orchestrator (optional lint+typecheck+affected tests only)        |
+| At plan end (mandatory, once)     | `pnpm gate:full`             | Dedicated `run-full-suite` task — the **last** task in every plan |
+
+The `run-full-suite` task is the gate before the plan is marked complete. **It is not optional.** All feature and test tasks must block on it; it must be the last task in the plan's dependency graph.
+
+## When gate:full fails — hunter-killer dispatch
+
+When the `run-full-suite` task runs `pnpm gate:full` and it fails:
+
+1. **Mark the task done** with failure evidence: `tg done <taskId> --evidence "gate:full failed: <failure summary>"`. Add a `tg note` with the raw failing test output.
+2. **Cluster the failures** — group by test suite or area (e.g. "worktree tests", "dolt-branch tests", "status tests").
+3. **Dispatch one investigator per cluster** — in parallel, one `Task` call per cluster. Use the hunter-killer prompt from `.cursor/agents/investigator.md`:
+   - `{{FAILURE_CLUSTER}}` = the specific test names / suite
+   - `{{STACK_TRACES}}` = relevant error output
+   - `{{PLAN_CONTEXT}}` = what this plan implemented (one line)
+   - `{{CHANGED_FILES}}` = key files changed (from `git diff HEAD~N --name-only` or implementer evidence)
+4. **Collect investigator reports.** Each reports `STATUS: FIXED | PARTIAL | ESCALATE`.
+5. **Re-run gate:full** after all investigators complete. If it passes → proceed to plan completion (dolt commit etc.).
+6. **If gate:full still fails** after investigator fixes:
+   - For `ESCALATE` reports: create fix tasks with `tg task new` and re-enter the work loop.
+   - For persistent failures across two rounds: stop and present to the human with a summary.

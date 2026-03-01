@@ -9,7 +9,7 @@ This document is the single source of truth for terminology used in Task Graph: 
 | Term        | Definition                                                                                                                                           | Where it lives                                                        | CLI / API                                              |
 | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------ |
 | **Plan**    | A pre-execution strategic document: analysis, risks, dependency graph, and task breakdown. Written before work is tracked in the task graph.         | Markdown files in `plans/` (e.g. `plans/yy-mm-dd_feature_name.md`).   | N/A (file-based).                                      |
-| **Project** | The task-graph entity created when a plan is imported. Holds the same identity (title, intent, tasks, status) and is the unit of execution tracking. | Dolt table `project` (view `plan` exists for backward compatibility). | `tg project list`, `tg project new`, `--project <id>`. |
+| **Project** | The task-graph entity created when a plan is imported. Holds the same identity (title, intent, tasks, status) and is the unit of execution tracking. Project status is **active** (not draft) when it has any task in `doing` or `done`; the CLI sets this automatically on first `tg start` or on import when tasks are already doing/done. | Dolt table `project` (view `plan` exists for backward compatibility). | `tg project list`, `tg project new`, `--project <id>`. |
 
 **Rule of thumb:** If it’s in a markdown file in `plans/`, it’s a **plan**. Once it’s in the task graph (after `tg import`), it’s a **project**. Use “project” in CLI commands, flags, and code when referring to the entity in the graph.
 
@@ -37,7 +37,8 @@ This document is the single source of truth for terminology used in Task Graph: 
 | **Task graph**  | The persisted store of projects, tasks, edges, and events. Backed by Dolt.                                                  |
 | **Edge**        | A dependency or relationship between two tasks (e.g. “blocks”, “relates”).                                                  |
 | **Event**       | An immutable record of something that happened (started, done, note, etc.). Stored in the `event` table with a body (JSON). |
-| **Initiative**  | (Optional) A grouping of projects. See schema and roadmap for current support.                                              |
+| **Cycle**       | A time-bounded planning period (e.g. 2 weeks) bounding one or more Initiatives. Created with `tg cycle new`.                 |
+| **Initiative**  | A strategic goal/theme bounded by a Cycle, grouping one or more Projects. See schema and `tg initiative` for current support. |
 | **Soft-delete** | Canceling or abandoning instead of deleting. Use `tg cancel <projectId                                                      | taskId> --reason "..."`; never run DELETE/DROP/TRUNCATE on the task graph. See [no-hard-deletes.mdc](../.cursor/rules/no-hard-deletes.mdc). |
 
 ---

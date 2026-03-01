@@ -44,6 +44,8 @@ pnpm tg import plans/<file> --plan "<Plan Name>" --format cursor
 
 Task execution uses sub-agents. Follow `.cursor/rules/subagent-dispatch.mdc` Pattern 1 (parallel) or Pattern 2 (sequential). The orchestrator coordinates; sub-agents do the work.
 
+**Project status:** A project is **active** (not draft) when it has any task in `doing` or `done`. This is set automatically when the first task is started (`tg start`) or when a plan is imported with tasks already in doing/done. No separate "project start" step is required before dispatching the first wave.
+
 **Task orchestration UI**: Before dispatching sub-agents for tg tasks, call TodoWrite with the task list from `tg next` and update statuses as tasks complete. When dispatching a batch, emit N Task (or mcp_task) calls in the same turn. See subagent-dispatch.mdc for the full TodoWrite and batch-in-one-turn protocol.
 
 1. `pnpm tg next --plan "<Plan>" --json --limit 20` — get runnable tasks; batch all non-conflicting (Cursor decides concurrency)

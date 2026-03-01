@@ -140,10 +140,16 @@ export function getStartedEventWorktree(
       typeof parsed?.worktree_path === "string" &&
       typeof parsed?.worktree_branch === "string"
     ) {
+      // Dolt sometimes double-encodes JSON string values; unwrap if needed
+      const unwrap = (v: string): string =>
+        v.startsWith('"') ? (JSON.parse(v) as string) : v;
       return {
-        worktree_path: parsed.worktree_path,
-        worktree_branch: parsed.worktree_branch,
-        worktree_repo_root: parsed.worktree_repo_root,
+        worktree_path: unwrap(parsed.worktree_path),
+        worktree_branch: unwrap(parsed.worktree_branch),
+        worktree_repo_root:
+          parsed.worktree_repo_root != null
+            ? unwrap(parsed.worktree_repo_root)
+            : undefined,
       };
     }
     return null;
