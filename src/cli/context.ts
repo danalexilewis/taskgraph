@@ -102,9 +102,11 @@ function getOneContext(
           const skill_docs = skills.map((s) => `docs/skills/${s}.md`);
 
           return q
-            .raw<{ task_id: string; title: string; status: string }>(
-              `SELECT e.from_task_id AS task_id, t.title, t.status FROM \`edge\` e JOIN \`task\` t ON e.from_task_id = t.task_id WHERE e.to_task_id = '${sqlEscape(resolved)}' AND e.type = 'blocks'`,
-            )
+            .raw<{
+              task_id: string;
+              title: string;
+              status: string;
+            }>(`SELECT e.from_task_id AS task_id, t.title, t.status FROM \`edge\` e JOIN \`task\` t ON e.from_task_id = t.task_id WHERE e.to_task_id = '${sqlEscape(resolved)}' AND e.type = 'blocks'`)
             .andThen((blockerRows) => {
               const doneBlockerIds = blockerRows
                 .filter((b) => b.status === "done")

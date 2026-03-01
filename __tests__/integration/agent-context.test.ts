@@ -4,15 +4,18 @@
  * Run from repo root so scripts/ and src/ resolve.
  */
 
+import { Database } from "bun:sqlite";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { Database } from "bun:sqlite";
 
 const PROJECT_ROOT = path.resolve(import.meta.dir, "../..");
-const COLLECT_SCRIPT = path.join(PROJECT_ROOT, "scripts/collect-agent-events.ts");
+const COLLECT_SCRIPT = path.join(
+  PROJECT_ROOT,
+  "scripts/collect-agent-events.ts",
+);
 const QUERY_SCRIPT = path.join(PROJECT_ROOT, "scripts/query-agent-events.ts");
 
 const POLL_INTERVAL_MS = 100;
@@ -63,7 +66,9 @@ function countRows(dbPath: string): number {
   }
 }
 
-function getEvents(dbPath: string): Array<{ kind: string; agent: string; task_id: string | null }> {
+function getEvents(
+  dbPath: string,
+): Array<{ kind: string; agent: string; task_id: string | null }> {
   const db = new Database(dbPath, { readonly: true });
   try {
     const rows = db
@@ -121,9 +126,13 @@ describe.serial("Agent context collector and query integration", () => {
     fs.writeFileSync(pidFilePath, String(pid), "utf8");
 
     let stdoutAccum = "";
-    (child.stdout as NodeJS.ReadableStream).on("data", (chunk: Buffer | string) => {
-      stdoutAccum += typeof chunk === "string" ? chunk : chunk.toString("utf8");
-    });
+    (child.stdout as NodeJS.ReadableStream).on(
+      "data",
+      (chunk: Buffer | string) => {
+        stdoutAccum +=
+          typeof chunk === "string" ? chunk : chunk.toString("utf8");
+      },
+    );
     await boundedPoll(
       () => Promise.resolve(stdoutAccum),
       (out) => out.includes(COLLECTOR_STARTED_MARKER),
@@ -133,7 +142,10 @@ describe.serial("Agent context collector and query integration", () => {
   afterAll(async () => {
     if (pidFilePath && fs.existsSync(pidFilePath)) {
       try {
-        const pid = Number.parseInt(fs.readFileSync(pidFilePath, "utf8").trim(), 10);
+        const pid = Number.parseInt(
+          fs.readFileSync(pidFilePath, "utf8").trim(),
+          10,
+        );
         if (Number.isFinite(pid)) {
           try {
             process.kill(-pid, "SIGTERM");
@@ -180,7 +192,9 @@ describe.serial("Agent context collector and query integration", () => {
 
     const events = getEvents(dbPath);
     expect(events.length).toBeGreaterThanOrEqual(1);
-    const inserted = events.find((e) => e.kind === "tg_start" && e.agent === "implementer-a");
+    const inserted = events.find(
+      (e) => e.kind === "tg_start" && e.agent === "implementer-a",
+    );
     expect(inserted).toBeDefined();
     expect(inserted?.task_id).toBe("task-111");
   }, 10_000);
@@ -205,7 +219,10 @@ describe.serial("Agent context collector and query integration", () => {
         "utf8",
       );
     }
-    await boundedPoll(() => countRows(dbPath), (count) => count >= base + 3);
+    await boundedPoll(
+      () => countRows(dbPath),
+      (count) => count >= base + 3,
+    );
     for (let i = 3; i < 6; i++) {
       fs.appendFileSync(
         terminalFile,
@@ -213,7 +230,10 @@ describe.serial("Agent context collector and query integration", () => {
         "utf8",
       );
     }
-    await boundedPoll(() => countRows(dbPath), (count) => count >= base + 6);
+    await boundedPoll(
+      () => countRows(dbPath),
+      (count) => count >= base + 6,
+    );
     expect(countRows(dbPath)).toBeGreaterThanOrEqual(base + 6);
   }, 15_000);
 
@@ -256,12 +276,19 @@ describe.serial("Agent context collector and query integration", () => {
         "utf8",
       );
     }
-    await boundedPoll(() => countRows(dbPath), (count) => count >= 5);
+    await boundedPoll(
+      () => countRows(dbPath),
+      (count) => count >= 5,
+    );
 
     const { execa } = await import("execa");
-    const result = await execa("bun", [QUERY_SCRIPT, "--db", dbPath, "--since", "3000"], {
-      cwd: PROJECT_ROOT,
-    });
+    const result = await execa(
+      "bun",
+      [QUERY_SCRIPT, "--db", dbPath, "--since", "3000"],
+      {
+        cwd: PROJECT_ROOT,
+      },
+    );
     expect(result.exitCode).toBe(0);
     const out = JSON.parse(result.stdout) as {
       agent_events?: Array<{ ts?: number; timestamp?: number }>;

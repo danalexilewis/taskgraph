@@ -795,8 +795,9 @@ export function statusCommand(program: Command) {
           console.error("tg status --dashboard does not support --json");
           process.exit(1);
         }
-        const { runOpenTUILiveInitiatives } =
-          await import("./tui/live-opentui.js");
+        const { runOpenTUILiveInitiatives } = await import(
+          "./tui/live-opentui.js"
+        );
         try {
           await runOpenTUILiveInitiatives(config, statusOptions);
           return;
@@ -933,8 +934,9 @@ export function statusCommand(program: Command) {
         const config = configResult.value;
 
         if (viewMode === "projects") {
-          const { runOpenTUILiveProjects } =
-            await import("./tui/live-opentui.js");
+          const { runOpenTUILiveProjects } = await import(
+            "./tui/live-opentui.js"
+          );
           try {
             await runOpenTUILiveProjects(config, statusOptions);
             return;

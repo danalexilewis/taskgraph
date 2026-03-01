@@ -80,8 +80,7 @@ export function cancelOne(
           where: { title: id },
         });
         if (byTitle.isErr()) throw byTitle.error;
-        if (byTitle.value.length > 0)
-          return tryCancelProject(byTitle.value[0]);
+        if (byTitle.value.length > 0) return tryCancelProject(byTitle.value[0]);
 
         if (typeHint === "project") {
           throw buildError(

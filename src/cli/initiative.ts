@@ -482,7 +482,10 @@ function initiativeShowCommand(): Command {
           }
           const i = data.initiative;
           const cycleLabel =
-            i.cycle_name ?? (i.cycle_start && i.cycle_end ? `${i.cycle_start} – ${i.cycle_end}` : "—");
+            i.cycle_name ??
+            (i.cycle_start && i.cycle_end
+              ? `${i.cycle_start} – ${i.cycle_end}`
+              : "—");
           console.log(`Initiative: ${i.title}`);
           console.log(`  ID: ${i.initiative_id}`);
           console.log(`  Status: ${i.status}`);

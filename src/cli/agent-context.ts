@@ -9,8 +9,8 @@ import type { Command } from "commander";
 import { execa } from "execa";
 import { errAsync, okAsync, ResultAsync } from "neverthrow";
 import { type AppError, buildError, ErrorCode } from "../domain/errors";
-import { type Config, readConfig, rootOpts } from "./utils";
 import { renderTable } from "./table";
+import { type Config, readConfig, rootOpts } from "./utils";
 
 const DEFAULT_AGENT_CONTEXT_DB = ".taskgraph/agent_context.db";
 const COLLECT_SCRIPT = "scripts/collect-agent-events.ts";
