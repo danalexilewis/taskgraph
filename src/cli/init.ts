@@ -108,6 +108,14 @@ export function initCommand(program: Command) {
           if (!cmd.parent?.opts().json) {
             console.log(`Configuration written to ${CONFIG_FILE}`);
             console.log("Task Graph initialized successfully.");
+            console.log("");
+            console.log("Next steps:");
+            console.log(
+              "  1. Install Bun for test running: npm i -g bun (or brew install oven-sh/bun/bun)",
+            );
+            console.log(
+              "  2. Run: pnpm tg setup   — scaffold docs and (optionally) Cursor rules/agents with --cursor",
+            );
           }
           // ... rest of the match block remains the same
         },

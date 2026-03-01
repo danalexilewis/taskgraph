@@ -1,4 +1,3 @@
-import * as fs from "node:fs";
 import { execa } from "execa";
 import { ok, ResultAsync } from "neverthrow";
 import { type AppError, buildError, ErrorCode } from "../domain/errors";
@@ -33,25 +32,30 @@ function planColumnExists(
   return doltSql(q, repoPath).map((rows) => rows.length > 0);
 }
 
-/** Add file_tree, risks, tests columns to plan table if missing (idempotent). */
+/** Add file_tree, risks, tests columns to plan table if missing (idempotent).
+ * Skips when table has been renamed to project (plan no longer exists); those columns are already on project.
+ */
 export function applyPlanRichFieldsMigration(
   repoPath: string,
   noCommit: boolean = false,
 ): ResultAsync<void, AppError> {
-  return planColumnExists(repoPath, "file_tree").andThen((hasFileTree) => {
-    if (hasFileTree) return ResultAsync.fromSafePromise(Promise.resolve());
-    const alter =
-      "ALTER TABLE `plan` ADD COLUMN `file_tree` TEXT NULL, ADD COLUMN `risks` JSON NULL, ADD COLUMN `tests` JSON NULL";
-    return doltSql(alter, repoPath)
-      .map(() => undefined)
-      .andThen(() =>
-        doltCommit(
-          "db: add plan rich fields (file_tree, risks, tests)",
-          repoPath,
-          noCommit,
-        ),
-      )
-      .map(() => undefined);
+  return tableExists(repoPath, "project").andThen((hasProject) => {
+    if (hasProject) return ResultAsync.fromSafePromise(Promise.resolve());
+    return planColumnExists(repoPath, "file_tree").andThen((hasFileTree) => {
+      if (hasFileTree) return ResultAsync.fromSafePromise(Promise.resolve());
+      const alter =
+        "ALTER TABLE `plan` ADD COLUMN `file_tree` TEXT NULL, ADD COLUMN `risks` JSON NULL, ADD COLUMN `tests` JSON NULL";
+      return doltSql(alter, repoPath)
+        .map(() => undefined)
+        .andThen(() =>
+          doltCommit(
+            "db: add plan rich fields (file_tree, risks, tests)",
+            repoPath,
+            noCommit,
+          ),
+        )
+        .map(() => undefined);
+    });
   });
 }
 
@@ -107,6 +111,15 @@ export function tableExists(
   tableName: string,
 ): ResultAsync<boolean, AppError> {
   const q = `SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '${tableName}' LIMIT 1`;
+  return doltSql(q, repoPath).map((rows) => rows.length > 0);
+}
+
+/** Returns true if a view with the given name exists. */
+function viewExists(
+  repoPath: string,
+  viewName: string,
+): ResultAsync<boolean, AppError> {
+  const q = `SELECT 1 FROM information_schema.VIEWS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '${viewName}' LIMIT 1`;
   return doltSql(q, repoPath).map((rows) => rows.length > 0);
 }
 
@@ -365,6 +378,205 @@ export function applyGateTableMigration(
   });
 }
 
+/** Create initiative table if missing (idempotent). */
+export function applyInitiativeMigration(
+  repoPath: string,
+  noCommit: boolean = false,
+): ResultAsync<void, AppError> {
+  return tableExists(repoPath, "initiative").andThen((exists) => {
+    if (exists) return ResultAsync.fromSafePromise(Promise.resolve());
+    const create =
+      "CREATE TABLE IF NOT EXISTS `initiative` (initiative_id CHAR(36) PRIMARY KEY, title VARCHAR(255) NOT NULL, description TEXT NOT NULL, status ENUM('draft','active','paused','done','abandoned') DEFAULT 'draft', cycle_start DATE NULL, cycle_end DATE NULL, created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL)";
+    return doltSql(create, repoPath)
+      .map(() => undefined)
+      .andThen(() => doltCommit("db: add initiative table", repoPath, noCommit))
+      .map(() => undefined);
+  });
+}
+
+/** FK constraint row from information_schema when querying references to a table. */
+interface FkConstraintRow {
+  CONSTRAINT_NAME: string;
+  TABLE_NAME: string;
+}
+
+/** Get FK constraint names that reference the given table (for dropping by name). One row per constraint. */
+function getFkConstraintsReferencing(
+  repoPath: string,
+  referencedTable: string,
+): ResultAsync<FkConstraintRow[], AppError> {
+  const q = `SELECT DISTINCT CONSTRAINT_NAME, TABLE_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = DATABASE() AND REFERENCED_TABLE_NAME = '${referencedTable}' AND REFERENCED_TABLE_SCHEMA = DATABASE()`;
+  return doltSql(q, repoPath).map((rows) => rows as FkConstraintRow[]);
+}
+
+/** Fixed UUID for the default "Unassigned" initiative. Used by applyDefaultInitiativeMigration. */
+const UNASSIGNED_INITIATIVE_ID = "00000000-0000-4000-8000-000000000000";
+
+/** Returns true if project.initiative_id is nullable (IS_NULLABLE = 'YES'). */
+function projectInitiativeIdNullable(
+  repoPath: string,
+): ResultAsync<boolean, AppError> {
+  const q = `SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'project' AND COLUMN_NAME = 'initiative_id' AND IS_NULLABLE = 'YES' LIMIT 1`;
+  return doltSql(q, repoPath).map((rows) => rows.length > 0);
+}
+
+/** Create default Unassigned initiative; backfill project.initiative_id; make initiative_id NOT NULL. Idempotent. */
+export function applyDefaultInitiativeMigration(
+  repoPath: string,
+  noCommit: boolean = false,
+): ResultAsync<void, AppError> {
+  return tableExists(repoPath, "project").andThen((projectExists) => {
+    if (!projectExists) return ResultAsync.fromSafePromise(Promise.resolve());
+
+    return tableExists(repoPath, "initiative").andThen((initiativeExists) => {
+      if (!initiativeExists)
+        return ResultAsync.fromSafePromise(Promise.resolve());
+
+      type InitiativeRow = { initiative_id: string };
+      const findUnassigned = `SELECT initiative_id FROM \`initiative\` WHERE initiative_id = '${UNASSIGNED_INITIATIVE_ID}' OR title = 'Unassigned' LIMIT 1`;
+      return doltSql(findUnassigned, repoPath).andThen(
+        (rows: InitiativeRow[]) => {
+          const unassignedId =
+            rows.length > 0 ? rows[0].initiative_id : UNASSIGNED_INITIATIVE_ID;
+
+          let chain: ResultAsync<void, AppError> = ResultAsync.fromSafePromise(
+            Promise.resolve(undefined),
+          );
+
+          if (rows.length === 0) {
+            chain = chain.andThen(() =>
+              doltSql(
+                `INSERT INTO \`initiative\` (initiative_id, title, description, status, created_at, updated_at) VALUES ('${UNASSIGNED_INITIATIVE_ID}', 'Unassigned', 'Projects not yet linked to an initiative.', 'active', NOW(), NOW())`,
+                repoPath,
+              ).map(() => undefined),
+            );
+          }
+
+          return chain
+            .andThen(() =>
+              doltSql(
+                `UPDATE \`project\` SET initiative_id = '${sqlEscape(unassignedId)}' WHERE initiative_id IS NULL`,
+                repoPath,
+              ),
+            )
+            .map(() => undefined)
+            .andThen(() => projectInitiativeIdNullable(repoPath))
+            .andThen((nullable) => {
+              if (!nullable)
+                return ResultAsync.fromSafePromise(Promise.resolve());
+              return doltSql(
+                `ALTER TABLE \`project\` MODIFY COLUMN initiative_id CHAR(36) NOT NULL DEFAULT '${UNASSIGNED_INITIATIVE_ID}'`,
+                repoPath,
+              ).map(() => undefined);
+            })
+            .andThen(() =>
+              doltCommit(
+                "db: default Unassigned initiative; project.initiative_id NOT NULL",
+                repoPath,
+                noCommit,
+              ),
+            )
+            .map(() => undefined);
+        },
+      );
+    });
+  });
+}
+
+/** Rename plan table to project; add initiative_id, overview, objectives, outcomes, outputs; recreate no_delete trigger. Idempotent: skip if project already exists. */
+export function applyPlanToProjectRenameMigration(
+  repoPath: string,
+  noCommit: boolean = false,
+): ResultAsync<void, AppError> {
+  return tableExists(repoPath, "project").andThen((projectExists) => {
+    if (projectExists) return ResultAsync.fromSafePromise(Promise.resolve());
+
+    return getFkConstraintsReferencing(repoPath, "plan").andThen((fks) => {
+      let chain: ResultAsync<void, AppError> = ResultAsync.fromSafePromise(
+        Promise.resolve(undefined),
+      );
+      for (const row of fks) {
+        chain = chain.andThen(() =>
+          doltSql(
+            `ALTER TABLE \`${row.TABLE_NAME}\` DROP FOREIGN KEY \`${row.CONSTRAINT_NAME}\``,
+            repoPath,
+          ).map(() => undefined),
+        );
+      }
+      return chain
+        .andThen(() =>
+          doltSql("DROP TRIGGER IF EXISTS `no_delete_plan`", repoPath),
+        )
+        .map(() => undefined)
+        .andThen(() => doltSql("RENAME TABLE `plan` TO `project`", repoPath))
+        .map(() => undefined)
+        .andThen(() =>
+          doltSql(
+            "ALTER TABLE `project` ADD COLUMN initiative_id CHAR(36) NULL, ADD COLUMN overview TEXT NULL, ADD COLUMN objectives JSON NULL, ADD COLUMN outcomes JSON NULL, ADD COLUMN outputs JSON NULL, ADD CONSTRAINT fk_project_initiative FOREIGN KEY (initiative_id) REFERENCES initiative(initiative_id)",
+            repoPath,
+          ),
+        )
+        .map(() => undefined)
+        .andThen(() =>
+          doltSql(
+            "ALTER TABLE `task` ADD CONSTRAINT task_plan_id_fk FOREIGN KEY (plan_id) REFERENCES project(plan_id)",
+            repoPath,
+          ),
+        )
+        .map(() => undefined)
+        .andThen(() =>
+          doltSql(
+            "ALTER TABLE `decision` ADD CONSTRAINT decision_plan_id_fk FOREIGN KEY (plan_id) REFERENCES project(plan_id)",
+            repoPath,
+          ),
+        )
+        .map(() => undefined)
+        .andThen(() =>
+          triggerExists(repoPath, "no_delete_project").andThen((exists) => {
+            if (exists) return ResultAsync.fromSafePromise(Promise.resolve());
+            const createTrigger = `CREATE TRIGGER \`no_delete_project\` BEFORE DELETE ON \`project\` FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = '${NO_DELETE_MESSAGE}'`;
+            return doltSql(createTrigger, repoPath)
+              .orElse(() => ok([]))
+              .map(() => undefined);
+          }),
+        )
+        .andThen(() =>
+          doltSql(
+            "CREATE OR REPLACE VIEW `plan` AS SELECT * FROM `project`",
+            repoPath,
+          ).map(() => undefined),
+        )
+        .andThen(() =>
+          doltCommit(
+            "db: rename plan to project; add initiative_id, overview, objectives, outcomes, outputs; no_delete_project trigger; plan view",
+            repoPath,
+            noCommit,
+          ),
+        )
+        .map(() => undefined);
+    });
+  });
+}
+
+/** Create view `plan` as SELECT * FROM project so existing code that references `plan` keeps working. Idempotent. */
+export function applyPlanViewMigration(
+  repoPath: string,
+  noCommit: boolean = false,
+): ResultAsync<void, AppError> {
+  return tableExists(repoPath, "project").andThen((hasProject) => {
+    if (!hasProject) return ResultAsync.fromSafePromise(Promise.resolve());
+    return viewExists(repoPath, "plan").andThen((hasView) => {
+      if (hasView) return ResultAsync.fromSafePromise(Promise.resolve());
+      return doltSql("CREATE VIEW `plan` AS SELECT * FROM `project`", repoPath)
+        .map(() => undefined)
+        .andThen(() =>
+          doltCommit("db: add plan view for compatibility", repoPath, noCommit),
+        )
+        .map(() => undefined);
+    });
+  });
+}
+
 /** Chains all idempotent migrations. Safe to run on every command. */
 export function ensureMigrations(
   repoPath: string,
@@ -379,6 +591,10 @@ export function ensureMigrations(
     .andThen(() => applyHashIdMigration(repoPath, noCommit))
     .andThen(() => applyNoDeleteTriggersMigration(repoPath, noCommit))
     .andThen(() => applyGateTableMigration(repoPath, noCommit))
+    .andThen(() => applyInitiativeMigration(repoPath, noCommit))
+    .andThen(() => applyPlanToProjectRenameMigration(repoPath, noCommit))
+    .andThen(() => applyPlanViewMigration(repoPath, noCommit))
+    .andThen(() => applyDefaultInitiativeMigration(repoPath, noCommit))
     .map(() => undefined);
 }
 
@@ -386,46 +602,48 @@ export function applyMigrations(
   repoPath: string,
   noCommit: boolean = false,
 ): ResultAsync<void, AppError> {
-  return ResultAsync.fromPromise(
-    (async () => {
-      for (const statement of SCHEMA) {
-        const tempSqlFile = `${repoPath}/temp_migration.sql`;
-        fs.writeFileSync(tempSqlFile, statement);
-        const res = await ResultAsync.fromPromise(
-          execa(
-            process.env.DOLT_PATH || "dolt",
-            ["--data-dir", repoPath, "sql"],
-            {
-              cwd: repoPath,
-              shell: true,
-              input: fs.readFileSync(tempSqlFile, "utf8"),
-              env: { ...process.env, DOLT_READ_ONLY: "false" },
-            },
-          ),
-          (e) =>
-            buildError(
-              ErrorCode.DB_QUERY_FAILED,
-              `Dolt SQL query failed for statement: ${statement}`,
-              e,
+  return tableExists(repoPath, "plan").andThen((planExists) => {
+    if (planExists) {
+      return ResultAsync.fromSafePromise(Promise.resolve(undefined));
+    }
+    return ResultAsync.fromPromise(
+      (async () => {
+        for (const statement of SCHEMA) {
+          const res = await ResultAsync.fromPromise(
+            execa(
+              process.env.DOLT_PATH || "dolt",
+              ["--data-dir", repoPath, "sql"],
+              {
+                cwd: repoPath,
+                shell: true,
+                input: statement,
+                env: { ...process.env, DOLT_READ_ONLY: "false" },
+              },
             ),
-        );
-        fs.unlinkSync(tempSqlFile);
-        if (res.isErr()) {
-          console.error("Migration failed:", statement, res.error);
-          throw res.error;
+            (e) =>
+              buildError(
+                ErrorCode.DB_QUERY_FAILED,
+                `Dolt SQL query failed for statement: ${statement}`,
+                e,
+              ),
+          );
+          if (res.isErr()) {
+            console.error("Migration failed:", statement, res.error);
+            throw res.error;
+          }
         }
-      }
-      return undefined;
-    })(),
-    (e) =>
-      buildError(
-        ErrorCode.DB_QUERY_FAILED,
-        "Failed to apply schema migrations",
-        e,
-      ),
-  )
-    .andThen(() =>
-      doltCommit("db: apply schema migrations", repoPath, noCommit),
+        return undefined;
+      })(),
+      (e) =>
+        buildError(
+          ErrorCode.DB_QUERY_FAILED,
+          "Failed to apply schema migrations",
+          e,
+        ),
     )
-    .map(() => undefined);
+      .andThen(() =>
+        doltCommit("db: apply schema migrations", repoPath, noCommit),
+      )
+      .map(() => undefined);
+  });
 }

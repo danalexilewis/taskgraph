@@ -298,7 +298,7 @@ function runDomains(
            GROUP_CONCAT(DISTINCT p.title ORDER BY p.title) AS plan_titles
     FROM \`task_doc\` td
     JOIN \`task\` t ON td.task_id = t.task_id
-    JOIN \`plan\` p ON t.plan_id = p.plan_id
+    JOIN \`project\` p ON t.plan_id = p.plan_id
     GROUP BY td.doc
     HAVING plan_count > 1
     ORDER BY plan_count DESC, task_count DESC
@@ -335,7 +335,7 @@ function runSkills(
            GROUP_CONCAT(DISTINCT p.title ORDER BY p.title) AS plan_titles
     FROM \`task_skill\` ts
     JOIN \`task\` t ON ts.task_id = t.task_id
-    JOIN \`plan\` p ON t.plan_id = p.plan_id
+    JOIN \`project\` p ON t.plan_id = p.plan_id
     GROUP BY ts.skill
     HAVING plan_count > 1
     ORDER BY plan_count DESC, task_count DESC
@@ -367,7 +367,7 @@ function runFiles(
   const q = query(config.doltRepoPath);
   return q
     .select<{ plan_id: string; title: string; file_tree: string | null }>(
-      "plan",
+      "project",
       {
         columns: ["plan_id", "title", "file_tree"],
       },
@@ -462,7 +462,7 @@ function runEdges(
         plan_id: string;
         title: string;
         file_tree: string | null;
-      }>("plan", {
+      }>("project", {
         columns: ["plan_id", "title", "file_tree"],
       });
       if (planRows.isErr()) return err(planRows.error);
@@ -608,7 +608,7 @@ function runSummary(
         runDomains(config, true),
         runSkills(config, true),
         q.select<{ plan_id: string; title: string; file_tree: string | null }>(
-          "plan",
+          "project",
           {
             columns: ["plan_id", "title", "file_tree"],
           },

@@ -2,19 +2,20 @@
 name: Initiative-Project-Task Hierarchy
 overview: |
   Introduce a three-level hierarchy (Initiative → Project → Task) into Task-Graph, replacing the
-  current two-level Plan → Task model. Plans remain as the authoring/analysis artifact (markdown
-  files); when imported they create Projects (the DB entity currently called "plan"). Initiatives
-  are strategic containers scoped to a configurable strategic cycle. The setup flow gains an
-  interactive onboarding experience that asks about cycle length and initial initiatives.
+  current two-level Plan → Task model. When we init taskgraph we create the strategic cycle and
+  add x initiatives; all plans become projects and every project is connected to an initiative
+  (default "Unassigned" if none specified). Plan files remain authoring artifacts; import creates
+  Projects. Initiatives are strategic containers scoped to a configurable cycle.
 fileTree: |
   src/
   ├── domain/
   │   └── types.ts                          (modify — add Initiative, rename Plan→Project)
   ├── db/
-  │   └── migrate.ts                        (modify — add initiative table, rename plan→project, new columns)
+  │   └── migrate.ts                        (modify — initiative table, plan→project, default initiative)
   ├── cli/
   │   ├── index.ts                          (modify — register initiative command)
-  │   ├── setup.ts                          (modify — interactive onboarding: cycle + initiatives)
+  │   ├── init.ts                           (modify — after migrations: cycle + x initiatives onboarding)
+  │   ├── setup.ts                          (modify — optional re-onboarding for cycle + initiatives)
   │   ├── initiative.ts                     (create — tg initiative list/new/show)
   │   ├── project.ts                        (create — tg project list/new, replaces plan.ts)
   │   ├── plan.ts                           (modify — deprecation alias → project)
@@ -57,9 +58,12 @@ risks:
   - description: Consumer repos using tg may break if plan table disappears
     severity: medium
     mitigation: Keep tg plan as a deprecated alias for tg project; migration handles the DB rename transparently
-  - description: Interactive setup prompts may not work in CI/non-interactive environments
+  - description: Interactive init/setup prompts may not work in CI/non-interactive environments
     severity: medium
     mitigation: All interactive prompts have --non-interactive flag with defaults; config can be set via JSON directly
+  - description: Default Unassigned initiative must be idempotent and stable across migrations
+    severity: low
+    mitigation: Use fixed UUID for Unassigned; migration checks if it exists before insert; backfill only NULLs
 tests:
   - "Migration creates initiative table with correct schema"
   - "Migration renames plan→project and updates FKs without data loss"
@@ -67,10 +71,11 @@ tests:
   - "Migration is idempotent — running twice is safe"
   - "tg initiative new creates initiative and stores in DB"
   - "tg initiative list shows initiatives with project rollup"
-  - "tg import creates project (not plan) and links to initiative when --initiative provided"
+  - "tg import creates project (not plan) and links to initiative when --initiative provided (default Unassigned)"
   - "tg status shows initiative-level summary"
   - "tg plan list still works as alias for tg project list"
-  - "Config strategicCycle field persists through setup"
+  - "tg init prompts for strategic cycle and x initiatives and creates them"
+  - "Config strategicCycle field persists; default Unassigned initiative exists; project.initiative_id NOT NULL"
   - "Parser extracts initiative field from plan frontmatter"
 todos:
   - id: schema-initiative-table
@@ -107,28 +112,30 @@ todos:
       but the FK reference changes from plan(plan_id) to project(plan_id). Same for
       decision.plan_id. Add nullable `initiative_id` FK to project table pointing to
       initiative(initiative_id). Add new project columns: overview (TEXT NULL),
-      objectives (JSON NULL — array of strings), outcomes (JSON NULL — array of strings),
-      outputs (JSON NULL — array of strings). The existing plan.intent, plan.risks, plan.tests,
-      plan.file_tree columns carry over unchanged. Migration must be idempotent: check if
-      `project` table exists; if yes, skip. Must handle the case where `plan` table has
-      triggers (no_delete_plan) — drop and recreate as no_delete_project.
+      objectives (JSON NULL), outcomes (JSON NULL), outputs (JSON NULL). The existing
+      plan.intent, plan.risks, plan.tests, plan.file_tree columns carry over unchanged.
+      Migration must be idempotent. Must handle no_delete_plan trigger — drop and
+      recreate as no_delete_project. Keep initiative_id NULLABLE in this step; the
+      default-initiative task will backfill and set NOT NULL.
     suggestedChanges: |
       In src/db/migrate.ts, add applyPlanToProjectRenameMigration():
         1. Check tableExists('project') — if true, skip
         2. Drop trigger no_delete_plan if exists
         3. RENAME TABLE `plan` TO `project`
-        4. ALTER TABLE `project` ADD COLUMN initiative_id CHAR(36) NULL,
-           ADD COLUMN overview TEXT NULL,
-           ADD COLUMN objectives JSON NULL,
-           ADD COLUMN outcomes JSON NULL,
-           ADD COLUMN outputs JSON NULL,
-           ADD FOREIGN KEY (initiative_id) REFERENCES initiative(initiative_id)
-        5. ALTER TABLE `task` DROP FOREIGN KEY (find FK name first via information_schema),
-           ADD FOREIGN KEY (plan_id) REFERENCES project(plan_id)
-        6. ALTER TABLE `decision` — same FK update
-        7. Recreate trigger no_delete_project
-        8. Dolt commit
+        4. ALTER TABLE `project` ADD COLUMN initiative_id CHAR(36) NULL, overview TEXT NULL, objectives JSON NULL, outcomes JSON NULL, outputs JSON NULL, ADD FOREIGN KEY (initiative_id) REFERENCES initiative(initiative_id)
+        5. Update task/decision FKs to project(plan_id); recreate no_delete_project trigger; Dolt commit
     blockedBy: [schema-initiative-table]
+    domain: [schema]
+    changeType: modify
+
+  - id: schema-default-initiative
+    content: "Create default Unassigned initiative; backfill project.initiative_id NOT NULL"
+    agent: implementer
+    intent: |
+      Ensure every project is connected to an initiative. In migrate.ts add
+      applyDefaultInitiativeMigration(): (1) If initiative table is empty, insert one
+      row with a fixed UUID and title 'Unassigned', description 'Projects not yet linked to an initiative.', status 'active'. (2) UPDATE project SET initiative_id = <Unassigned id> WHERE initiative_id IS NULL. (3) ALTER TABLE project CHANGE initiative_id initiative_id CHAR(36) NOT NULL, add DEFAULT <Unassigned id> for new rows if supported, else enforce NOT NULL only. Idempotent: if all projects already have initiative_id, skip backfill; if Unassigned exists, reuse it. CLI project new and import default to Unassigned (or first initiative) when --initiative is omitted.
+    blockedBy: [schema-rename-plan-to-project]
     domain: [schema]
     changeType: modify
 
@@ -138,10 +145,10 @@ todos:
       In src/domain/types.ts: Add InitiativeSchema and Initiative type with fields matching
       the new table. Rename PlanSchema→ProjectSchema, Plan→Project, PlanStatus→ProjectStatus
       (keep PlanStatus as a deprecated alias export for backward compat). Add new fields to
-      ProjectSchema: initiative_id (nullable uuid), overview (nullable string), objectives
-      (nullable string array), outcomes (nullable string array), outputs (nullable string array).
-      Update PlanRiskEntrySchema name if desired (it's used for project.risks now).
-    blockedBy: [schema-rename-plan-to-project]
+      ProjectSchema: initiative_id (required uuid — every project has an initiative after
+      default-initiative migration), overview, objectives, outcomes, outputs. Update
+      PlanRiskEntrySchema name if desired (it's used for project.risks now).
+    blockedBy: [schema-default-initiative]
     domain: [schema]
     changeType: modify
 
@@ -166,8 +173,9 @@ todos:
     content: "Create tg project list/new commands, deprecate tg plan"
     intent: |
       Create src/cli/project.ts mirroring current plan.ts but querying `project` table.
-      - `tg project list` — lists projects with initiative name if linked.
-      - `tg project new <title>` — creates project, optional --initiative <id> to link.
+      - `tg project list` — lists projects with initiative name.
+      - `tg project new <title>` — creates project; optional --initiative <id>; when omitted
+        default to Unassigned initiative (every project must have an initiative_id).
       Update src/cli/plan.ts to be a thin alias that prints a deprecation notice and
       delegates to project commands. Register projectCommand in index.ts.
     blockedBy: [domain-types-update]
@@ -176,14 +184,13 @@ todos:
     changeType: create
 
   - id: cli-import-update
-    content: "Update tg import to create projects and support --initiative flag"
+    content: "Update tg import to create projects and support --initiative flag (default Unassigned)"
     intent: |
       Update src/cli/import.ts: all SQL references change from `plan` table to `project` table.
-      Add optional --initiative <id> flag — when provided, sets project.initiative_id on the
-      created/found project. Update display text: "Created new project" instead of "Created new plan".
-      The --plan flag name stays for backward compat (it finds/creates a project by title/id).
-      Parse new frontmatter fields from plan files: overview, objectives, outcomes, outputs
-      (parser.ts already needs updating — see parser task). Store them on the project record.
+      Add optional --initiative <id> flag; when omitted, set project.initiative_id to the
+      default Unassigned initiative (or first initiative in DB). When provided, use that id.
+      Display "Created new project". --plan flag stays for backward compat. Parse and store
+      overview, objectives, outcomes, outputs from plan frontmatter on the project record.
     blockedBy: [domain-types-update]
     domain: [cli]
     changeType: modify
@@ -232,18 +239,19 @@ todos:
     domain: [schema, cli]
     changeType: modify
 
-  - id: setup-interactive-onboarding
-    content: "Enhance tg setup with strategic cycle and initiative onboarding"
+  - id: init-cycle-and-initiatives
+    content: "Add strategic cycle and x initiatives onboarding to tg init (and optional setup)"
     intent: |
-      Enhance src/cli/setup.ts to add an interactive onboarding flow after file scaffolding:
-      1. Ask "What is your strategic review cycle?" with examples (16 weeks, 8 weeks, 2 weeks).
-         Store as strategicCycle: { weeks: N } in .taskgraph/config.json.
-      2. Ask "What are your initial initiatives? (3-5 recommended)" — loop: prompt for title
-         and description for each. Guide: "An initiative is a strategic goal. Describe what
-         you're trying to achieve, what success looks like, and your hypothesis."
-      3. Create each initiative in the DB with cycle dates based on strategicCycle.
-      All prompts must work with --non-interactive flag (skips, uses defaults or flags).
-      Use Node readline or prompts library (check what's already in deps).
+      When we init taskgraph, create the strategic cycle and add x initiatives. In src/cli/init.ts:
+      after migrations and writeConfig succeed, if the initiative table exists and we are
+      interactive (not --non-interactive), run onboarding: (1) Ask "What is your strategic
+      review cycle?" (e.g. 16, 8, 2 weeks); write strategicCycle: { weeks: N } to config.
+      (2) Ask "How many initial initiatives?" then loop to prompt for title and description
+      for each; create each via the same logic as tg initiative new (cycle_start/cycle_end
+      from strategicCycle). Use --non-interactive to skip (no cycle/initiatives added; default
+      Unassigned still exists from migration). Optionally add the same flow to tg setup for
+      existing repos that already have .taskgraph (re-onboarding). Extract shared prompt +
+      create logic so init and setup both call it. Use Node readline or existing deps.
     blockedBy: [cli-initiative-commands]
     domain: [cli]
     skill: [cli-command-implementation]
@@ -299,6 +307,17 @@ todos:
     blockedBy: [docs-update]
     domain: [cli]
     changeType: modify
+
+  - id: run-full-suite
+    content: "Run full test suite and record result in evidence"
+    agent: implementer
+    intent: |
+      Run pnpm gate:full (or bash scripts/cheap-gate.sh --full). Record outcome in task
+      evidence: "gate:full passed" or "gate:full failed: <summary>". On failure, add
+      tg note with failure reason; may still mark done with failure in evidence for
+      orchestrator follow-up.
+    blockedBy: [integration-tests, rules-and-templates-update]
+    changeType: test
 ---
 
 # Analysis
@@ -324,7 +343,7 @@ Initiative (strategic goal, time-bound to a cycle)
 
 ## Strategic Cycle
 
-The strategic cycle is a configurable time window (e.g. 16 weeks for Eddy Works, 8 weeks for Enspiral Forge). Initiatives are scoped to cycles. During `tg setup`, users declare their cycle length and initial initiatives.
+The strategic cycle is a configurable time window (e.g. 16 weeks, 8 weeks, 2 weeks). Initiatives are scoped to cycles. **When we init taskgraph** we create the cycle and add x initiatives (interactive onboarding in `tg init`; optional re-onboarding in `tg setup`). Every project is connected to an initiative; the default "Unassigned" initiative is created by migration so no project is ever unlinked.
 
 ## Parallel Execution Model
 
@@ -363,6 +382,9 @@ After schema-initiative-table:
   └── schema-rename-plan-to-project
 
 After schema-rename-plan-to-project:
+  └── schema-default-initiative
+
+After schema-default-initiative:
   └── domain-types-update
 
 After domain-types-update (4 parallel):
@@ -374,7 +396,7 @@ After domain-types-update (4 parallel):
   └── importer-update
 
 After cli-initiative-commands:
-  └── setup-interactive-onboarding
+  └── init-cycle-and-initiatives
 
 After cli-status-update + cli-initiative-commands:
   └── docs-update
@@ -384,6 +406,9 @@ After cli-import-update + cli-initiative-commands:
 
 After docs-update:
   └── rules-and-templates-update
+
+After integration-tests + rules-and-templates-update:
+  └── run-full-suite
 ```
 
 ## Open Design Decisions (resolved)
@@ -394,12 +419,12 @@ A: Not in this phase. Column rename in Dolt requires creating a new column, copy
 **Q: Should initiatives have their own edge/dependency table?**
 A: No. Task-level edges are sufficient. Cross-initiative dependencies are expressed as task-to-task edges. This keeps the model simple and the execution engine unchanged.
 
-**Q: What happens to the 39 existing plans?**
-A: They become projects with `initiative_id = NULL`. Users can link them to initiatives later via `tg project link <projectId> --initiative <initiativeId>` (or during import with `--initiative`).
+**Q: What happens to existing plans?**
+A: They become projects. The default-initiative migration backfills `initiative_id` to the Unassigned initiative so every project is connected. Users can change link via `tg project link <projectId> --initiative <initiativeId>` or during import with `--initiative`.
 
 **Q: Should `tg plan` command be removed?**
 A: No — kept as deprecated alias. Plan files are still created and imported; only the DB entity changes name.
 
 <original_prompt>
-Introduce a three-level hierarchy (Initiative → Project → Task) into Task-Graph. Plans remain as authoring artifacts; when imported they create Projects. Initiatives are strategic containers scoped to a configurable strategic cycle. Setup flow gains interactive onboarding for cycle length and initial initiatives. Existing plan data migrates to project table.
+Start on the initiatives and strategic cycle system: when we init taskgraph we create the cycle and add x number of initiatives; all plans become projects and all projects are connected to an initiative. (Existing plan 26-02-27 updated to reflect init-driven onboarding and default Unassigned initiative.)
 </original_prompt>

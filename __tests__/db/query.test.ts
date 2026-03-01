@@ -53,6 +53,7 @@ describe("query builder", () => {
     expect(mockDoltSql).toHaveBeenCalledWith(
       "INSERT INTO `test_table` (`id`, `name`) VALUES (1, 'test')",
       repoPath,
+      undefined,
     );
   });
 
@@ -62,6 +63,7 @@ describe("query builder", () => {
     expect(mockDoltSql).toHaveBeenCalledWith(
       "INSERT INTO `test_table` (`id`, `name`) VALUES (2, NULL)",
       repoPath,
+      undefined,
     );
   });
 
@@ -71,6 +73,7 @@ describe("query builder", () => {
     expect(mockDoltSql).toHaveBeenCalledWith(
       "INSERT INTO `test_table` (`id`, `active`) VALUES (3, true)",
       repoPath,
+      undefined,
     );
   });
 
@@ -81,6 +84,7 @@ describe("query builder", () => {
     expect(mockDoltSql).toHaveBeenCalledWith(
       "INSERT INTO `test_table` (`id`, `metadata`) VALUES (4, JSON_OBJECT('val', '{\"key\":\"value\"}'))",
       repoPath,
+      undefined,
     );
   });
 
@@ -90,6 +94,7 @@ describe("query builder", () => {
     expect(mockDoltSql).toHaveBeenCalledWith(
       "UPDATE `test_table` SET `name` = 'updated' WHERE `id` = 1",
       repoPath,
+      undefined,
     );
   });
 
@@ -99,6 +104,7 @@ describe("query builder", () => {
     expect(mockDoltSql).toHaveBeenCalledWith(
       "UPDATE `test_table` SET `name` = NULL WHERE `id` = 1",
       repoPath,
+      undefined,
     );
   });
 
@@ -113,6 +119,7 @@ describe("query builder", () => {
     expect(mockDoltSql).toHaveBeenCalledWith(
       "UPDATE `test_table` SET `metadata` = JSON_OBJECT('val', '{\"new_key\":\"new_value\"}') WHERE `id` = 4",
       repoPath,
+      undefined,
     );
   });
 
@@ -122,6 +129,7 @@ describe("query builder", () => {
     expect(mockDoltSql).toHaveBeenCalledWith(
       "UPDATE `test_table` SET `name` = 'complex' WHERE `id` = 1 AND `type` = 'A'",
       repoPath,
+      undefined,
     );
   });
 
@@ -135,6 +143,7 @@ describe("query builder", () => {
     expect(mockDoltSql).toHaveBeenCalledWith(
       "UPDATE `test_table` SET `name` = 'complex' WHERE `id` > 1",
       repoPath,
+      undefined,
     );
   });
 
@@ -144,6 +153,7 @@ describe("query builder", () => {
     expect(mockDoltSql).toHaveBeenCalledWith(
       "SELECT `id`, `name` FROM `test_table`",
       repoPath,
+      undefined,
     );
   });
 
@@ -153,6 +163,7 @@ describe("query builder", () => {
     expect(mockDoltSql).toHaveBeenCalledWith(
       "SELECT * FROM `test_table`",
       repoPath,
+      undefined,
     );
   });
 
@@ -162,6 +173,7 @@ describe("query builder", () => {
     expect(mockDoltSql).toHaveBeenCalledWith(
       "SELECT * FROM `test_table` WHERE `id` = 1",
       repoPath,
+      undefined,
     );
   });
 
@@ -171,6 +183,7 @@ describe("query builder", () => {
     expect(mockDoltSql).toHaveBeenCalledWith(
       "SELECT * FROM `test_table` ORDER BY name DESC",
       repoPath,
+      undefined,
     );
   });
 
@@ -180,6 +193,7 @@ describe("query builder", () => {
     expect(mockDoltSql).toHaveBeenCalledWith(
       "SELECT * FROM `test_table` LIMIT 10",
       repoPath,
+      undefined,
     );
   });
 
@@ -189,6 +203,7 @@ describe("query builder", () => {
     expect(mockDoltSql).toHaveBeenCalledWith(
       "SELECT * FROM `test_table` OFFSET 5",
       repoPath,
+      undefined,
     );
   });
 
@@ -198,6 +213,7 @@ describe("query builder", () => {
     expect(mockDoltSql).toHaveBeenCalledWith(
       "SELECT * FROM `test_table` GROUP BY `category`",
       repoPath,
+      undefined,
     );
   });
 
@@ -210,6 +226,7 @@ describe("query builder", () => {
     expect(mockDoltSql).toHaveBeenCalledWith(
       "SELECT * FROM `test_table` GROUP BY `category` HAVING COUNT(*) > 1",
       repoPath,
+      undefined,
     );
   });
 
@@ -220,6 +237,7 @@ describe("query builder", () => {
     expect(mockDoltSql).toHaveBeenCalledWith(
       "SELECT COUNT(*) AS count FROM `test_table` WHERE `status` = 'active'",
       repoPath,
+      undefined,
     );
     expect(count.unwrapOr(0)).toBe(5);
   });
@@ -228,6 +246,6 @@ describe("query builder", () => {
     const q = query(repoPath);
     const rawSql = "SELECT * FROM `users` WHERE `id` = 1";
     await q.raw(rawSql);
-    expect(mockDoltSql).toHaveBeenCalledWith(rawSql, repoPath);
+    expect(mockDoltSql).toHaveBeenCalledWith(rawSql, repoPath, undefined);
   });
 });

@@ -14,20 +14,25 @@ So: skill → lead (orchestration pattern) → workers (dispatched using agent f
 
 ## Lead registry
 
-| Lead | Skill | Agent file(s) | Purpose |
-|------|-------|----------------|---------|
-| investigator | /investigate | investigator.md | Read-only investigation; dispatches investigator sub-agent with tactical directives. |
-| planner-analyst | /plan | planner-analyst.md | Pre-plan analysis; gathers codebase context before plan creation. |
-| execution | /work | implementer.md, reviewer.md | Task execution loop; implementer does work, reviewer evaluates; orchestrator coordinates. |
-| test-review | /test-review | test-quality-auditor, test-infra-mapper, test-coverage-scanner | Audits tests; dispatches scanner sub-agents; orchestrator synthesizes findings and plan. |
+| Lead            | Skill        | Agent file(s)                                                          | Purpose                                                                                   |
+| --------------- | ------------ | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| investigator    | /investigate | investigator.md                                                        | Read-only investigation; dispatches investigator sub-agent with tactical directives.      |
+| planner-analyst | /plan        | planner-analyst.md                                                     | Pre-plan analysis; gathers codebase context before plan creation.                         |
+| execution       | /work        | implementer.md, reviewer.md                                            | Task execution loop; implementer does work, reviewer evaluates; orchestrator coordinates. |
+| test-review     | /test-review | test-quality-auditor, test-infra-mapper, test-coverage-scanner         | Audits tests; dispatches scanner sub-agents; orchestrator synthesizes findings and plan.  |
+| review          | /review      | investigator.md                                                        | Read-only code health, system health, and optional risk assessment.                       |
+| rescope         | /rescope     | explorer.md, spec-reviewer.md, quality-reviewer.md, planner-analyst.md | PM-role lead that clarifies desired functionality vs shipped behavior.                    |
+| risk            | /risk        | (none; orchestrator direct)                                            | Read-only risk assessment using 8-metric model across plans.                              |
+| meta            | /meta        | (none; orchestrator direct)                                            | Cross-plan and cross-project edge enrichment; writes only after user approval.            |
+| debug           | /debug       | investigator.md, implementer.md (optional)                             | Systematic debugging: 4-phase process (investigate, pattern, hypothesis, implement); escalate after 3 failed fix attempts. |
 
 ## How leads differ from workers
 
-| | Leads | Workers |
-|--|--------|--------|
-| **Role** | Orchestrate: decide what to run, dispatch workers, synthesize results. | Execute: do the concrete work (code, investigation, tests). |
-| **Created by** | Skills (when user invokes a skill). | Dispatched by leads or by the orchestrator. |
-| **Definition** | Pattern described in the skill and in this doc. | Agent files in `.cursor/agents/` used as prompt templates. |
+|                | Leads                                                                  | Workers                                                     |
+| -------------- | ---------------------------------------------------------------------- | ----------------------------------------------------------- |
+| **Role**       | Orchestrate: decide what to run, dispatch workers, synthesize results. | Execute: do the concrete work (code, investigation, tests). |
+| **Created by** | Skills (when user invokes a skill).                                    | Dispatched by leads or by the orchestrator.                 |
+| **Definition** | Pattern described in the skill and in this doc.                        | Agent files in `.cursor/agents/` used as prompt templates.  |
 
 Leads coordinate; workers perform. A skill implements a lead by dispatching one or more workers and then combining their outputs.
 
@@ -38,4 +43,20 @@ Leads coordinate; workers perform. A skill implements a lead by dispatching one 
 3. **Document the lead** in `docs/leads/<name>.md` (purpose, workers used, flow).
 4. **Add a row to the registry** in this README (Lead | Skill | Agent file(s) | Purpose).
 
-No code changes are required to “register” a lead beyond documenting it here and implementing the pattern in the skill.
+No code changes are required to "register" a lead beyond documenting it here and implementing the pattern in the skill.
+
+## Standard skill anatomy
+
+Every agentic skill SKILL.md should follow this section order:
+
+1. Frontmatter (name, description)
+2. Lead documentation link
+3. When to use (triggers)
+4. Architecture (lead + sub-agents table)
+5. Permissions (lead + propagation rule + sub-agent table)
+6. Decision tree (mermaid flowchart)
+7. Workflow (numbered phases)
+8. Output format / template
+9. Reference (links to agent files, lead doc, rules)
+
+Utility skills (e.g. create-hook) may omit Architecture, Permissions, and Decision tree.

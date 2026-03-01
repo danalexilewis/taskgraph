@@ -82,9 +82,9 @@ todos:
     taskIdWithSuggested = id;
   }, 60000);
 
-  afterAll(() => {
+  afterAll(async () => {
     if (context) {
-      teardownIntegrationTest(context.tempDir);
+      await teardownIntegrationTest(context);
     }
   });
 

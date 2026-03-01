@@ -5,6 +5,8 @@ description: Creates or adds Cursor agent lifecycle hooks. Use when the user ask
 
 # Create Hook
 
+**Type:** Utility skill (procedural, no agentic lead or sub-agents).
+
 Adds a Cursor lifecycle hook: a script that runs when a specific agent event fires. Hooks are project-level only (`.cursor/hooks/` and `.cursor/hooks.json`).
 
 ## 1. Choose the lifecycle event

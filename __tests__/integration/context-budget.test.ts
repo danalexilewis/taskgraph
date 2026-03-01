@@ -76,8 +76,8 @@ todos:
     taskId = task.task_id;
   }, 60000);
 
-  afterAll(() => {
-    if (context) teardownIntegrationTest(context.tempDir);
+  afterAll(async () => {
+    if (context) await teardownIntegrationTest(context);
   });
 
   it("reads context_token_budget and returns token_estimate; compacts related lists when over budget", async () => {

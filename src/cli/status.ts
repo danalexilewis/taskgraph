@@ -179,13 +179,13 @@ export function fetchStatusData(
       : `WHERE p.title = '${sqlEscape(options.plan)}'`
     : "";
 
-  const completedPlansSql = `SELECT COUNT(*) AS count FROM ${bt("plan")} WHERE status = 'done'`;
+  const completedPlansSql = `SELECT COUNT(*) AS count FROM ${bt("project")} WHERE status = 'done'`;
   const completedTasksSql = `SELECT COUNT(*) AS count FROM ${bt("task")} WHERE status = 'done'`;
   const canceledTasksSql = `SELECT COUNT(*) AS count FROM ${bt("task")} WHERE status = 'canceled'`;
 
   const activePlansSql = `
     SELECT p.plan_id, p.title, t.status, COUNT(*) AS count
-    FROM ${bt("plan")} p
+    FROM ${bt("project")} p
     JOIN ${bt("task")} t ON t.plan_id = p.plan_id
     WHERE p.status NOT IN ('done', 'abandoned')
       AND t.status NOT IN ('canceled')
@@ -198,7 +198,7 @@ export function fetchStatusData(
   const actionablePerPlanSql = `
     SELECT p.plan_id, COUNT(*) AS count
     FROM ${bt("task")} t
-    JOIN ${bt("plan")} p ON t.plan_id = p.plan_id
+    JOIN ${bt("project")} p ON t.plan_id = p.plan_id
     WHERE t.status = 'todo'
       AND p.status NOT IN ('done', 'abandoned')
       AND (SELECT COUNT(*) FROM ${bt("edge")} e
@@ -217,12 +217,12 @@ export function fetchStatusData(
   `;
 
   const plansCountSql = dimFilter
-    ? `SELECT COUNT(DISTINCT p.plan_id) AS count FROM ${bt("plan")} p JOIN ${bt("task")} t ON t.plan_id = p.plan_id ${planFilter || "WHERE 1=1"} ${dimFilter}${excludeCanceledAbandoned}`
-    : `SELECT COUNT(*) AS count FROM ${bt("plan")} ${planWhere || "WHERE 1=1"}${planAbandonedFilter}`;
-  const statusCountsSql = `SELECT t.status, COUNT(*) AS count FROM ${bt("task")} t JOIN ${bt("plan")} p ON t.plan_id = p.plan_id ${planFilter || "WHERE 1=1"} ${dimFilter}${excludeCanceledAbandoned} GROUP BY t.status`;
+    ? `SELECT COUNT(DISTINCT p.plan_id) AS count FROM ${bt("project")} p JOIN ${bt("task")} t ON t.plan_id = p.plan_id ${planFilter || "WHERE 1=1"} ${dimFilter}${excludeCanceledAbandoned}`
+    : `SELECT COUNT(*) AS count FROM ${bt("project")} ${planWhere || "WHERE 1=1"}${planAbandonedFilter}`;
+  const statusCountsSql = `SELECT t.status, COUNT(*) AS count FROM ${bt("task")} t JOIN ${bt("project")} p ON t.plan_id = p.plan_id ${planFilter || "WHERE 1=1"} ${dimFilter}${excludeCanceledAbandoned} GROUP BY t.status`;
   const actionableCountSql = `
     SELECT COUNT(*) AS count FROM ${bt("task")} t
-    JOIN ${bt("plan")} p ON t.plan_id = p.plan_id
+    JOIN ${bt("project")} p ON t.plan_id = p.plan_id
     WHERE t.status = 'todo'
     AND (SELECT COUNT(*) FROM ${bt("edge")} e
          JOIN ${bt("task")} bt ON e.from_task_id = bt.task_id
@@ -235,7 +235,7 @@ export function fetchStatusData(
   const nextSql = `
     SELECT t.task_id, t.hash_id, t.title, p.title as plan_title
     FROM ${bt("task")} t
-    JOIN ${bt("plan")} p ON t.plan_id = p.plan_id
+    JOIN ${bt("project")} p ON t.plan_id = p.plan_id
     WHERE t.status = 'todo'
     AND (SELECT COUNT(*) FROM ${bt("edge")} e
          JOIN ${bt("task")} bt ON e.from_task_id = bt.task_id
@@ -250,7 +250,7 @@ export function fetchStatusData(
   const next7Sql = `
     SELECT t.task_id, t.hash_id, t.title, p.title as plan_title
     FROM ${bt("task")} t
-    JOIN ${bt("plan")} p ON t.plan_id = p.plan_id
+    JOIN ${bt("project")} p ON t.plan_id = p.plan_id
     WHERE t.status = 'todo'
     AND (SELECT COUNT(*) FROM ${bt("edge")} e
          JOIN ${bt("task")} bt ON e.from_task_id = bt.task_id
@@ -265,7 +265,7 @@ export function fetchStatusData(
   const last7CompletedSql = `
     SELECT t.task_id, t.hash_id, t.title, p.title as plan_title, t.updated_at
     FROM ${bt("task")} t
-    JOIN ${bt("plan")} p ON t.plan_id = p.plan_id
+    JOIN ${bt("project")} p ON t.plan_id = p.plan_id
     WHERE t.status = 'done'
     AND p.status != 'abandoned'
     ${options.plan ? (isUUID ? `AND p.plan_id = '${sqlEscape(options.plan)}'` : `AND p.title = '${sqlEscape(options.plan)}'`) : ""}
@@ -275,7 +275,7 @@ export function fetchStatusData(
   `;
   const next7UpcomingPlansSql = `
     SELECT plan_id, title, status, updated_at
-    FROM ${bt("plan")}
+    FROM ${bt("project")}
     WHERE status IN ('draft', 'active', 'paused')
     ${options.plan ? (isUUID ? `AND plan_id = '${sqlEscape(options.plan)}'` : `AND title = '${sqlEscape(options.plan)}'`) : ""}
     ORDER BY priority DESC, updated_at DESC
@@ -283,7 +283,7 @@ export function fetchStatusData(
   `;
   const last7CompletedPlansSql = `
     SELECT plan_id, title, status, updated_at
-    FROM ${bt("plan")}
+    FROM ${bt("project")}
     WHERE status = 'done'
     ${options.plan ? (isUUID ? `AND plan_id = '${sqlEscape(options.plan)}'` : `AND title = '${sqlEscape(options.plan)}'`) : ""}
     ORDER BY updated_at DESC
@@ -292,7 +292,7 @@ export function fetchStatusData(
   const activeWorkSql = `
     SELECT t.task_id, t.hash_id, t.title, p.title as plan_title, e.body, e.created_at
     FROM ${bt("task")} t
-    JOIN ${bt("plan")} p ON t.plan_id = p.plan_id
+    JOIN ${bt("project")} p ON t.plan_id = p.plan_id
     LEFT JOIN ${bt("event")} e ON e.task_id = t.task_id AND e.kind = 'started'
       AND e.created_at = (
         SELECT MAX(e2.created_at) FROM ${bt("event")} e2
@@ -480,7 +480,7 @@ export function fetchProjectsTableData(
       COALESCE(SUM(CASE WHEN t.status = 'doing' THEN 1 ELSE 0 END), 0) AS doing,
       COALESCE(SUM(CASE WHEN t.status = 'blocked' THEN 1 ELSE 0 END), 0) AS blocked,
       COALESCE(SUM(CASE WHEN t.status = 'done' THEN 1 ELSE 0 END), 0) AS done
-    FROM ${bt("plan")} p
+    FROM ${bt("project")} p
     LEFT JOIN ${bt("task")} t ON t.plan_id = p.plan_id ${taskNotCanceled} ${dimJoin}
     WHERE 1=1 ${planWhere} ${planNotAbandoned} ${filterActive}
     GROUP BY p.plan_id, p.title, p.status
@@ -542,7 +542,7 @@ export function fetchTasksTableData(
     SELECT t.task_id, t.hash_id, t.title, p.title AS plan_title, t.status, t.owner,
       (SELECT g.name FROM ${bt("gate")} g WHERE g.task_id = t.task_id AND g.status = 'pending' ORDER BY g.created_at ASC LIMIT 1) AS blocked_by_gate_name
     FROM ${bt("task")} t
-    JOIN ${bt("plan")} p ON t.plan_id = p.plan_id
+    JOIN ${bt("project")} p ON t.plan_id = p.plan_id
     WHERE 1=1 ${planFilter} ${dimFilter} ${excludeCanceledAbandoned} ${filterActive}
     ORDER BY p.title ASC, t.created_at ASC
   `;
@@ -704,9 +704,8 @@ export function statusCommand(program: Command) {
           console.error("tg status --dashboard does not support --json");
           process.exit(1);
         }
-        const { runOpenTUILiveInitiatives } = await import(
-          "./tui/live-opentui.js"
-        );
+        const { runOpenTUILiveInitiatives } =
+          await import("./tui/live-opentui.js");
         try {
           await runOpenTUILiveInitiatives(config, statusOptions);
           return;
@@ -835,9 +834,8 @@ export function statusCommand(program: Command) {
         const config = configResult.value;
 
         if (viewMode === "projects") {
-          const { runOpenTUILiveProjects } = await import(
-            "./tui/live-opentui.js"
-          );
+          const { runOpenTUILiveProjects } =
+            await import("./tui/live-opentui.js");
           try {
             await runOpenTUILiveProjects(config, statusOptions);
             return;

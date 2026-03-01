@@ -9,6 +9,10 @@ This directory contains **prompt templates** for specialized sub-agents dispatch
 - **implementer.md** — execute a single task (tg start → work → tg done)
 - **reviewer.md** — spec compliance and quality check (PASS/FAIL)
 - **planner-analyst.md** — pre-plan codebase analysis for the planning model
+- **debugger.md** — systematic debugging (four-phase: investigate, pattern, hypothesis, implement); escalate after 3 failed fix attempts
+- **documenter.md** — documentation-only tasks (markdown, README, docs/)
+- **fixer.md** — escalation agent (stronger model) after implementer/reviewer failure
+- **investigator.md** — read-only investigation; returns structured findings for the investigate skill
 
 Agent files are **prompt templates**, not executable code. The orchestrator injects context at dispatch time.
 

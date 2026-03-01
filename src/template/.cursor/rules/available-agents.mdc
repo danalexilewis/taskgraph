@@ -6,31 +6,57 @@ alwaysApply: true
 # Available Sub-Agents
 
 ## generalPurpose
+
 General-purpose agent for researching complex questions, searching for code, and executing multi-step tasks.
 
 ## explore
+
 Fast agent specialized for exploring codebases, supporting quick, medium, and very thorough exploration levels.
 
 ## shell
+
 Command execution specialist for running bash commands, git operations, and other terminal tasks.
 
 ## browser-use
+
 Browser automation specialist for performing UI interactions, web testing, and browser profiling.
 
 ## planner-analyst
+
 Pre-plan analysis agent for gathering codebase context before plan creation (`.cursor/agents/planner-analyst.md`).
 
 ## implementer
+
 Implementation agent that executes tasks (`tg start` → work → `tg done`). Template at `.cursor/agents/implementer.md`.
 
 ## reviewer
+
 Quality-check sub-agent that evaluates implementations against specifications (`.cursor/agents/reviewer.md`).
 
 ## test-quality-auditor
+
 Sub-agent that audits test quality and suggests improvements (`.cursor/agents/test-quality-auditor.md`).
 
 ## test-infra-mapper
+
 Sub-agent that maps and documents test infrastructure (`.cursor/agents/test-infra-mapper.md`).
 
 ## test-coverage-scanner
+
 Sub-agent that scans test coverage and highlights gaps (`.cursor/agents/test-coverage-scanner.md`).
+
+## debugger
+
+Systematic debugging sub-agent for hypothesis-driven investigation. See `.cursor/agents/debugger.md`. Lead doc: docs/leads/debug.md.
+
+## documenter
+
+Documentation-only agent for tasks limited to markdown/docs (README, CHANGELOG, docs/). Template at `.cursor/agents/documenter.md`. Plan authors set `agent: documenter` for doc-only tasks.
+
+## fixer
+
+Escalation agent; resolves tasks after implementer/reviewer failure using a stronger model. See `.cursor/agents/fixer.md`.
+
+## investigator
+
+Read-only investigation specialist. Receives a tactical directive and investigates files, function chains, ASTs, stack traces, architectural patterns, schemas, and API facades. Use when the investigate skill dispatches an investigation task. See `.cursor/agents/investigator.md`. Lead doc: docs/leads/investigator.md.

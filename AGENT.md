@@ -97,5 +97,5 @@ Multi-agent awareness (when 2–3 agents work alongside the human)
 
 - Always pass --agent <session-name> on tg start so other agents see who claimed each task.
 - Read "Active work" from tg status before picking a task; avoid overlapping on the same files/area.
-- Use tg note <taskId> --msg "..." to leave breadcrumbs when changing shared interfaces (types, schema, parser).
+- Use tg note <taskId> --msg "..." to leave breadcrumbs when changing shared interfaces (types, schema, parser) or discovering anything relevant beyond the current task's scope. Notes are the cross-dimensional transmission between introspective (single-task) and connective (multi-task) agent perspectives. See docs/agent-strategy.md.
 - Do not pick a task in the same area as another agent's doing task without human approval.

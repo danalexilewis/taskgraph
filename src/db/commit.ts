@@ -1,6 +1,7 @@
 import { execa } from "execa";
 import { ResultAsync } from "neverthrow";
 import { type AppError, buildError, ErrorCode } from "../domain/errors";
+import { doltSqlServer, getServerPool } from "./connection";
 
 const doltPath = () => process.env.DOLT_PATH || "dolt";
 
@@ -14,6 +15,16 @@ export function doltCommit(
       buildError(ErrorCode.DB_COMMIT_FAILED, "Dry run commit failed"),
     );
   }
+
+  const pool = getServerPool();
+  if (pool) {
+    return doltSqlServer("CALL DOLT_ADD('-A')", pool)
+      .andThen(() =>
+        doltSqlServer("CALL DOLT_COMMIT('-m', ?, '--allow-empty')", pool, [msg]),
+      )
+      .map(() => undefined);
+  }
+
   const dolt = doltPath();
   const doltEnv = { ...process.env, DOLT_READ_ONLY: "false" };
   return ResultAsync.fromPromise(

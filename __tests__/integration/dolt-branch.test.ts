@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { execa } from "execa";
+import { checkoutBranch } from "../../src/db/branch";
 import {
   runTgCli,
   setupIntegrationTest,
@@ -109,9 +110,9 @@ todos:
     taskIdRollback = second?.task_id;
   }, 60000);
 
-  afterAll(() => {
+  afterAll(async () => {
     if (context) {
-      teardownIntegrationTest(context.tempDir);
+      await teardownIntegrationTest(context);
     }
   });
 
@@ -172,10 +173,7 @@ todos:
     );
 
     const branchName = agentBranchName(taskIdRollback);
-    await execa(DOLT_PATH, ["--data-dir", doltRepoPath, "checkout", "main"], {
-      cwd: doltRepoPath,
-      env: doltEnv(),
-    });
+    (await checkoutBranch(doltRepoPath, "main"))._unsafeUnwrap();
     await execa(
       DOLT_PATH,
       ["--data-dir", doltRepoPath, "branch", "-D", branchName],

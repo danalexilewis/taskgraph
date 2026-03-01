@@ -9,9 +9,10 @@ export function autoCompletePlanIfDone(
 ): ResultAsync<boolean, AppError> {
   const q = query(doltRepoPath);
   return q
-    .raw<{ status: string; count: number }>(
-      `SELECT status, COUNT(*) as count FROM \`task\` WHERE plan_id = '${sqlEscape(planId)}' GROUP BY status`,
-    )
+    .raw<{
+      status: string;
+      count: number;
+    }>(`SELECT status, COUNT(*) as count FROM \`task\` WHERE plan_id = '${sqlEscape(planId)}' GROUP BY status`)
     .andThen((rows) => {
       const counts = Object.fromEntries(rows.map((r) => [r.status, r.count]));
       const total = rows.reduce((sum, r) => sum + r.count, 0);
@@ -25,7 +26,7 @@ export function autoCompletePlanIfDone(
         return ResultAsync.fromSafePromise(Promise.resolve(false));
       return q
         .update(
-          "plan",
+          "project",
           { status: "done", updated_at: now() },
           { plan_id: planId },
         )

@@ -9,6 +9,55 @@ description: Autonomous task execution loop. Grinds through plan tasks using sub
 
 When this skill is invoked, enter an autonomous execution loop. Do not stop to ask the human unless a sub-agent fails twice or you hit an ambiguity you cannot resolve.
 
+## Architecture
+
+- **You (orchestrator / execution lead)**: Coordinates the execution loop. Dispatches implementers, reviews results, escalates failures.
+- **Sub-agents**:
+
+  | Agent | Purpose | Permission |
+  |-------|---------|------------|
+  | implementer | Execute task (code, tests, docs) | read-write |
+  | reviewer (or spec-reviewer + quality-reviewer) | Evaluate implementation | read-only |
+  | fixer | Escalation after 2 implementer failures | read-write |
+
+## Permissions
+
+- **Lead**: read-write (orchestrates task execution, writes to task graph)
+- **Propagation**: Mixed. Implementer and fixer are read-write. Reviewers are read-only.
+- **Sub-agents**:
+
+  | Agent | Permission |
+  |-------|------------|
+  | implementer | read-write |
+  | reviewer / spec-reviewer / quality-reviewer | read-only |
+  | fixer | read-write |
+
+## Decision tree
+
+```mermaid
+flowchart TD
+    A[Start: check for plan to import] --> B{Import needed?}
+    B -->|Yes| C[tg import plan]
+    B -->|No| D[tg next --json]
+    C --> D
+    D --> E{Tasks empty?}
+    E -->|Yes| F[Plan complete - report summary]
+    E -->|No| G[File conflict check - build batch]
+    G --> H[TodoWrite + dispatch N implementers]
+    H --> I[Wait for batch]
+    I --> J{Each task outcome}
+    J -->|SUCCESS| K[Check notes and evidence]
+    J -->|FAIL 1| L[Re-dispatch with feedback]
+    J -->|FAIL 2| M{Escalation ladder}
+    M -->|Fixer| N[Dispatch fixer agent]
+    M -->|Direct| O[Orchestrator does task]
+    M -->|Human| P[Stop + present options]
+    K --> D
+    L --> I
+    N --> I
+    O --> D
+```
+
 ## Task orchestration UI — ALWAYS use when running tg tasks
 
 When executing tasks from tg, **always structure work so Cursor surfaces the "Task orchestration for autonomous execution" panel.** This gives the human a single place to see which sub-agents are doing what (meta todo + sub-agent management). Assume there will always be one or more tasks; use the same orchestration flow whether it's 1 or 5.

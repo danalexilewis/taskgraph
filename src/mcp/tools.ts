@@ -125,7 +125,7 @@ async function runContext(
   const planRows = await q.select<{
     file_tree: string | null;
     risks: string | null;
-  }>("plan", {
+  }>("project", {
     columns: ["file_tree", "risks"],
     where: { plan_id: task.plan_id },
   });
@@ -233,7 +233,7 @@ async function runNext(
        WHERE e.to_task_id = t.task_id AND e.type = 'blocks' 
        AND bt.status NOT IN ('done','canceled')) as unmet_blockers
     FROM \`task\` t
-    JOIN \`plan\` p ON t.plan_id = p.plan_id
+    JOIN \`project\` p ON t.plan_id = p.plan_id
     WHERE t.status = 'todo'
     ${planFilter}
     ${excludeCanceledAbandoned}
@@ -268,7 +268,7 @@ async function runShow(
   const escaped = sqlEscape(taskIdResolved);
 
   const taskDetailResult = await q.raw<Task & { plan_title: string }>(
-    `SELECT t.*, p.title as plan_title FROM \`task\` t JOIN \`plan\` p ON t.plan_id = p.plan_id WHERE t.task_id = '${escaped}';`,
+    `SELECT t.*, p.title as plan_title FROM \`task\` t JOIN \`project\` p ON t.plan_id = p.plan_id WHERE t.task_id = '${escaped}';`,
   );
   if (taskDetailResult.isErr()) return toToolError(taskDetailResult.error);
   const taskDetailsArray = taskDetailResult.value;

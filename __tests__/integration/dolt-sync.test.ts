@@ -70,9 +70,9 @@ todos:
     planId = plan?.plan_id;
   }, 60000);
 
-  afterAll(() => {
+  afterAll(async () => {
     if (context) {
-      teardownIntegrationTest(context.tempDir);
+      await teardownIntegrationTest(context);
     }
     if (remoteDir && fs.existsSync(remoteDir)) {
       fs.rmSync(remoteDir, { recursive: true, force: true });
@@ -137,6 +137,6 @@ todos:
     expect(plan2).toBeDefined();
     expect(plan2?.plan_id).toBe(planId);
 
-    teardownIntegrationTest(tempDir2);
+    await teardownIntegrationTest(tempDir2);
   }, 30000);
 });

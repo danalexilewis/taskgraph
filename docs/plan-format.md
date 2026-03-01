@@ -41,7 +41,7 @@ Base fields (see [Plan Import](plan-import.md)): `id`, `content`, `status`, `blo
 
 | Field              | Type   | Stored in Dolt           | Description                                                                                              |
 | ------------------ | ------ | ------------------------ | -------------------------------------------------------------------------------------------------------- |
-| `agent`            | string | `task.agent`             | Single slug or array specifying the agent or sub-agent to execute this task. |
+| `agent`            | string | `task.agent`             | Single slug or array specifying the agent or sub-agent to execute this task. Use `agent: debugger` for debugging tasks (root-cause investigation, failing tests with unknown cause). |
 | `intent`           | string | `task.intent`            | Detailed description of what this task involves and why. Can reference files, functions, or constraints. |
 | `suggestedChanges` | string | `task.suggested_changes` | Proposed code snippets or diffs as a starting point for the agent. Directional, not prescriptive.        |
 

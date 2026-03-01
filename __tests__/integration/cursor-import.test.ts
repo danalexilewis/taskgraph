@@ -38,9 +38,9 @@ isProject: false
     fs.writeFileSync(planFilePath, planContent);
   }, 60000);
 
-  afterAll(() => {
+  afterAll(async () => {
     if (context) {
-      teardownIntegrationTest(context.tempDir);
+      await teardownIntegrationTest(context);
     }
   });
 
@@ -55,9 +55,9 @@ isProject: false
     expect(exitCode).toBe(0);
     expect(stdout).toContain("Successfully imported");
 
-    // Verify tasks in DB
+    // Verify tasks in DB (filter by plan in case other tests share state)
     const tasksResult = await doltSql(
-      `SELECT task_id, external_key, title, status FROM \`task\` ORDER BY external_key`,
+      `SELECT task_id, external_key, title, status FROM \`task\` WHERE plan_id = (SELECT plan_id FROM \`project\` WHERE title = 'Cursor Import Test') ORDER BY external_key`,
       context.doltRepoPath,
     );
     expect(tasksResult.isOk()).toBe(true);

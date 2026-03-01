@@ -33,7 +33,7 @@ export function generateMarkdown(
     const q = query(config.doltRepoPath);
 
     return q
-      .select<PlanRow>("plan", {
+      .select<PlanRow>("project", {
         columns: ["plan_id", "title", "intent"],
         where: { plan_id: planId },
       })

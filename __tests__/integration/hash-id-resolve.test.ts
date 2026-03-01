@@ -75,8 +75,8 @@ todos:
     taskHashId = hid;
   }, 60000);
 
-  afterAll(() => {
-    if (context) teardownIntegrationTest(context.tempDir);
+  afterAll(async () => {
+    if (context) await teardownIntegrationTest(context);
   });
 
   it("resolves short hash_id in tg context and returns same result as UUID", async () => {

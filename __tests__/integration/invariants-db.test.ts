@@ -18,7 +18,7 @@ describe.serial("Invariants (DB Dependent) Integration Tests", () => {
     // Seed data: plan, tasks with different statuses, and blocking edges
     (
       await doltSql(
-        `INSERT INTO \`plan\` (plan_id, title, intent, created_at, updated_at) VALUES (
+        `INSERT INTO \`project\` (plan_id, title, intent, created_at, updated_at) VALUES (
         '${planId}', 
         'Test Plan for Invariants', 
         'Intent', 
@@ -79,9 +79,9 @@ describe.serial("Invariants (DB Dependent) Integration Tests", () => {
     )._unsafeUnwrap();
   }, 60000);
 
-  afterAll(() => {
+  afterAll(async () => {
     if (context) {
-      teardownIntegrationTest(context.tempDir);
+      await teardownIntegrationTest(context);
     }
   });
 

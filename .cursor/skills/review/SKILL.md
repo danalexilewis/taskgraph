@@ -5,6 +5,8 @@ description: Read-only review of code health and system health using sub-agents;
 
 # Review (read-only)
 
+**Lead documentation:** See [docs/leads/review.md](../../docs/leads/review.md).
+
 This skill is **read-only**: no file edits, no database writes, no destructive commands. The orchestrator coordinates sub-agents that gather and assess; you synthesize their findings into a single report.
 
 ## When to use
@@ -20,6 +22,41 @@ This skill is **read-only**: no file edits, no database writes, no destructive c
 | Review + new feature / proposal | Yes         | Yes           | Yes             |
 
 **New feature potential** = user mentions a new feature, proposal, or "what if we add X"; or explicitly asks for risk assessment. When in doubt, include risk.
+
+## Architecture
+
+- **You (orchestrator / review lead)**: Gathers baseline, dispatches sub-agents, synthesizes report.
+- **Sub-agents**:
+
+  | Agent                          | Purpose                                          | Permission |
+  | ------------------------------ | ------------------------------------------------ | ---------- |
+  | investigator                   | Code health analysis                             | read-only  |
+  | investigator                   | System health analysis                           | read-only  |
+  | generalPurpose (or risk skill) | Risk assessment (when feature/proposal in scope) | read-only  |
+
+## Permissions
+
+- **Lead**: read-only
+- **Propagation**: All sub-agents MUST use readonly=true.
+- **Rule**: No file edits, no `tg start`/`tg done`, no DB writes, no destructive commands.
+
+## Decision tree
+
+```mermaid
+flowchart TD
+    A[User: review / health check] --> B{New feature or proposal?}
+    B -->|No| C[Scope: code + system health]
+    B -->|Yes| D[Scope: code + system + risk]
+    C --> E[Dispatch investigator: code health]
+    C --> F[Dispatch investigator: system health]
+    D --> E
+    D --> F
+    D --> G[Run risk or dispatch generalPurpose]
+    E --> H[Synthesize report]
+    F --> H
+    G --> H
+    H --> I[Deliver: chat + optional reports/]
+```
 
 ## Workflow
 
@@ -49,12 +86,12 @@ Use **mcp_task** (or Task tool) with **readonly=true**. Emit all calls in the **
 - **Context**: Paste `tg status --tasks` (and if available a one-line summary of gate: e.g. 'gate passes' or 'gate: typecheck failed on X').
 - **subagent_type**: investigator or generalPurpose.
 
-**Risk assessment (only when scope is new feature / proposal)** — run the **assess-risk** workflow:
+**Risk assessment (only when scope is new feature / proposal)** — run the **risk** workflow:
 
 - Either:
-  - **Option A**: Apply the assess-risk skill yourself (read `.cursor/skills/assess-risk/SKILL.md` and `.cursor/skills/assess-risk/CODE_RISK_ASSESSMENT.md`; gather scope, rate metrics, produce the risk report), or
-  - **Option B**: Dispatch a **generalPurpose** sub-agent with readonly=true and a prompt that includes the assess-risk skill content plus the current scope (plans, fileTree, crossplan summary if available). Ask it to produce the Risk Assessment Report per the template in CODE_RISK_ASSESSMENT.md.
-- Use the same output template (Summary table, Cross-Plan Interactions, Mitigation Strategies, Recommended Execution Order) as in assess-risk.
+  - **Option A**: Apply the risk skill yourself (read `.cursor/skills/risk/SKILL.md` and `.cursor/skills/risk/CODE_RISK_ASSESSMENT.md`; gather scope, rate metrics, produce the risk report), or
+  - **Option B**: Dispatch a **generalPurpose** sub-agent with readonly=true and a prompt that includes the risk skill content plus the current scope (plans, fileTree, crossplan summary if available). Ask it to produce the Risk Assessment Report per the template in CODE_RISK_ASSESSMENT.md.
+- Use the same output template (Summary table, Cross-Plan Interactions, Mitigation Strategies, Recommended Execution Order) as in risk.
 
 ### 3. Synthesize report (orchestrator)
 
@@ -73,7 +110,7 @@ Merge sub-agent outputs into one report. Suggested structure:
 
 ### Risk assessment (if in scope)
 
-[Summary table and narrative from assess-risk; link to full risk report if produced separately.]
+[Summary table and narrative from risk; link to full risk report if produced separately.]
 
 ### Summary and next steps
 
@@ -97,6 +134,7 @@ Resolve conflicts (e.g. one agent says "tests adequate", another "gaps in X") by
 
 ## Reference
 
-- **Assess-risk**: `.cursor/skills/assess-risk/SKILL.md`, `.cursor/skills/assess-risk/CODE_RISK_ASSESSMENT.md`
+- **Lead doc**: [docs/leads/review.md](../../docs/leads/review.md)
+- **Risk**: `.cursor/skills/risk/SKILL.md`, `.cursor/skills/risk/CODE_RISK_ASSESSMENT.md`
 - **Investigator**: `.cursor/agents/investigator.md`
 - **Dispatch**: `.cursor/rules/subagent-dispatch.mdc` (use readonly and parallel batch in one turn)

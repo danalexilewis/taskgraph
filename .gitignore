@@ -10,12 +10,19 @@ build/
 # Export output (tg export markdown writes here by default)
 exports/
 
+# Integration test harness writes these under .taskgraph/
+.taskgraph/tg-golden-template-path.txt
+.taskgraph/tg-dolt-root-path.txt
+
 # Test & coverage
 coverage/
 
 # Package manager
 .pnpm-debug.log*
 .yarn-integrity
+
+# Local env (integration test paths; Bun loads .env.local when running tests)
+.env.local
 
 # IDE & OS
 .DS_Store

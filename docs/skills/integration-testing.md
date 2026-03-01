@@ -25,6 +25,7 @@ Integration tests with temp Dolt repo; runTgCli, test-utils.
 
 - Clean up temp repos to avoid stale state.
 - Use `beforeEach`/`afterEach` hooks for isolation.
+- For read-only state assertions, prefer `doltSql` or domain APIs to avoid extra CLI process spawns; use `runTgCli` for the CLI behavior under test.
 
 ## Task IDs
 

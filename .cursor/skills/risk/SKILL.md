@@ -1,11 +1,11 @@
 ---
-name: assess-risk
-description: Assess the risk profile of code changes or proposed features using the project's risk model. Use when evaluating a feature proposal, reviewing implementation plans, or when the user asks about risk, impact, or safety of changes.
+name: risk
+description: Assess the risk profile of code changes or proposed features using the project's risk model (Greg's model). Use when evaluating a feature proposal, reviewing implementation plans, or when the user asks about risk, impact, or safety of changes.
 ---
 
-# Assess Risk
+# Risk
 
-This skill is **read-only**: it queries the task graph (Dolt) via `tg crossplan summary --json` and reads plan files. It does not modify Dolt or write any data.
+**Lead documentation:** See [docs/leads/risk.md](../../../docs/leads/risk.md).
 
 ## When to use
 
@@ -13,19 +13,41 @@ This skill is **read-only**: it queries the task graph (Dolt) via `tg crossplan 
 - Before committing to multi-plan execution.
 - When evaluating a feature proposal or reviewing implementation plans.
 
+## Architecture
+
+- **You (orchestrator / risk lead)**: Gathers data, rates metrics, produces report.
+- **Sub-agents**: None. This lead runs the full workflow directly.
+
+## Permissions
+
+- **Lead**: read-only
+- **Rule**: No file edits, no database writes, no destructive commands.
+
+## Decision tree
+
+```mermaid
+flowchart TD
+    A[User: assess risk] --> B{crossplan CLI available?}
+    B -->|Yes| C[Run tg crossplan summary --json]
+    B -->|No| D[Gather from tg status + plan files]
+    C --> E[Read plan files for fileTree and risks]
+    D --> E
+    E --> F[Rate 8 risk metrics per plan]
+    F --> G{Multiple plans?}
+    G -->|Yes| H[Assess cross-plan interactions]
+    G -->|No| I[Skip cross-plan]
+    H --> J[Produce Risk Assessment Report]
+    I --> J
+```
+
 ## Workflow
 
-1. **Gather cross-plan data**  
-   Run:
-
-   ```bash
-   pnpm tg crossplan summary --json
-   ```
-
-   This returns plans, tasks, domains, skills, file overlaps, and proposed edges. If the command is not yet available, use `tg status`, `tg next`, and plan files to infer scope.
+1. **Gather scope data**  
+   If `tg crossplan summary --json` is available, run it to get plans, tasks, domains, skills, file overlaps, and proposed edges.  
+   If the crossplan command is not yet available, use `tg status --tasks`, `tg next --plan <planId> --json`, and plan files under `plans/` to infer scope (active plans, tasks per plan, file trees from plan frontmatter).
 
 2. **Read plan files**  
-   For each plan referenced in the summary, read the plan markdown (e.g. under `plans/`) to get `fileTree`, `risks`, and task intents.
+   For each plan in scope, read the plan markdown (e.g. under `plans/`) to get `fileTree`, `risks`, and task intents.
 
 3. **Rate the 8 risk metrics per plan**  
    For each plan, rate **Entropy**, **Surface Area**, **Backwards Compat**, **Reversibility**, **Complexity Concentration**, **Testing Surface**, **Performance Risk**, and **Blast Radius** as **Low**, **Medium**, or **High**. Use the definitions in **CODE_RISK_ASSESSMENT.md** in this directory.
@@ -88,4 +110,4 @@ Produce markdown in this structure:
 
 ## Reference
 
-For the full framework (detailed metric definitions, process, and template), see **CODE_RISK_ASSESSMENT.md** in this directory.
+For the full framework (detailed metric definitions, process, and template), see **CODE_RISK_ASSESSMENT.md** in this directory. See also [docs/leads/risk.md](../../../docs/leads/risk.md).

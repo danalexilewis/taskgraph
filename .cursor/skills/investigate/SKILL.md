@@ -7,9 +7,40 @@ description: Runs a quick high-level investigation from the end of the chat (sum
 
 **Lead documentation:** See [docs/leads/investigator.md](docs/leads/investigator.md).
 
-Quick, high-level investigation that turns chat context and docs into a plan and tasks. Uses only the **investigator** sub-agent (read-only) for tactical digging.
+## Architecture
 
-## When to run
+- **You (orchestrator / investigator lead)**: Reads chat context, scans docs, drafts investigation plan, dispatches investigator, synthesizes findings.
+- **Sub-agents**:
+
+  | Agent | Purpose | Permission |
+  |-------|---------|------------|
+  | investigator | Tactical investigation (files, function chains, schemas, APIs) | read-only |
+
+**Constraint**: Only the investigator sub-agent is used. No other sub-agents in this skill.
+
+## Permissions
+
+- **Lead**: read-only
+- **Propagation**: All sub-agents MUST use readonly=true.
+- **Rule**: No file edits, no destructive commands. Investigator gathers evidence only.
+
+## Decision tree
+
+```mermaid
+flowchart TD
+    A[User: /investigate] --> B[Step 1: Read end-of-chat context]
+    B --> C[Step 2: Quick docs/ scan]
+    C --> D[Step 3: Draft investigation areas + hypotheses]
+    D --> E[Build tactical directives]
+    E --> F[Step 4: Dispatch investigator sub-agent]
+    F --> G[Receive structured findings]
+    G --> H[Step 5: Synthesize + finalize plan and tasks]
+    H --> I[Present investigation plan to user]
+```
+
+## When to use
+
+Quick, high-level investigation that turns chat context and docs into a plan and tasks. Uses only the **investigator** sub-agent (read-only) for tactical digging.
 
 - User says `/investigate` or "investigate what we should do next."
 - User refers to a summary, post-action, or "what Cursor calls the end of the chat" to decide what to investigate.

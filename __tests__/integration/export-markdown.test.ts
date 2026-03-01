@@ -51,9 +51,9 @@ isProject: false
     planId = plan?.plan_id;
   }, 60000);
 
-  afterAll(() => {
+  afterAll(async () => {
     if (context) {
-      teardownIntegrationTest(context.tempDir);
+      await teardownIntegrationTest(context);
     }
   });
 

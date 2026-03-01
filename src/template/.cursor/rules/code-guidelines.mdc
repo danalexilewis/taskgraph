@@ -1,0 +1,38 @@
+---
+description: Opinionated coding guidelines for consistent, high-quality code
+alwaysApply: true
+---
+
+# Code Guidelines
+
+When writing or modifying code, follow these conventions so agents and humans produce consistent, maintainable output.
+
+## TypeScript / JavaScript
+
+- **Strict mode** — Use TypeScript strict mode. No `any`; no `@ts-ignore` or `@ts-expect-error` except when documenting a known upstream bug with a comment.
+- **Naming** — Descriptive names; avoid abbreviations. Use camelCase for variables/functions, PascalCase for types/classes, UPPER_SNAKE for constants.
+- **Types** — Prefer interfaces for objects; use discriminated unions for variants. Use Zod (or similar) for runtime validation of inputs and boundaries.
+
+## Error handling
+
+- Prefer **Result types** (e.g. neverthrow) or explicit error returns over throw/catch.
+- **Never** swallow errors with empty catch blocks. Log or rethrow with context.
+- Unwrap Result/Option only at boundaries (e.g. CLI handler); use `.match()` or equivalent.
+
+## Structure
+
+- **Imports** — Group by external then internal; no circular imports. Prefer named exports.
+- **Functions** — Small and focused (under ~50 lines); single responsibility; pure where possible.
+- **Dependencies** — Before adding a new package, check `docs/recommended-packages.md` and prefer a recommended option when it fits.
+
+## Testing
+
+- Co-locate tests with source or in a mirror tree (e.g. `__tests__/`).
+- Descriptive test names; test behavior, not implementation.
+- No test interdependence; each test can run in isolation.
+
+## Anti-patterns to avoid
+
+- Nested ternaries; magic numbers or strings; mutating function parameters.
+- `console.log` left in production code paths.
+- Suppressing type errors instead of fixing types.

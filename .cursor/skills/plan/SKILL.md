@@ -7,6 +7,38 @@ description: Create a rich project plan with codebase analysis, file trees, risk
 
 **Lead documentation:** See [docs/leads/planner-analyst.md](docs/leads/planner-analyst.md).
 
+## Architecture
+
+- **You (orchestrator / planner lead)**: Dispatches analyst, applies critique checklist, writes the plan, presents for review.
+- **Sub-agents**:
+
+  | Agent | Purpose | Permission |
+  |-------|---------|------------|
+  | planner-analyst | Gathers codebase context and rough task breakdown | read-only |
+
+The analyst gathers facts; the orchestrator owns architecture, dependencies, and task design.
+
+## Permissions
+
+- **Lead**: read-write (writes plan file to plans/)
+- **Propagation**: Planner-analyst MUST use readonly=true (model="fast", subagent_type="explore").
+- **Rule**: Analyst does not write files. Only the orchestrator writes the plan.
+
+## Decision tree
+
+```mermaid
+flowchart TD
+    A[User: plan / create plan] --> B[Phase 1: Dispatch planner-analyst]
+    B --> C[Analyst returns structured analysis]
+    C --> D[Phase 2: Apply critique checklist]
+    D --> E[Write plan to plans/*.md]
+    E --> F[Phase 3: Summarize and present]
+    F --> G{User response}
+    G -->|proceed / execute| H[Import + execute]
+    G -->|add tasks only| I[Import only]
+    G -->|thanks / ok| J[Do nothing]
+```
+
 When this skill is invoked, run the full two-phase planning workflow. Do not shortcut or skip the analyst phase.
 
 ## Phase 1: Dispatch Planner-Analyst

@@ -70,9 +70,9 @@ isProject: false
     taskIds = rows.map((r) => r.task_id);
   }, 60000);
 
-  afterAll(() => {
+  afterAll(async () => {
     if (context) {
-      teardownIntegrationTest(context.tempDir);
+      await teardownIntegrationTest(context);
     }
   });
 

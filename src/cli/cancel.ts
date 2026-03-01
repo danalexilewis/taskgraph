@@ -41,7 +41,7 @@ async function cancelOne(
           );
         }
         const updateResult = await q.update(
-          "plan",
+          "project",
           { status: "abandoned", updated_at: currentTimestamp },
           { plan_id: plan.plan_id },
         );
@@ -60,14 +60,14 @@ async function cancelOne(
       };
 
       if (typeHint === "plan" || typeHint === "auto") {
-        const byPlanId = await q.select<PlanRow>("plan", {
+        const byPlanId = await q.select<PlanRow>("project", {
           columns: ["plan_id", "status"],
           where: { plan_id: id },
         });
         if (byPlanId.isErr()) throw byPlanId.error;
         if (byPlanId.value.length > 0) return tryCancelPlan(byPlanId.value[0]);
 
-        const byTitle = await q.select<PlanRow>("plan", {
+        const byTitle = await q.select<PlanRow>("project", {
           columns: ["plan_id", "status"],
           where: { title: id },
         });

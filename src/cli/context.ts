@@ -52,7 +52,7 @@ export function contextCommand(program: Command) {
               const task = taskRows[0];
               return q
                 .select<{ file_tree: string | null; risks: string | null }>(
-                  "plan",
+                  "project",
                   {
                     columns: ["file_tree", "risks"],
                     where: { plan_id: task.plan_id },

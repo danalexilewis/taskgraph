@@ -30,12 +30,12 @@ See [AGENT.md](../AGENT.md) and [.cursor/rules/subagent-dispatch.mdc](../.cursor
 
 Leads are defined by skills and documented in **docs/leads/**. Examples:
 
-| Lead | Skill / trigger | Role |
-| ----- | ----------------- | ----- |
-| Investigator | `/investigate` | Run investigation, dispatch investigator worker, produce plan/tasks |
-| Planner-analyst | `/plan` | Gather context, dispatch planner-analyst, produce plan |
-| Execution | `/work` | Run task loop, dispatch implementer + reviewer |
-| Test-review | `/test-review` | Audit tests, dispatch test scanners, synthesize findings |
+| Lead            | Skill / trigger | Role                                                                |
+| --------------- | --------------- | ------------------------------------------------------------------- |
+| Investigator    | `/investigate`  | Run investigation, dispatch investigator worker, produce plan/tasks |
+| Planner-analyst | `/plan`         | Gather context, dispatch planner-analyst, produce plan              |
+| Execution       | `/work`         | Run task loop, dispatch implementer + reviewer                      |
+| Test-review     | `/test-review`  | Audit tests, dispatch test scanners, synthesize findings            |
 
 See [docs/leads/README.md](leads/README.md) for the lead registry.
 
@@ -51,6 +51,27 @@ See [docs/leads/README.md](leads/README.md) for the lead registry.
 - **Test scanners** — test-coverage-scanner, test-infra-mapper, test-quality-auditor.
 
 Worker prompts live in [.cursor/agents/](.cursor/agents/); see [.cursor/agents/README.md](../.cursor/agents/README.md).
+
+## Communication: Notes as Cross-Dimensional Transmission
+
+Agents operate in two fundamentally different perspectives:
+
+- **Introspective** — A worker (implementer) sees one task. It has intent, files, suggested changes — a self-contained world. Its scope is bounded by the task.
+- **Connective** — The orchestrator (or a future worker on a related task) sees many tasks. It cares about patterns, conflicts, repeated failures, and architectural drift across the task network.
+
+**Notes (`tg note`) are the boundary-crossing mechanism between these two perspectives.** When an implementer hits something unexpected — a fragile migration, a conflicting pattern, an assumption that doesn't hold — it writes a note. That note is written introspectively (one agent, one task) but its value is connective (relevant to every task touching the same area).
+
+The `event` table stores notes as task-scoped rows (`kind = 'note'`), but the _meaning_ of a note is inherently cross-task. `tg context` surfaces notes from sibling tasks in the same plan so that the connective dimension can read what the introspective dimension wrote. Without this surfacing, notes are trapped in the task that created them.
+
+**When to write notes:**
+
+- Discovered fragility or unexpected behavior in shared code
+- Pattern conflicts between what the task says and what the codebase does
+- Environment or tooling issues the implementer couldn't fix
+- Warnings for future tasks touching the same files
+- Review verdicts (structured JSON for `tg stats`)
+
+See [multi-agent.md](multi-agent.md) for event body conventions and [schema.md](schema.md) for the `event` table structure.
 
 ## generalPurpose Default
 
@@ -68,10 +89,10 @@ No skill ⇒ no lead ⇒ generalPurpose path.
 
 ## File Layout
 
-| Location | Purpose |
-| -------- | -------- |
-| **.cursor/agents/*.md** | Prompt templates for workers (and any lead-capable agents). One file per agent type. |
-| **docs/leads/*.md** | Documentation of **orchestration patterns** (how a lead is invoked, which workers it uses, flow). |
-| **docs/leads/README.md** | Lead registry and index. |
+| Location                 | Purpose                                                                                           |
+| ------------------------ | ------------------------------------------------------------------------------------------------- |
+| **.cursor/agents/\*.md** | Prompt templates for workers (and any lead-capable agents). One file per agent type.              |
+| **docs/leads/\*.md**     | Documentation of **orchestration patterns** (how a lead is invoked, which workers it uses, flow). |
+| **docs/leads/README.md** | Lead registry and index.                                                                          |
 
-Agent files define *who* does the work; lead docs explain *how* orchestration runs for each pattern. See [docs/leads/README.md](leads/README.md) and [.cursor/agents/README.md](../.cursor/agents/README.md).
+Agent files define _who_ does the work; lead docs explain _how_ orchestration runs for each pattern. See [docs/leads/README.md](leads/README.md) and [.cursor/agents/README.md](../.cursor/agents/README.md).

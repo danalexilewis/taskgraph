@@ -15,19 +15,19 @@ This document describes how Task-Graph supports 2–3 simultaneous agents workin
 
 ## CLI Additions
 
-| Command | Purpose |
-|---------|---------|
-| `tg start <taskId> --agent <name>` | Claim a task with identity; record in started event body |
-| `tg start <taskId> --force` | Override claim when task is already being worked (human override) |
-| `tg note <taskId> --msg <text> [--agent <name>]` | Append a note event; visible in `tg show` |
-| `tg status` | Shows "Active work" section with doing tasks, agent_id, plan title, started_at |
+| Command                                                | Purpose                                                                          |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------- |
+| `tg start <taskId> --agent <name>`                     | Claim a task with identity; record in started event body                         |
+| `tg start <taskId> --force`                            | Override claim when task is already being worked (human override)                |
+| `tg note <taskId> --msg <text> [--agent <name>]`       | Append a note event; visible in `tg show`                                        |
+| `tg status`                                            | Shows "Active work" section with doing tasks, agent_id, plan title, started_at   |
 | `tg stats [--agent <name>] [--plan <planId>] [--json]` | Derive agent metrics from events: tasks_done, review pass/fail, avg elapsed time |
 
 ## Conventions
 
 1. **Always pass `--agent`** when multiple agents may be active.
 2. **Read Active work** before picking a task. Avoid overlap.
-3. **Leave notes** when changing shared interfaces.
+3. **Leave notes** when changing shared interfaces or discovering anything relevant beyond the current task's scope. Notes are the transmission vehicle between an agent focused introspectively on one task and agents working connectively across many tasks. See [agent-strategy.md](agent-strategy.md#communication-notes-as-cross-dimensional-transmission) for the architectural framing.
 4. **Do not pick** tasks in the same area as another doing task without human approval.
 
 ## Event Body Conventions

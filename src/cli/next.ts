@@ -74,7 +74,7 @@ export function nextCommand(program: Command) {
              WHERE e.to_task_id = t.task_id AND e.type = 'blocks' 
              AND bt.status NOT IN ('done','canceled')) as unmet_blockers
           FROM \`task\` t
-          JOIN \`plan\` p ON t.plan_id = p.plan_id
+          JOIN \`project\` p ON t.plan_id = p.plan_id
           WHERE t.status = 'todo'
           ${planFilter}
           ${domainFilter}

@@ -20,7 +20,7 @@ export function showCommand(program: Command) {
                 Task & { plan_title: string }
               >(`SELECT t.*, p.title as plan_title
               FROM \`task\` t
-              JOIN \`plan\` p ON t.plan_id = p.plan_id
+              JOIN \`project\` p ON t.plan_id = p.plan_id
               WHERE t.task_id = '${resolved}';`);
               if (taskDetailQueryResult.isErr())
                 throw taskDetailQueryResult.error;

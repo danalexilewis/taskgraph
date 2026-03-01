@@ -8,7 +8,7 @@ import { registerTools } from "./tools.js";
  */
 export async function run(config: Config): Promise<void> {
   const server = new McpServer(
-    { name: "taskgraph-mcp", version: "2.0.0" },
+    { name: "taskgraph-mcp", version: "3.0.0" },
     { capabilities: { tools: {} } },
   );
   registerTools(server, config);

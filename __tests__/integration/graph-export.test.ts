@@ -12,7 +12,7 @@ describe("Graph Export Integration Tests", () => {
     // Seed some data
     (
       await doltSql(
-        `INSERT INTO \`plan\` (plan_id, title, intent, created_at, updated_at) VALUES (
+        `INSERT INTO \`project\` (plan_id, title, intent, created_at, updated_at) VALUES (
         'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', 
         'Test Plan', 
         'An intent for the test plan', 
@@ -57,9 +57,9 @@ describe("Graph Export Integration Tests", () => {
     )._unsafeUnwrap();
   }, 60000);
 
-  afterAll(() => {
+  afterAll(async () => {
     if (context) {
-      teardownIntegrationTest(context.tempDir);
+      await teardownIntegrationTest(context);
     }
   });
 

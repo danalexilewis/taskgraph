@@ -1,0 +1,16 @@
+---
+description: No hard deletes on the task graph database; use tg cancel for soft-delete
+alwaysApply: true
+---
+
+# No Hard Deletes
+
+- **NEVER** execute `DELETE`, `DROP TABLE`, or `TRUNCATE` on the task graph database.
+- **NEVER** run raw `dolt sql` (or equivalent) that modifies or deletes data.
+
+To remove a plan or task, use soft-deletes:
+
+- **Plan:** `tg cancel <planId> --reason "..."` — marks the plan as abandoned.
+- **Task:** `tg cancel <taskId> --reason "..."` — marks the task as canceled.
+
+If a user asks to "delete", "remove", or "clean up" plans or tasks, use `tg cancel` instead and explain that removal is done via soft-delete (abandoned/canceled).

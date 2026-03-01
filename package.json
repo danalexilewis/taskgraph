@@ -1,6 +1,6 @@
 {
   "name": "@danalexilewis/taskgraph",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "description": "Task Graph CLI for Centaur Development",
   "main": "dist/cli/index.js",
   "bin": {
@@ -24,7 +24,7 @@
     "gate": "bash scripts/cheap-gate.sh",
     "gate:full": "bash scripts/cheap-gate.sh --full",
     "test": "bun test __tests__/db __tests__/domain __tests__/export __tests__/plan-import",
-    "test:integration": "bun test __tests__/integration",
+    "test:integration": "bun run scripts/run-integration-global-setup.ts && (bun test __tests__/integration; r=$?; bun run scripts/run-integration-global-teardown.ts; exit $r)",
     "test:e2e": "bun test __tests__/e2e",
     "test:all": "bun test __tests__ --concurrent",
     "precommit": "node scripts/pre-commit.js",
@@ -63,6 +63,7 @@
     "js-yaml": "^4.1.1",
     "log-symbols": "^7.0.1",
     "minimatch": "^10.2.4",
+    "mysql2": "^3.18.2",
     "neverthrow": "^6.0.0",
     "strip-ansi": "^7.2.0",
     "terminal-link": "^5.0.0",

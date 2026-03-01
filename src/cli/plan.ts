@@ -25,7 +25,7 @@ function planListCommand(): Command {
           title: string;
           status: string;
           created_at: string;
-        }>("plan", {
+        }>("project", {
           columns: ["plan_id", "title", "status", "created_at"],
           orderBy: "`created_at` DESC",
         });
@@ -85,7 +85,7 @@ function planNewCommand(): Command {
         const q = query(config.doltRepoPath);
 
         return q
-          .insert("plan", {
+          .insert("project", {
             plan_id,
             title,
             intent: options.intent,

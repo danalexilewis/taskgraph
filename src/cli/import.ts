@@ -66,10 +66,13 @@ export function importCommand(program: Command) {
                   options.plan,
                 )
               ) {
-                const planResult = await q.select<{ plan_id: string }>("plan", {
-                  columns: ["plan_id"],
-                  where: { plan_id: options.plan },
-                });
+                const planResult = await q.select<{ plan_id: string }>(
+                  "project",
+                  {
+                    columns: ["plan_id"],
+                    where: { plan_id: options.plan },
+                  },
+                );
                 if (planResult.isOk() && planResult.value.length > 0) {
                   planId = planResult.value[0].plan_id;
                 }
@@ -77,10 +80,13 @@ export function importCommand(program: Command) {
 
               // If not found by ID, try to find by title
               if (!planId) {
-                const planResult = await q.select<{ plan_id: string }>("plan", {
-                  columns: ["plan_id"],
-                  where: { title: options.plan },
-                });
+                const planResult = await q.select<{ plan_id: string }>(
+                  "project",
+                  {
+                    columns: ["plan_id"],
+                    where: { title: options.plan },
+                  },
+                );
                 if (planResult.isOk() && planResult.value.length > 0) {
                   planId = planResult.value[0].plan_id;
                 }
@@ -106,7 +112,7 @@ export function importCommand(program: Command) {
                   if (tests != null)
                     insertPayload.tests = JSON.stringify(tests);
                 }
-                const insertResult = await q.insert("plan", insertPayload);
+                const insertResult = await q.insert("project", insertPayload);
                 if (insertResult.isErr()) throw insertResult.error;
 
                 console.log(
@@ -140,7 +146,7 @@ export function importCommand(program: Command) {
                 if (tests != null)
                   planUpdatePayload.tests = JSON.stringify(tests);
                 const planUpdateResult = await q.update(
-                  "plan",
+                  "project",
                   planUpdatePayload,
                   { plan_id: planId },
                 );

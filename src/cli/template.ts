@@ -69,7 +69,7 @@ export function templateCommand(program: Command) {
                   )
                 ) {
                   const planResult = await q.select<{ plan_id: string }>(
-                    "plan",
+                    "project",
                     {
                       columns: ["plan_id"],
                       where: { plan_id: planName },
@@ -83,7 +83,7 @@ export function templateCommand(program: Command) {
                 // If not found by ID, try by title
                 if (!planId) {
                   const planResult = await q.select<{ plan_id: string }>(
-                    "plan",
+                    "project",
                     {
                       columns: ["plan_id"],
                       where: { title: planName },
@@ -113,7 +113,7 @@ export function templateCommand(program: Command) {
                     insertPayload.risks = JSON.stringify(risks);
                   if (tests != null)
                     insertPayload.tests = JSON.stringify(tests);
-                  const insertResult = await q.insert("plan", insertPayload);
+                  const insertResult = await q.insert("project", insertPayload);
                   if (insertResult.isErr()) throw insertResult.error;
 
                   if (!rootOpts(cmd).json) {

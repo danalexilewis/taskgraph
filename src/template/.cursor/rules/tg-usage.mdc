@@ -1,0 +1,43 @@
+---
+description: Minimum guidance for using TaskGraph (tg) in this repo
+alwaysApply: true
+---
+
+# Using TaskGraph (tg)
+
+Use the `tg` CLI (e.g. `pnpm tg` or `npx tg`) to manage plans and tasks.
+
+## Orientation
+
+- **Status:** `tg status` — next runnable tasks; `tg status --tasks` — full task list with plan and owner.
+- **Plans / initiatives:** `tg status --plans`, `tg status --initiatives`.
+
+## Plans and import
+
+- **Plans** live in `plans/<date>_<name>.md` (YAML frontmatter with `name`, `overview`, `todos`). After creating a plan, import it:
+
+  ```bash
+  tg import plans/<file> --plan "<Plan Name>" --format cursor
+  ```
+
+- User says "proceed" / "execute" → import then run tasks. "Just add the tasks" → import only. "Thanks" / "ok" → do nothing.
+
+## Getting work and context
+
+- **Runnable tasks:** `tg next --plan "<Plan>" --json --limit 20`
+- **Context for a task:** `tg context <taskId>` — load docs and spec before implementing.
+
+## Execution
+
+- **Start:** `tg start <taskId> --agent <name>`
+- **Finish:** `tg done <taskId> --evidence "commands run, git ref"` (or "implemented; no test run").
+- **Notes:** `tg note <taskId> --msg "..."` to log blockers or follow-up.
+- **Blocked:** `tg block <taskId> --on <blockerId> --reason "..."`
+
+## When a plan is complete
+
+- `tg export markdown --plan <planId>` — writes to `exports/<planId>.md`.
+
+## Recovery
+
+- Task already done but still `todo` or `doing`: `tg done <taskId> --force --evidence "completed previously"` then `tg status --tasks` to verify.

@@ -15,6 +15,9 @@ type CopyResult = {
   skipped: string[];
 };
 
+/** Minimal .cursor rule(s) always installed so the system knows how to use tg. */
+const MINIMAL_CURSOR_RULES = [".cursor/rules/tg-usage.mdc"];
+
 function copyTree(
   srcDir: string,
   destDir: string,
@@ -56,19 +59,19 @@ export function setupCommand(program: Command) {
   program
     .command("setup")
     .description(
-      "Scaffold repo conventions (docs/skills, example domain docs, and optional Cursor rules)",
+      "Scaffold repo conventions (docs/skills, example domain docs; optionally Cursor rules/agents/skills)",
     )
     .option("--no-docs", "Do not scaffold docs/ (domain docs + docs/skills)")
     .option(
-      "--no-cursor",
-      "Do not scaffold Cursor rules (.cursor/rules) and .cursor/memory.md",
+      "--cursor",
+      "Also scaffold Cursor rules, agents, skills, and AGENT.md into .cursor/",
     )
     .option("--force", "Overwrite existing files", false)
     .action(async (rawOptions: unknown, cmd) => {
       const raw = rawOptions as Partial<SetupOptions>;
       const options: SetupOptions = {
         docs: raw.docs ?? true,
-        cursor: raw.cursor ?? true,
+        cursor: raw.cursor ?? false,
         force: raw.force ?? false,
       };
       const repoRoot = process.cwd();
@@ -95,6 +98,20 @@ export function setupCommand(program: Command) {
             options,
             result,
           );
+        }
+
+        // Always install minimal rule so the system knows how to use tg
+        for (const rel of MINIMAL_CURSOR_RULES) {
+          const srcPath = path.join(templateRoot, rel);
+          const destPath = path.join(repoRoot, rel);
+          if (!fs.existsSync(srcPath)) continue;
+          fs.mkdirSync(path.dirname(destPath), { recursive: true });
+          if (fs.existsSync(destPath) && !options.force) {
+            result.skipped.push(rel);
+            continue;
+          }
+          fs.copyFileSync(srcPath, destPath);
+          result.created.push(rel);
         }
 
         if (options.cursor) {
@@ -145,6 +162,11 @@ export function setupCommand(program: Command) {
             console.log(`  = ${p}`);
           });
           console.log("Tip: re-run with --force to overwrite.");
+        }
+        if (!options.cursor && options.docs) {
+          console.log(
+            "Tip: add Cursor rules, agents, and skills with: pnpm tg setup --cursor",
+          );
         }
       };
 

@@ -35,6 +35,10 @@ Pre-plan analysis agent for gathering codebase context before plan creation (`.c
 
 Implementation agent that executes tasks (`tg start` → work → `tg done`). Template at `.cursor/agents/implementer.md`.
 
+## documenter
+
+Documentation-only agent for tasks limited to markdown/docs (README, CHANGELOG, docs/). Template at `.cursor/agents/documenter.md`. Plan authors set `agent: documenter` for doc-only tasks.
+
 ## reviewer
 
 Quality-check sub-agent that evaluates implementations against specifications (`.cursor/agents/reviewer.md`).
@@ -50,3 +54,19 @@ Sub-agent that maps and documents test infrastructure (`.cursor/agents/test-infr
 ## test-coverage-scanner
 
 Sub-agent that scans test coverage and highlights gaps (`.cursor/agents/test-coverage-scanner.md`).
+
+## debugger
+
+Systematic debugging sub-agent for hypothesis-driven investigation. See `.cursor/agents/debugger.md`. Lead doc: [docs/leads/debug.md](../../docs/leads/debug.md).
+
+## fixer
+
+Escalation agent; resolves tasks after implementer/reviewer failure using a stronger model. See `.cursor/agents/fixer.md`.
+
+## spec-reviewer
+
+Spec compliance check sub-agent (PASS/FAIL). See `.cursor/agents/spec-reviewer.md`.
+
+## quality-reviewer
+
+Code quality check sub-agent (PASS/FAIL). See `.cursor/agents/quality-reviewer.md`.

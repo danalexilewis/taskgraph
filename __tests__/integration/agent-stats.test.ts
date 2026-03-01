@@ -182,8 +182,8 @@ todos:
       .then((r) => r._unsafeUnwrap());
   }, 60000);
 
-  afterAll(() => {
-    if (context) teardownIntegrationTest(context.tempDir);
+  afterAll(async () => {
+    if (context) await teardownIntegrationTest(context);
   });
 
   it("tg stats --json returns tasks_done and avg_seconds per agent", async () => {

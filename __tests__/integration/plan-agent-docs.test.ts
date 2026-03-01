@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { doltSql } from "../../src/db/connection";
 import {
   runTgCli,
   setupIntegrationTest,
@@ -28,6 +29,10 @@ todos:
     agent: explorer
     docs: [schema, cli]
     changeType: investigate
+    status: pending
+  - id: with-agent-debugger
+    content: Task assigned to debugger
+    agent: debugger
     status: pending
   - id: without-agent
     content: Task with no agent specified
@@ -68,6 +73,8 @@ isProject: false
     for (const t of tasks) {
       if (t.title === "Task assigned to explorer")
         taskIds["with-agent"] = t.task_id;
+      if (t.title === "Task assigned to debugger")
+        taskIds["with-agent-debugger"] = t.task_id;
       if (t.title === "Task with no agent specified")
         taskIds["without-agent"] = t.task_id;
       if (t.title === "Task using legacy domain field")
@@ -75,17 +82,40 @@ isProject: false
     }
   }, 60000);
 
-  afterAll(() => {
-    if (context) teardownIntegrationTest(context.tempDir);
+  afterAll(async () => {
+    if (context) await teardownIntegrationTest(context);
   });
 
   it("stores agent field on task and surfaces it in context", async () => {
-    const { stdout } = await runTgCli(
-      `context ${taskIds["with-agent"]} --json`,
-      tempDir,
+    const taskId = taskIds["with-agent"];
+    const rowResult = await doltSql(
+      `SELECT agent FROM \`task\` WHERE task_id = '${taskId}'`,
+      context.doltRepoPath,
     );
+    expect(rowResult.isOk()).toBe(true);
+    const rows = rowResult._unsafeUnwrap() as Array<{ agent: string | null }>;
+    expect(rows.length).toBe(1);
+    expect(rows[0].agent).toBe("explorer");
+
+    const { stdout } = await runTgCli(`context ${taskId} --json`, tempDir);
     const data = JSON.parse(stdout);
     expect(data.agent).toBe("explorer");
+  }, 15000);
+
+  it("import preserves task.agent (e.g. debugger) in DB and tg context --json", async () => {
+    const taskId = taskIds["with-agent-debugger"];
+    const rowResult = await doltSql(
+      `SELECT agent FROM \`task\` WHERE task_id = '${taskId}'`,
+      context.doltRepoPath,
+    );
+    expect(rowResult.isOk()).toBe(true);
+    const rows = rowResult._unsafeUnwrap() as Array<{ agent: string | null }>;
+    expect(rows.length).toBe(1);
+    expect(rows[0].agent).toBe("debugger");
+
+    const { stdout } = await runTgCli(`context ${taskId} --json`, tempDir);
+    const data = JSON.parse(stdout);
+    expect(data.agent).toBe("debugger");
   }, 15000);
 
   it("agent is null when not specified", async () => {

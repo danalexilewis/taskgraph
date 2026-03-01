@@ -38,13 +38,33 @@ else
 fi
 
 if [[ -n "$FULL" ]]; then
+  echo "=== [SETUP] integration golden template ==="
+  bun run scripts/run-integration-global-setup.ts
   echo "=== [TEST:full] bun test __tests__ ==="
+  set +e
   bun test __tests__ --concurrent
+  EXIT=$?
+  set -e
+  bun run scripts/run-integration-global-teardown.ts
+  exit "$EXIT"
 else
   echo "=== [TEST:targeted] affected tests ==="
   AFFECTED=$(echo "$CHANGED" | bun scripts/affected-tests.ts 2>/dev/null || true)
+  RAN_INTEGRATION_SETUP=
+  if [[ -n "$AFFECTED" ]] && echo "$AFFECTED" | grep -q "__tests__/integration"; then
+    echo "=== [SETUP] integration golden template ==="
+    bun run scripts/run-integration-global-setup.ts
+    RAN_INTEGRATION_SETUP=1
+  fi
   if [[ -n "$AFFECTED" ]]; then
+    set +e
     echo "$AFFECTED" | xargs bun test
+    EXIT=$?
+    set -e
+    if [[ -n "$RAN_INTEGRATION_SETUP" ]]; then
+      bun run scripts/run-integration-global-teardown.ts
+    fi
+    exit "$EXIT"
   else
     echo "No affected tests, skipping."
   fi

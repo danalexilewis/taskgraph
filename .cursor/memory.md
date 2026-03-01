@@ -3,6 +3,7 @@
 ## Plan import
 
 - Task **title** (from todo `content`) is stored in `task.title` (VARCHAR(255)). Keep plan todo titles under 255 characters or import will fail.
+- **INSERT/UPDATE plan data**: After the plan→project rename migration, `plan` is a view. Dolt does not allow INSERT into a view. Use table **`project`** (not `plan`) for `q.insert` and `q.update` in import and template apply. See `src/cli/import.ts` and `src/cli/template.ts`.
 
 ## tg context
 
@@ -12,9 +13,14 @@
 
 - No script in package.json needed: `pnpm tg` runs the CLI from node_modules/.bin. Same for `npx tg` with npm.
 
+## CLI version (build)
+
+- Reading version from package.json via `createRequire(import.meta.url)` in the CLI entrypoint causes the emitted CJS to reference `import.meta.url`, which is undefined in CommonJS. Node then throws "exports is not defined in ES module scope". Use a hardcoded version string (e.g. `"2.0.0"`) until the build is ESM or a CJS-safe method (e.g. readFileSync of package.json from \_\_dirname) is used.
+
 ## CLI scaffolding (`tg setup`)
 
 - Commander `--no-<flag>` options default to `true`; don’t pass `false` as the default value or you’ll invert behavior (setup will do nothing).
+- **.cursor is opt-in:** `tg setup` defaults to scaffolding only `docs/`. Use `--cursor` to also scaffold `.cursor/` (rules, agents, skills) and `AGENT.md`.
 - Package entrypoints should match build output: `package.json` `bin`/`main` point at `dist/cli/index.js`.
 - `tg setup` resolves templates from `path.join(__dirname, '..', 'template')`: at runtime dist/cli → dist/template; in dev (tsx) src/cli → src/template. Templates live in `src/template/` and are copied to `dist/template/` by the build.
 
@@ -24,7 +30,11 @@
 
 ## Integration tests under full concurrency
 
-- Running `bun test __tests__` with default concurrency can cause flakiness: different integration test files run in parallel and may hit "database is read only" or Dolt commit conflicts when sharing the golden template or temp dirs. Flaky integration describes were wrapped with `describe.serial()` and a "Serial: flaky under concurrency" comment (invariants-db, no-hard-deletes, blocked-status-materialized, cursor-import).
+- Running `bun test __tests__/integration` with default concurrency can cause flakiness: different integration test files run in parallel and may hit "database is read only" or Dolt commit conflicts when sharing the golden template or temp dirs. Flaky integration describes were wrapped with `describe.serial()` and a "Serial: flaky under concurrency" comment (invariants-db, no-hard-deletes, blocked-status-materialized, cursor-import).
+
+## Dolt identity in test setup
+
+- Integration tests using Dolt require setting `user.name` and `user.email` before `dolt init` in global setup, otherwise `dolt init` fails with "Author identity unknown". Added configuration steps in `__tests__/integration/global-setup.ts`.
 
 ## DAL writable (read-only errors)
 
@@ -33,6 +43,8 @@
 ## Migration idempotency
 
 - `applyTaskDimensionsMigration` must skip when `task_domain` exists (junction migration has run and dropped domain/skill from task). Otherwise re-adding columns conflicts with existing `change_type`.
+- `applyPlanRichFieldsMigration` must skip when table `project` exists (plan was renamed to project); otherwise ALTER TABLE `plan` runs against a missing table. After rename, rich columns already exist on `project`.
+- After plan→project rename, app code still references `plan`. Migration creates view `plan` AS SELECT \* FROM `project` (in rename step and via `applyPlanViewMigration` for DBs that already had project) so existing queries work.
 - **No-delete triggers:** Dolt does not support `SIGNAL SQLSTATE` inside triggers (syntax error at SIGNAL). The no-delete migration creates triggers when supported; on failure it records the attempt in `_taskgraph_migrations` so we don’t retry every command. Application-layer guard in `connection.ts` still blocks DELETE on protected tables.
 
 ## Plan authoring (user correction)
@@ -56,90 +68,42 @@
 
 - **Required:** (1) Call TodoWrite with the task list from tg next before dispatching sub-agents; update statuses via TodoWrite(merge=true) as tasks complete. (2) When dispatching a batch of N tg tasks, emit N Task (or mcp_task) calls in the same turn — do not dispatch one per turn. This triggers Cursor's orchestration panel and parallel execution. See subagent-dispatch.mdc, work skill, AGENT.md.
 
-## Dispatch mechanisms (choose by environment)
-
-- **In-IDE / terminal**: Task tool or `agent` CLI (see docs/cursor-agent-cli.md). **This environment** (no Task tool): use **mcp_task** with the same built prompt and short description (e.g. "Implement task: &lt;title&gt;"); subagent_type generalPurpose or explore. Same prompt and workflow; only invocation differs. Do not skip dispatch because the Task tool is not visible — use mcp_task.
-
-## Plan filename convention
-
-- Plan filenames: `yy-mm-dd_the_file_name.md` (e.g. `26-02-26_restructure_src_npm_layout.md`). Two-digit year, date, then underscore and slug. See plan-authoring.mdc.
-
-## Memory rule (for agents)
-
-- memory.mdc includes an explicit trigger list and a "Before you consider your response complete" checklist. If any trigger applied (bug fix, pattern/rule change, user correction, tooling quirk), the last edit in that response must be to .cursor/memory.md — do not skip.
-
-## Orchestrator plan-creation patterns (learned)
-
-- **Don't transcribe analyst output verbatim.** The planner-analyst gathers facts; the orchestrator must critically evaluate dependencies, define vague metrics concretely, and ensure tasks are specific enough for fast sub-agents.
-- **Existing data first.** Before designing new data capture (e.g. token flags), check what's derivable from existing data (timestamps give elapsed time, event counts give friction signals, etc.).
-- **Minimize serial dependencies.** Ask "can this task work without the upstream?" for each blockedBy. Decouple capture from consumption (e.g. report command shouldn't block on token capture — it works without it).
-- **Resolve open questions in the plan.** Don't leave "same command or separate?" for implementers — decide in the plan or create an investigate task.
-- **Assign tests to tasks.** Plan-level `tests` array without a task that owns them means nobody writes them.
-
-## Learning mode
-
-- Toggle: `"learningMode": true` in `.taskgraph/config.json`. Orchestrator reads this before running the review protocol.
-
-## Build and on-stop hook
-
-- **Rebuild when src/ changes:** An on-stop hook (`.cursor/hooks/rebuild-if-src-changed.js`) runs at end of turn. If `git status` shows any changes under `src/`, it runs `pnpm build` so `dist/` is not stale for the next session or for integration tests. Rule: we rebuild when changes are detected in src at the end of a session/operation sequence; the hook implements that.
-- New hooks go in `.cursor/hooks/` and are registered in `.cursor/hooks.json`. Use the create-hook skill (`.cursor/skills/create-hook/SKILL.md`) to add or document hooks.
-
-## Integration tests — next output and task id
-
-- **`tg next`** prints `hash_id ?? task_id` (short hash when present). Tests that parsed a UUID from the human "ID: ..." line broke when hash_id was introduced. Fix: use **`tg next --json`** and take `task_id` from the parsed JSON (by title); use that UUID for `tg context` and for raw SQL. See `docs/research/integration-test-next-output-format.md`.
-
-## Typecheck (tsconfig)
-
-- **tsconfig uses only `"types": ["node"]`** so `tsc --noEmit` passes in node-only environments (no bun-types required). If typecheck still fails elsewhere (e.g. another clone or CI with different tsconfig), that's a local/env issue; the repo is set up for node-only typecheck.
-- **OpenTUI / bun:ffi:** OpenTUI is Bun-only (bun-ffi-structs). We keep it out of type scope via `include: src/**/*.ts`, exclude node_modules, and `types: ["node"]`. Do not add bun-types to the app tsconfig used by the gate. Full analysis: `docs/research/cheap-gate-typecheck-lint-failures.md`.
-- **Changed-files default:** `pnpm typecheck` runs typecheck only on changed `src/**/*.ts` (via `scripts/typecheck.sh`); `pnpm typecheck:all` runs full repo. Gate and sub-agents use the default. Rule: `.cursor/rules/changed-files-default.mdc`.
-
-## Plan re-import (Dolt read-only)
-
-- During bulk plan import, Dolt can report "cannot update manifest: database is read only", causing partial imports. If that happens, prefer **restoring from Dolt history** (or git): the DB is versioned in git (.taskgraph/dolt is committed). Use `dolt log -n 50` to find a commit before the loss (e.g. "plan-import: upsert tasks and edges" after the last plan create), then `dolt checkout <commit> -b restore_xxx`, `dolt checkout main`, `dolt reset --hard restore_xxx`, `dolt branch -d restore_xxx` to make that state main.
-
-## tg export markdown
-
-- Export writes to **exports/** by default (exports/<planId>.md). It **never** writes into plans/ — writing to plans/ is blocked to avoid overwriting plan files.
-- For **completed plans**, export may require the **plan ID** (UUID), not the plan title. "Plan … not found" can occur when passing a title for a done plan. Use `tg export markdown --plan <planId>` with the plan_id from `tg plan list --json`. Output goes to exports/<planId>.md.
-- The exported content is frontmatter-only (todos + statuses); it is not a full round-trip of fileTree, risks, or body. Use exports/ as the destination; keep plan files in plans/ as the source of truth.
-- Review triggers after implementer, explorer, or planner-analyst completes — not after reviewer.
-- Learnings go in each agent's `## Learnings` section, injected as `{{LEARNINGS}}` placeholder. Consolidate into prompt template when >10 entries.
-
-## Visual tree format (user preference)
-
-- **Always use `├──` / `└──` tree drawing** for file trees and dependency graphs in plans. Flat indented lists are harder to scan.
-- **Dependency graphs**: Group tasks into execution waves (parallel start, after X, after Y). Show what can run concurrently vs what is gated. Include in the markdown body of every plan.
-- **File trees**: Use the same tree connectors in YAML `fileTree` fields. Group by directory.
-- **Mermaid**: Still use for data flows, state machines, and supplementary views. Complements but does not replace the tree-style graphs.
-
-## Test concurrency (Bun)
-
-- **Concurrent execution:** `bunfig.toml` sets `concurrentTestGlob = ["**/__tests__/integration/**", "**/__tests__/e2e/**"]` so integration and e2e test files run concurrently; unit tests (db, domain, export, plan-import) stay sequential. See https://bun.com/docs/test#concurrent-test-execution and https://bun.com/docs/test/configuration (concurrentTestGlob). To run all tests concurrently use `bun test --concurrent`.
-- **Flaky tests:** To identify flaky tests, run `pnpm gate:full` or `pnpm test:all` 3–5 times and note intermittently failing tests. Use `test.serial()` or `describe.serial()` (Bun API) only for tests that fail under concurrency due to order or shared state (e.g. shared Dolt DB). Add a one-line comment at the serial block explaining why (e.g. `// Flaky under concurrency; shared Dolt state`).
-
 ## Follow-up from sub-agent notes (orchestrator)
 
 - When an implementer (or sub-agent) completes and reports environment limitations, gate failures, or suggested follow-up in their return message or via `tg note`, the **orchestrator** decides whether to investigate. If warranted: `tg task new "<title>" --plan <planId>` then delegate the new task(s). See subagent-dispatch.mdc → "Follow-up from notes/evidence". Implementers should leave a `tg note` when they hit issues they could not fix so the orchestrator can spawn follow-up tasks.
-- **Sub-agents often have no Bun:** They may report "bun not available" and skip `pnpm test` / `pnpm test:integration`. When evidence says tests weren't run, the orchestrator or user should run tests locally to confirm.
 
-## Skills
+## Evidence-Grounded Scoped Planning (named pattern)
 
-- **Work skill — plan import first:** When /work is invoked in a thread where a plan was just created or approved (e.g. user said "proceed" after a plan), the skill now requires importing that plan before the execution loop so work runs against the intended plan. See .cursor/skills/work/SKILL.md "Before the loop — plan import (context)".
-- Test-review skill: produces a report and a Cursor-format plan with tasks; each task has an `agent` field so execution uses `tg start <taskId> --agent <agent>`. Plan format supports optional todo field `agent` (docs/plan-format.md, plan-authoring.mdc).
-- **[2026-02-27]** Updated sub-agent dispatch rule and agent templates to reference `agent` field and rename `domain_docs` to `doc_paths`.
-- **[2026-02-27]** Created `/work` skill (`.cursor/skills/work/SKILL.md`) for autonomous task execution loop with sub-agent dispatch, timeout checks, and human escalation.
-- **[2026-02-27]** Rewrote `/plan` skill to include mandatory planner-analyst dispatch, rich plan formatting (fileTree, risks, tests, per-task intent, dependency graphs), orchestrator critique checklist, and validation phase before user review.
-- **[2026-02-27]** Fixed bug in `renderTable` scaling calculation in `src/cli/table.ts`, corrected widths.reduce to sum column widths properly.
+The strongest plans share these properties — apply all of them when writing plans:
 
-## Plan auto-completion
+1. **Evidence base**: Every plan should cite the investigation, report, or analysis that preceded it. Don't guess at the problem; know it from data. Reference specific failure counts, file names, root causes.
+2. **Right-sized scope**: Plan what should be done _now_, not everything that _could_ be done. A good plan is completable in one session (3-10 tasks). Explicitly defer what's out of scope.
+3. **Intent as specification**: Each task's intent should tell the implementer what to do, _why_, the boundaries, and what _not_ to do. An implementer should be able to execute the task without asking a single question.
+4. **Optional work labeled**: If a task is conditional ("only if flakiness persists"), label it optional and state the condition. Don't mix required and optional work without distinction.
+5. **Out of scope section**: Explicitly state what was considered and deferred. This prevents scope creep during execution.
+6. **Analysis section**: Document current state, tradeoffs, and architectural decisions made. The plan is a decision document, not just a task list.
+7. **Dependency graph as parallel waves**: Use tree-format showing what runs in parallel and what gates. Mermaid supplements but doesn't replace the text tree.
+8. **Depth matches complexity**: Simple renames get thin plans. Multi-system changes get 500-line specs. Don't over-document trivial work or under-document complex work.
 
-- **[2026-02-27]** Plans are now auto-completed when `tg done` marks the last task. Logic in `src/domain/plan-completion.ts` (`autoCompletePlanIfDone`), hooked into `src/cli/done.ts`. Condition: all tasks done/canceled AND at least 1 done. Ran a one-time sweep to mark 24 historical plans as done.
+Counter-pattern (early plans): thin intent, no evidence citation, scope-heavy (plan everything possible), no "out of scope", analysis absent or brief. These produce plans that are structurally valid but don't give implementers enough to execute autonomously.
 
-## Status command enhancements
+## Notes as cross-dimensional communication (named pattern)
 
-- **[2026-02-27]** `tg status` now shows: vanity metrics (completed plans/tasks/canceled), active plans table (with Done column, only in-flight plans), active work table (Task/Plan/Agent), next runnable (limit 3). Completed plans hidden from active plans table. Health-check functions in `src/skills/health-check/index.ts` (stale, orphaned, unresolved deps).
-- **[2026-02-27]** `tg status` uses chalk colors (bold blue headings, green metrics, yellow table headers, cyan/red/green status values) and responsive tables via `cli-table3` in `src/cli/table.ts`. Tables respect terminal width (`getTerminalWidth()` from `src/cli/terminal.ts`). The first column is the flex column that absorbs width reduction. With many columns + enforced minimums, total width may exceed `maxWidth` — that's by design (hard floor).
-- **Status: merged Active Work + Next Runnable, short Id (user preference).** Default `tg status` should show a single merged table ("Active & next") combining doing tasks and next runnable (up to 3), with columns Id, Task, Plan, Status, Agent. Task Id in that section (and in next runnable display) must be short hash/id (`hash_id` when present, else truncated UUID), not full UUID. Plan: `plans/26-02-28_merge_status_active_next_short_id.md`.
-- **renderTable flex and max widths:** `src/cli/table.ts` `renderTable()` accepts optional `flexColumnIndex` (default 0) and `maxWidths` (per-column caps). The Active & next table uses `flexColumnIndex: 1` (Task column flexes), `maxWidths: [10]` (Id thin), and truncates plan titles to 18 chars with "…". Other tables can use these options for different layouts.
+Notes (`tg note`) are the boundary-crossing mechanism between two agent perspectives:
+
+- **Introspective** (implementer): sees one task, writes notes when it discovers something beyond its scope — conflicts, fragility, patterns, warnings.
+- **Connective** (orchestrator, future implementers): sees many tasks, reads notes to detect cross-task phenomena — repeated failures, architectural drift, file conflicts.
+
+Notes are stored task-scoped (event table, kind='note') but their _value_ is cross-task. A note written introspectively on task A about `migrate.ts` fragility is relevant to every task touching that file. Surfacing notes in `tg context` for related tasks completes the circuit — lets the connective dimension read what the introspective dimension wrote. Without cross-task surfacing, notes are trapped in the task that wrote them.
+
+## Plan → project table (application code)
+
+- After the schema migration renames `plan` to `project`, all application code must query/insert/update the `project` table (not `plan`). Status, next, show, cancel, import, plan, template, context, crossplan, MCP tools, export/markdown, and plan-completion were updated to use `"project"` as the table name. Column names (`plan_id`, `plan_title` alias) are unchanged. PROTECTED_TABLES includes both `plan` (view) and `project`.
+
+## .env.local for integration tests
+
+- `.env.local` values `DOLT_ROOT_PATH` and `TG_GOLDEN_TEMPLATE` must be **empty** (or set to the actual temp directory path, not to the `.taskgraph/tg-*.txt` path files). Bun auto-loads `.env.local`; if these point to the path files instead of the directories they contain, `getGoldenTemplatePath()` returns a file path, and `fs.cpSync(file, dir, {recursive:true})` fails with EISDIR. The `.env.local.example` correctly shows empty values.
+
+## Pre-commit anti-pattern hook
+
+- `.cursor/hooks/pre-commit-check.sh` enforces agent MUST NOT DO (as any, @ts-ignore, empty catch). Opt-in: install by copying or symlinking to `.git/hooks/pre-commit` (or use your git hooks manager). Script is executable; Cursor hooks.json has no pre-commit event, so this is git-level only.

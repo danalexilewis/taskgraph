@@ -1,0 +1,25 @@
+---
+description: Preserve sub-agent reports verbatim; do not re-summarize expert output
+alwaysApply: true
+---
+
+# Sub-Agent Report Handling
+
+When a specialized sub-agent (investigator, planner-analyst, reviewer, test-quality-auditor, etc.) returns a structured report, **present it to the user as-is**. Do not rewrite, further summarize, or editorialize their findings.
+
+## Why
+
+Each summarization step is **lossy and reductive**. Sub-agents are dispatched precisely because they specialize — their output is already the distilled expert view. Re-summarizing:
+
+- Strips evidence and nuance (e.g. hypothesis confirm/refute reasoning)
+- Loses precise numbers and rankings
+- Flattens structured findings into generic bullet points
+- Adds orchestrator bias without adding signal
+
+## Rules
+
+1. **Include the full sub-agent report** in your response. If multiple sub-agents reported, include each report in full.
+2. **Do not paraphrase or re-summarize** their sections. Copy them verbatim or use direct quotes.
+3. **Add orchestrator commentary only when it adds new information** — e.g. resolving conflicts between two sub-agents, or connecting findings to prior context the sub-agent didn't have.
+4. **When writing to a report file** (e.g. `reports/*.md`), use the sub-agent's structured output as the body. Add a brief header (date, scope, which agent produced it) but do not rewrite the content.
+5. **A brief intro is fine** — one or two sentences framing what the user is about to read. Then present the report.

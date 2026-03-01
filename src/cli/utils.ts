@@ -171,6 +171,8 @@ export interface Config {
   useDoltBranches?: boolean;
   /** Optional Dolt remote URL for push/pull (used by tg sync when implemented). */
   remoteUrl?: string;
+  /** Strategic cycle length (e.g. { weeks: 16 }). Used for initiative planning. */
+  strategicCycle?: { weeks: number };
 }
 
 export function readConfig(basePath?: string): Result<Config, AppError> {

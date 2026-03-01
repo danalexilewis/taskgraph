@@ -40,8 +40,8 @@ isProject: false
     taskId = (tasksResult._unsafeUnwrap() as { task_id: string }[])[0].task_id;
   }, 60000);
 
-  afterAll(() => {
-    if (context) teardownIntegrationTest(context.tempDir);
+  afterAll(async () => {
+    if (context) await teardownIntegrationTest(context);
   });
 
   it("should record agent_id in started event body", async () => {
@@ -111,7 +111,7 @@ isProject: false
 
     const { exitCode, stdout } = await runTgCli("status", context.tempDir);
     expect(exitCode).toBe(0);
-    expect(stdout).toContain("Active work:");
+    expect(stdout).toContain("Active & next");
     expect(stdout).toContain("bob");
   }, 15000);
 

@@ -1,6 +1,7 @@
 import { execa } from "execa";
 import { ResultAsync } from "neverthrow";
 import { type AppError, buildError, ErrorCode } from "../domain/errors";
+import { doltSqlServer, getServerPool } from "./connection";
 
 const doltPath = () => process.env.DOLT_PATH || "dolt";
 
@@ -13,6 +14,12 @@ export function createBranch(
   repoPath: string,
   branchName: string,
 ): ResultAsync<void, AppError> {
+  const pool = getServerPool();
+  if (pool) {
+    return doltSqlServer("CALL DOLT_BRANCH(?)", pool, [branchName]).map(
+      () => undefined,
+    );
+  }
   return ResultAsync.fromPromise(
     execa(doltPath(), ["--data-dir", repoPath, "branch", branchName], {
       cwd: repoPath,
@@ -34,6 +41,12 @@ export function checkoutBranch(
   repoPath: string,
   branchName: string,
 ): ResultAsync<void, AppError> {
+  const pool = getServerPool();
+  if (pool) {
+    return doltSqlServer("CALL DOLT_CHECKOUT(?)", pool, [branchName]).map(
+      () => undefined,
+    );
+  }
   return ResultAsync.fromPromise(
     execa(doltPath(), ["--data-dir", repoPath, "checkout", branchName], {
       cwd: repoPath,
@@ -56,6 +69,12 @@ export function mergeBranch(
   repoPath: string,
   branchName: string,
 ): ResultAsync<void, AppError> {
+  const pool = getServerPool();
+  if (pool) {
+    return doltSqlServer("CALL DOLT_MERGE(?)", pool, [branchName]).map(
+      () => undefined,
+    );
+  }
   return ResultAsync.fromPromise(
     execa(doltPath(), ["--data-dir", repoPath, "merge", branchName], {
       cwd: repoPath,
@@ -77,6 +96,12 @@ export function deleteBranch(
   repoPath: string,
   branchName: string,
 ): ResultAsync<void, AppError> {
+  const pool = getServerPool();
+  if (pool) {
+    return doltSqlServer("CALL DOLT_BRANCH('-d', ?)", pool, [branchName]).map(
+      () => undefined,
+    );
+  }
   return ResultAsync.fromPromise(
     execa(doltPath(), ["--data-dir", repoPath, "branch", "-d", branchName], {
       cwd: repoPath,

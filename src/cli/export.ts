@@ -1,5 +1,5 @@
 import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname, resolve, sep } from "node:path";
+import { dirname, relative, resolve } from "node:path";
 import { Command } from "commander";
 import { type AppError, buildError, ErrorCode } from "../domain/errors";
 import { generateDotGraph } from "../export/dot";
@@ -97,7 +97,9 @@ function exportMarkdownCommand(): Command {
         ? resolve(process.cwd(), options.out)
         : resolve(process.cwd(), "exports", `${options.plan}.md`);
       const plansDir = resolve(process.cwd(), "plans");
-      if (outPath.startsWith(plansDir + sep)) {
+      const rel = relative(plansDir, outPath);
+      const isUnderPlans = rel.length > 0 && !rel.startsWith("..");
+      if (isUnderPlans) {
         const err = buildError(
           ErrorCode.VALIDATION_FAILED,
           "Export cannot write to plans/; use exports/ or another directory to avoid overwriting plan files.",
@@ -111,9 +113,8 @@ function exportMarkdownCommand(): Command {
               message: err.message,
             }),
           );
-          process.exit(1);
-          return;
         }
+        process.exit(1);
       }
 
       const result = await generateMarkdown(options.plan);

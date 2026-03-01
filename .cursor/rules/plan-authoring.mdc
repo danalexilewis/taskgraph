@@ -140,6 +140,10 @@ Below the closing `---`, add the markdown body: **Analysis**, **Dependency graph
 | `changeType`       | no       | `create`, `modify`, `refactor`, `fix`, `investigate`, `test`, `document`.     |
 | `suggestedChanges` | no       | Directional snippets for the agent when the task touches specific code.       |
 
+## Choosing agent
+
+- For fix/debug tasks where root cause is unclear or repro is needed, set `agent: debugger` so the dispatcher uses the systematic debugging template.
+
 ## Assigning docs and skills
 
 When authoring todos, use the `docs` field to reference documentation pages that provide domain context or additional instructions. The value should be a single slug or an array of slugs corresponding to files under `docs/`. The agent will load these files before executing the task.

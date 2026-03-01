@@ -44,18 +44,14 @@ isProject: false
     );
     expect(importOut).toContain("Successfully imported");
 
-    const { stdout: listOut } = await runTgCli(
-      `plan list --json`,
-      context.tempDir,
+    const planResult = await doltSql(
+      `SELECT plan_id FROM \`plan\` WHERE title = 'No Hard Deletes Test Plan'`,
+      context.doltRepoPath,
     );
-    const plans = JSON.parse(listOut) as Array<{
-      plan_id: string;
-      title: string;
-      status: string;
-    }>;
-    const plan = plans.find((p) => p.title === "No Hard Deletes Test Plan");
-    expect(plan).toBeDefined();
-    planId = plan?.plan_id;
+    expect(planResult.isOk()).toBe(true);
+    const planRows = planResult._unsafeUnwrap() as Array<{ plan_id: string }>;
+    expect(planRows.length).toBeGreaterThanOrEqual(1);
+    planId = planRows[0].plan_id;
 
     const tasksResult = await doltSql(
       `SELECT task_id, external_key FROM \`task\` WHERE plan_id = '${planId}' ORDER BY external_key`,
@@ -71,9 +67,9 @@ isProject: false
     taskId2 = tasks[1].task_id;
   }, 60000);
 
-  afterAll(() => {
+  afterAll(async () => {
     if (context) {
-      teardownIntegrationTest(context.tempDir);
+      await teardownIntegrationTest(context);
     }
   });
 
@@ -115,14 +111,14 @@ isProject: false
     );
     expect(exitCode).toBe(0);
 
-    const { stdout } = await runTgCli(`plan list --json`, context.tempDir);
-    const plans = JSON.parse(stdout) as Array<{
-      plan_id: string;
-      status: string;
-    }>;
-    const plan = plans.find((p) => p.plan_id === planId);
-    expect(plan).toBeDefined();
-    expect(plan?.status).toBe("abandoned");
+    const result = await doltSql(
+      `SELECT status FROM \`plan\` WHERE plan_id = '${planId}'`,
+      context.doltRepoPath,
+    );
+    expect(result.isOk()).toBe(true);
+    const rows = result._unsafeUnwrap() as Array<{ status: string }>;
+    expect(rows.length).toBe(1);
+    expect(rows[0].status).toBe("abandoned");
   }, 30000);
 
   it("5) tg cancel <taskId> sets task status to canceled", async () => {
@@ -133,12 +129,14 @@ isProject: false
     );
     expect(exitCode).toBe(0);
 
-    const { stdout } = await runTgCli(
-      `show ${taskId1} --json`,
-      context.tempDir,
+    const result = await doltSql(
+      `SELECT status FROM \`task\` WHERE task_id = '${taskId1}'`,
+      context.doltRepoPath,
     );
-    const data = JSON.parse(stdout) as { taskDetails: { status: string } };
-    expect(data.taskDetails.status).toBe("canceled");
+    expect(result.isOk()).toBe(true);
+    const rows = result._unsafeUnwrap() as Array<{ status: string }>;
+    expect(rows.length).toBe(1);
+    expect(rows[0].status).toBe("canceled");
   }, 30000);
 
   it("6) tg cancel on done task fails", async () => {

@@ -1,6 +1,8 @@
 [test]
-timeout = 30000
-# Run integration and e2e test files concurrently (each has isolated temp dir / Dolt).
+# Default: fail any test that runs longer than 10s. Slow tests must pass an explicit timeout (e.g. it("...", async () => {}, 30000)).
+timeout = 10000
+# Run e2e test files concurrently (each has isolated temp dir / Dolt).
+# Integration test files run sequentially (excluded from concurrentTestGlob). In CI, use `bun test __tests__/integration --concurrency 4` for limited parallelism.
 # Unit tests in __tests__/db, domain, export, plan-import remain sequential.
 # See https://bun.com/docs/test#concurrent-test-execution
-concurrentTestGlob = ["**/__tests__/integration/**", "**/__tests__/e2e/**"]
+concurrentTestGlob = ["**/__tests__/e2e/**"]
