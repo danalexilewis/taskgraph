@@ -32,6 +32,15 @@ The orchestrator must pass:
 - Return a brief completion message to the orchestrator (e.g. "Task X done. Evidence: ...").
 - If you hit environment or gate issues you could not fix (e.g. missing tool, typecheck failure in another area), run `tg note <taskId> --msg "..."` so the orchestrator can decide whether to create follow-up tasks.
 
+**Structured failure output (when you cannot complete the task):**  
+If blocked, unable to implement, or hit unfixable environment/gate issues, report in your completion or `tg note` using this format so the orchestrator can parse and re-dispatch or create follow-up tasks:
+
+```
+VERDICT: FAIL
+REASON: (short description of why the task could not be completed)
+SUGGESTED_FIX: (optional; what to do next, e.g. run gate:full, fix dependency, or re-dispatch with different scope)
+```
+
 ## Task graph data safety
 
 - Do not run destructive SQL (DELETE, DROP TABLE, TRUNCATE) or raw dolt sql that modifies/deletes data. To remove a plan or task, use `tg cancel <planId|taskId> --reason "..."` (soft-delete). See `.cursor/rules/no-hard-deletes.mdc`.
@@ -89,6 +98,8 @@ You have been given task context below. Read any domain docs and skill guides li
 Run: `pnpm tg done {{TASK_ID}} --evidence "<brief evidence: commands run, git ref, or implemented; no test run>"`
 
 Then report back to the orchestrator: task done and the evidence you used.
+
+If you cannot complete (blocked, unfixable gate/env issue): use the structured failure format (VERDICT: FAIL, REASON: ..., SUGGESTED_FIX: ...) in your reply or in `tg note {{TASK_ID}} --msg "..."`.
 ```
 
 ## Learnings

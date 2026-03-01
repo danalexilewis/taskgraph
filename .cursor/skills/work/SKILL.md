@@ -52,7 +52,7 @@ while true:
        a. TodoWrite merge=true to update progress (e.g. mark that task complete in the todo list).
        b. if SUCCESS → check return message and task notes (including after the final task in a plan, e.g. full-suite run); if implementer reported environment/gate issues or follow-up, run **Follow-up from notes/evidence** (subagent-dispatch.mdc): orchestrator decides whether to create task(s) with `tg task new ... --plan <planId>` and delegate.
        c. if FAIL → re-dispatch once with feedback
-       d. if FAIL again → escalate (see Escalation below)
+       d. if FAIL again → apply **escalation ladder** (see subagent-dispatch.mdc “Escalation decision tree”): consider **fixer agent** (stronger model), **direct execution** (orchestrator does the task), or **escalate to human**; see Escalation below.
   9. loop back to step 1
 ```
 
@@ -70,16 +70,18 @@ After the loop completes (or on timeout), the orchestrator reviews what happened
 
 Before dispatching tasks in parallel, check if any tasks in the batch touch the same files (compare `file_tree`, `suggested_changes`, or intent references). If overlap exists, run those tasks sequentially, not in parallel.
 
-## Escalation — When to Stop and Ask the Human
+## Escalation — Escalation ladder and when to stop for the human
+
+When a sub-agent has **failed twice** on the same task, use the **escalation decision tree** in `.cursor/rules/subagent-dispatch.mdc`: choose among (1) **fixer agent** — dispatch the fixer sub-agent (stronger model; see `.cursor/agents/fixer.md`) with task context and failure feedback; (2) **direct execution** — orchestrator does the task and logs with `tg note <taskId> --msg "Direct execution: 2 sub-agent failures"`; (3) **escalate to human** — stop the loop and present summary + options (below). Do not default only to direct execution; prefer the fixer when the failure is implementation/review and the task is well-scoped.
 
 Stop the loop and present a summary + options when:
 
-- A sub-agent has **failed twice** on the same task.
+- After applying the ladder, you chose **escalate to human** (e.g. credentials, ambiguous intent, safety, or repeated direct-execution failure).
 - A task's intent is **ambiguous** — you cannot determine what to do without a design decision.
 - A task requires **credentials, secrets, or external access** you don't have.
 - More than **5 tasks** have failed in a single loop run (systemic issue).
 
-When escalating, provide:
+When escalating to the human, provide:
 
 1. **Summary**: What was completed, what failed, what remains.
 2. **Diagnosis**: Why the failure happened (error message, diff, context).

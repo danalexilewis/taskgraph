@@ -53,6 +53,25 @@ Agent templates live in `.cursor/agents/` (see README there). You build each sub
 
 Use **direct execution** (you do start → work → done yourself) only when: a sub-agent has failed twice and you are completing that task yourself, or the task is explicitly exploratory/ambiguous and not suitable for dispatch. Always log direct execution with `tg note <taskId> --msg "Direct execution: <reason>"`.
 
+## Escalation decision tree
+
+Use this to decide **re-dispatch** vs **direct execution** vs **escalate to human**.
+
+- **Re-dispatch (same or adjusted sub-agent)**
+  - First failure: spec-reviewer or quality-reviewer returned FAIL — re-dispatch implementer once with that reviewer’s specific feedback.
+  - Sub-agent error or wrong result with clear fix — re-dispatch once with clearer context or instructions.
+  - Environment flake (e.g. transient timeout) — one retry is acceptable; then treat as second failure.
+
+- **Direct execution (orchestrator does the task)**
+  - Sub-agent has failed **twice** on the same task (two re-dispatch attempts) — complete the task yourself; log with `tg note <taskId> --msg "Direct execution: 2 sub-agent failures"`.
+  - Task is **explicitly exploratory or ambiguous** and not suitable for a scoped sub-agent — do start → work → done yourself; log with `tg note <taskId> --msg "Direct execution: exploratory/ambiguous"`.
+
+- **Escalate to human**
+  - **Credentials or secrets** required (API keys, auth, deploy tokens) — stop and ask the user to supply or approve; do not attempt to guess or inject.
+  - **Ambiguous intent** that cannot be resolved from context or plan (e.g. conflicting requirements, missing product decision) — summarize and ask the user to clarify before continuing.
+  - **Safety or approval** (e.g. destructive change, external side effects, compliance) — describe the action and ask for explicit approval.
+  - **Repeated direct-execution failure** — if you attempted the task yourself and still cannot complete it (e.g. blocked by environment or complexity), note the task and escalate with a short summary and suggested next step.
+
 ## Pattern 1: Parallel batch execution (primary) — MANDATORY for execution
 
 When executing a plan with multiple unblocked tasks, you MUST use this pattern. **Feed all non-conflicting tasks; Cursor decides how many run in parallel.**
@@ -61,9 +80,9 @@ When executing a plan with multiple unblocked tasks, you MUST use this pattern. 
 1. Run `pnpm tg next --plan "<Plan>" --json --limit 20` (or `tg next --json --limit 20` for multi-plan) to get runnable tasks.
 2. **File conflict check**: From the list, keep only tasks that do not touch the same files (compare `file_tree`, `suggested_changes`, or intent). Do not cap the batch size — include every runnable task that is independent of the others. Cursor will decide how many sub-agents run concurrently.
 3. For each task in the batch, run `pnpm tg context <taskId> --json` and capture the JSON.
-4. Inspect the `agent` field from the context JSON: if set, select the corresponding agent template (`.cursor/agents/{{AGENT}}.md`); otherwise default to `.cursor/agents/implementer.md`. Build the sub-agent prompt by replacing placeholders (`{{TASK_ID}}`, `{{AGENT_NAME}}`, `{{TITLE}}`, `{{INTENT}}`, `{{DOC_PATHS}}`, `{{SKILL_DOCS}}`, `{{SUGGESTED_CHANGES}}`, `{{FILE_TREE}}`, `{{RISKS}}`, `{{RELATED_DONE}}`, `{{EXPLORER_OUTPUT}}`) with values from the context JSON. Refer to the agent registry rule at `.cursor/rules/available-agents.mdc` for valid agent names. Use unique agent names (e.g. implementer-1, implementer-2, …) so `tg status` shows distinct workers.
+4. Inspect the `agent` field from the context JSON: if set, select the corresponding agent template (`.cursor/agents/{{AGENT}}.md`); otherwise default to `.cursor/agents/implementer.md`. Build the sub-agent prompt by replacing placeholders (`{{TASK_ID}}`, `{{AGENT_NAME}}`, `{{TITLE}}`, `{{INTENT}}`, `{{DOC_PATHS}}`, `{{SKILL_DOCS}}`, `{{SUGGESTED_CHANGES}}`, `{{FILE_TREE}}`, `{{RISKS}}`, `{{RELATED_DONE}}`, `{{EXPLORER_OUTPUT}}`) with values from the context JSON. Refer to the agent registry rule at `.cursor/rules/available-agents.mdc` for valid agent names. Use unique agent names (e.g. implementer-1, implementer-2, …) so `tg status` shows distinct workers. **Worktrees for parallel tasks:** When dispatching implementers in this batch, use worktrees so each runs in an isolated directory. In the prompt, instruct the implementer to: (1) run `pnpm tg start <taskId> --agent <name> --worktree` from the repo root; (2) then `cd` into the worktree path before doing any implementation work. Pass the worktree path explicitly (e.g. `<workspace>/.taskgraph/worktrees/<taskId>` or `.taskgraph/worktrees/<taskId>` relative to repo root). All work and `tg done` run from that worktree directory.
 5. **Dispatch** all tasks in the batch **in the same response** (one Task or mcp_task call per task in the batch). Do not dispatch one task per turn — emit all N calls in the same message so Cursor runs them in parallel and surfaces the orchestration UI. Same built prompt and a short description (e.g. "Implement task: <title>") per call. Cursor decides concurrency; do not artificially limit the number.
-6. Wait for all to complete. For each completed task, if you have the implementer's diff, run the **two-stage review**: (1) dispatch **spec-reviewer** (read `.cursor/agents/spec-reviewer.md`, build prompt with task context + diff; Task tool, agent CLI, or mcp_task). (2) If spec-reviewer returns PASS, dispatch **quality-reviewer** (read `.cursor/agents/quality-reviewer.md`, build prompt with task context + diff; same mechanism). (3) If either returns FAIL, re-dispatch the implementer with that reviewer's specific feedback. After 2 re-dispatch failures for that task, do that task yourself (direct execution).
+6. Wait for all to complete. For each completed task, if you have the implementer's diff, run the **two-stage review**: (1) dispatch **spec-reviewer** (read `.cursor/agents/spec-reviewer.md`, build prompt with task context + diff; Task tool, agent CLI, or mcp_task). **After spec-reviewer completes**, record the verdict: `tg note <taskId> --msg '{"type":"review","verdict":"PASS"|"FAIL","reviewer":"<reviewer_agent_name>","stage":"spec"}'` (use the actual verdict and reviewer name). (2) If spec-reviewer returns PASS, dispatch **quality-reviewer** (read `.cursor/agents/quality-reviewer.md`, build prompt with task context + diff; same mechanism). **After quality-reviewer completes**, record the verdict: `tg note <taskId> --msg '{"type":"review","verdict":"PASS"|"FAIL","reviewer":"<reviewer_agent_name>","stage":"quality"}'`. (3) If either returns FAIL, re-dispatch the implementer with that reviewer's specific feedback. After 2 re-dispatch failures for that task, do that task yourself (direct execution).
 7. **Follow-up from notes/evidence**: For each completed task, read the implementer's return message and any notes on the task (e.g. `tg show <taskId>` for recent events). If the sub-agent reported environment limitations, gate failures, or suggested follow-up, apply the **Follow-up from notes/evidence** protocol below.
 8. Run `pnpm tg next --plan "<Plan>" --json --limit 20` again. If more runnable tasks exist, go to step 2. Otherwise continue with any remaining work or finish the plan.
 
@@ -75,7 +94,7 @@ When only one task is runnable or tasks share files (so you cannot batch), you M
 1. Run `pnpm tg next --plan "<Plan>" --limit 1` and pick the task.
 2. Optionally dispatch the **explorer** (read `.cursor/agents/explorer.md`, build prompt; use Task tool, agent CLI, or mcp_task). Use explorer output to enrich implementer context. Skip explorer for very simple tasks (e.g. add a test file, document X).
 3. Run `pnpm tg context <taskId> --json`. Build the implementer prompt from the template and context (and explorer output if present). **Dispatch** one implementer (Task tool, agent CLI, or mcp_task) with the built prompt and description "Implement: <title>".
-4. When implementer completes, run the **two-stage review**: (1) dispatch **spec-reviewer** (read `.cursor/agents/spec-reviewer.md`, build prompt with task context + diff; Task tool, agent CLI, or mcp_task). (2) If spec-reviewer returns PASS, dispatch **quality-reviewer** (read `.cursor/agents/quality-reviewer.md`, build prompt with task context + diff; same mechanism). (3) If either returns FAIL, re-dispatch the implementer with that reviewer's specific feedback. After 2 re-dispatch failures, complete the task yourself.
+4. When implementer completes, run the **two-stage review**: (1) dispatch **spec-reviewer** (read `.cursor/agents/spec-reviewer.md`, build prompt with task context + diff; Task tool, agent CLI, or mcp_task). **After spec-reviewer completes**, record the verdict: `tg note <taskId> --msg '{"type":"review","verdict":"PASS"|"FAIL","reviewer":"<reviewer_agent_name>","stage":"spec"}'`. (2) If spec-reviewer returns PASS, dispatch **quality-reviewer** (read `.cursor/agents/quality-reviewer.md`, build prompt with task context + diff; same mechanism). **After quality-reviewer completes**, record the verdict: `tg note <taskId> --msg '{"type":"review","verdict":"PASS"|"FAIL","reviewer":"<reviewer_agent_name>","stage":"quality"}'`. (3) If either returns FAIL, re-dispatch the implementer with that reviewer's specific feedback. After 2 re-dispatch failures, complete the task yourself.
 5. **Follow-up from notes/evidence**: Read the implementer's return message and any notes on the task (`tg show <taskId>`). If they reported environment limitations, gate failures, or suggested follow-up, apply the **Follow-up from notes/evidence** protocol below.
 6. Repeat from step 1 for the next task.
 
@@ -152,7 +171,7 @@ Place this after the main instructions and before any task-specific context. The
 
 ## Lifecycle and errors
 
-- Every implementer sub-agent must run `pnpm tg start <taskId> --agent <name>` at the start and `pnpm tg done <taskId> --evidence "..."` at the end. Do not skip — the task graph is the source of truth.
+- Every implementer sub-agent must run `pnpm tg start <taskId> --agent <name>` at the start and `pnpm tg done <taskId> --evidence "..."` at the end. Do not skip — the task graph is the source of truth. In Pattern 1 (parallel batch), use `pnpm tg start <taskId> --agent <name> --worktree` and pass the worktree path so the implementer runs from that directory.
 - If a fast sub-agent fails (error, wrong result, or spec-reviewer/quality-reviewer FAIL): re-dispatch once with clearer context or that reviewer's feedback. If it fails again, complete that task yourself with direct execution (session model).
 - When dispatching in parallel, ensure each task has a distinct agent name (`implementer-1`, etc.) so `tg status` and events stay clear.
 

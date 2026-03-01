@@ -22,9 +22,13 @@ Agent operating loop
 
 - Always begin with: tg status to orient — surface stale tasks, plan state, and other agents' active work (if any).
 - Then: tg next --plan "<Plan>" --limit 20 (or tg next --limit 20). Get runnable tasks; include all that don't share files. Follow Pattern 1 (parallel batch) or Pattern 2 (sequential) in subagent-dispatch.mdc. Cursor decides concurrency.
-- For each task: build implementer prompt from tg context and `.cursor/agents/implementer.md`; dispatch implementer (Task tool, agent CLI, or mcp_task per subagent-dispatch). After implementer completes, dispatch reviewer with task context + diff; if FAIL, re-dispatch implementer once; after 2 failures, do that task yourself.
+- For each task: build implementer prompt from tg context and `.cursor/agents/implementer.md`; dispatch implementer (Task tool, agent CLI, or mcp_task per subagent-dispatch). After implementer completes, dispatch reviewer with task context + diff; if FAIL, re-dispatch implementer once; after 2 failures, do that task yourself or escalate to the **fixer** (see Escalation below).
 - Sub-agents run tg start and tg done; you coordinate. Do not run tg start / tg done yourself for a task you delegated.
 - Evidence is supplied by the implementer in tg done: "commands run, git ref" or "implemented; no test run" (implementers are not expected to report tests run). For the final run-full-suite task: "gate:full passed" or "gate:full failed: <summary>". You verify via reviewer.
+
+Escalation ladder
+
+- **Re-dispatch** → **Direct execution** (orchestrator) → **Fixer** (stronger model) → **Escalate to human**. Use the **escalation decision tree** in `.cursor/rules/subagent-dispatch.mdc` to choose. When to escalate to human: credentials/secrets, ambiguous intent, safety/approval, or repeated direct-execution failure. When implementer (or reviewer) has failed twice, the orchestrator may complete the task itself (direct execution) or dispatch the **fixer** sub-agent (`.cursor/agents/fixer.md`) with failure feedback and diff; the fixer uses a stronger model to resolve the task.
 
 Per-task discipline
 

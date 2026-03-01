@@ -13,6 +13,7 @@ This directory contains **prompt templates** for specialized sub-agents. The orc
 - **quality-reviewer.md** — code quality check (PASS/FAIL): patterns, tests, errors (planned; add when present)
 - **reviewer.md** — single reviewer; dispatch rule currently references this; the two-stage flow will use spec-reviewer + quality-reviewer once those agents exist
 - **planner-analyst.md** — pre-plan codebase analysis for the planning model
+- **fixer.md** — escalation agent; resolves tasks after implementer/reviewer failure using a stronger model (see [When to use the fixer](#when-to-use-the-fixer) and [Model tier](#model-tier)).
 
 Agent files are **prompt templates**, not executable code. The orchestrator injects context at dispatch time.
 
@@ -25,12 +26,29 @@ After an implementer completes, the orchestrator runs a **two-stage review**:
 
 If either reviewer returns FAIL, the orchestrator re-dispatches the implementer once with the feedback. The old `reviewer.md` combined both concerns; the split allows spec compliance to be validated before investing in quality checks. The two-stage flow uses the split agents once spec-reviewer and quality-reviewer exist.
 
+### When to use the fixer
+
+The **fixer** agent is used for escalation when the default implementer path has failed:
+
+- Reviewer reported **FAIL**, the orchestrator re-dispatched the implementer once, and the second attempt also failed (or was not attempted).
+- The orchestrator explicitly escalates a single failed task to a stronger model instead of re-dispatching the fast implementer again.
+- Environment or gate issues blocked the implementer and the orchestrator created a fixer task with the blocker context.
+
+Dispatch the fixer with the same task context plus failure feedback (e.g. `{{FAILURE_REASON}}`, `{{REVIEWER_FEEDBACK}}`) and current diff so the fixer can amend rather than redo. See `fixer.md` for input/output contract and prompt outline.
+
+## Model tier
+
+- **fast** — Default for dispatched sub-agents (implementer, reviewer, explorer, planner-analyst, spec-reviewer, quality-reviewer). Use for routine task execution and reviews; keeps latency and cost low when tasks are well-scoped.
+- **stronger** — Used for the **fixer** agent. Escalation is for harder reasoning, subtle bugs, or aligning implementation with reviewer feedback after one or more fast-model attempts failed. When invoking the fixer, use a higher-capability model (not `fast`).
+
+The orchestrator uses the session model; sub-agents specify their tier in the agent file and the dispatcher passes the appropriate model (e.g. `model="fast"` for implementer, a stronger model for fixer).
+
 ## Agent file format
 
 Each agent file (e.g. `implementer.md`) should include:
 
 1. **Purpose** — One or two sentences: when this agent is used and what it does.
-2. **Model** — Always `fast` for dispatched sub-agents (orchestrator uses session model).
+2. **Model** — `fast` for most dispatched sub-agents; `stronger` for the fixer (see [Model tier](#model-tier)). Orchestrator uses session model.
 3. **Input contract** — What the orchestrator must pass: e.g. task_id, tg context JSON, optional explorer output.
 4. **Output contract** — What the agent returns: e.g. "completed + evidence", "PASS/FAIL + issues", "structured analysis document".
 5. **Prompt template** — The body of the prompt. Use placeholders the orchestrator will replace, e.g. `{{TASK_ID}}`, `{{CONTEXT_JSON}}`, `{{INTENT}}`.
