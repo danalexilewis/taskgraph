@@ -378,6 +378,52 @@ tg worktree list
 # /path/to/repo/.taskgraph/worktrees/55f51191-99a5-4688-8e2e-54115378c81e  def5678 [tg/55f51191-99a5-4688-8e2e-54115378c81e]
 ```
 
+### `tg agent-context`
+
+Agent-context commands collect and query agent terminal events from a SQLite store (`.taskgraph/agent_context.db`). The collector and query reader run as Bun subprocesses; the CLI spawns them and does not import `bun:sqlite`.
+
+#### `tg agent-context collect`
+
+Starts the agent events collector in the foreground. Watches the terminals directory (auto-detected from `.cursor/projects/.../terminals/` or config), parses `[tg:event] {...}` lines from terminal files, and inserts events into the agent-context DB. Stdout/stderr are inherited so the operator can observe progress.
+
+```bash
+tg agent-context collect
+```
+
+**Output:** Startup message with DB path; then collector logs (e.g. `[collector] Started. Watching <dir>`). Runs until SIGINT/SIGTERM.
+
+#### `tg agent-context query`
+
+Queries agent events via the Bun query script. Supports filters and outputs human table or JSON.
+
+```bash
+tg agent-context query [--since <ms>] [--agent <id>] [--task <id>] [--limit <n>] [--json]
+```
+
+**Options:**
+
+- `--since <ms>`: Unix timestamp (ms); only events after this time.
+- `--agent <id>`: Filter by agent identifier.
+- `--task <id>`: Filter by task ID.
+- `--limit <n>`: Max events to return (default: 100).
+- `--json`: Output `{ "agent_events": AgentEvent[] }` instead of a table.
+
+**Output (human):** Table with columns agent, task_id, kind, timestamp. Or "No agent events."
+
+**Output (JSON):** `{ "agent_events": [ { "id", "agent", "task_id", "kind", "timestamp", ... } ] }`.
+
+#### `tg agent-context status`
+
+One-shot summary: events per agent in the last 5 minutes and the most recent event timestamp per agent.
+
+```bash
+tg agent-context status [--json]
+```
+
+**Output (human):** Table with columns Agent, Count, Latest (ISO timestamp). Or "No agent events in the last 5 minutes."
+
+**Output (JSON):** Array of `{ "agent", "count", "latest" }`.
+
 ### Git worktree integration (parallel tasks)
 
 When running **parallel implementers**, use `tg start --worktree` so each task gets an isolated worktree. **Per-plan model:** when the plan has a `hash_id`, all task worktrees for that plan share a common plan branch (`plan-<hash_id>`) and branch from it rather than from `main`. Multiple tasks can run in parallel, each on its own task branch; `tg done --merge` accumulates their work on the plan branch. **Worktrunk (wt) is the standard backend** for sub-agent work: set `"useWorktrunk": true` in `.taskgraph/config.json` or ensure `wt` is on PATH (auto-detect). With Worktrunk, worktrees are wt-managed (e.g. `<repo>.tg-<hash_id>`); with raw git, worktrees live at `.taskgraph/worktrees/<taskId>/` on branch `tg/<taskId>` or `tg-<hash_id>`. The **started event body** stores `worktree_path`, `worktree_branch`, `worktree_repo_root`, and (when a plan branch was used) `plan_branch` and `plan_worktree_path`. The **orchestrator** must pass the worktree path (e.g. from `tg worktree list --json`) to implementers as **WORKTREE_PATH** so they run all work and `tg done` from that directory. When the task is complete, run `tg done --evidence "..."`; add `--merge` to merge the task worktree branch into the plan branch (or `main` as fallback). The plan worktree is not removed by `tg done`. **Worktrunk remove gotcha:** `wt remove <branch> -C <repoRoot>` can fail with "No branch named" when the repo path differs from the path used at create. Reliable fix: run `wt remove` with **no branch argument** and **cwd = worktree path** (the path to the worktree to remove). The CLI passes `worktreePathOverride` from `tg done` into `removeWorktree()` and uses it for worktrunk. See `.cursor/rules/subagent-dispatch.mdc` and [multi-agent.md](multi-agent.md).
@@ -607,7 +653,7 @@ tg context <taskId>
 **Configuration:** Optional keys in `.taskgraph/config.json`:
 
 - **`context_token_budget`** (number, e.g. `4000` or `8000`): Token limit for context output. When the full context exceeds this budget, the command compacts it by slimming `related_done_by_doc` and `related_done_by_skill` (fewer items, `task_id` and `title` only), then reducing further or clearing those lists if still over budget. Omitted or `null` means no limit.
-- **`doc_inline_budget`** (number, optional): When building implementer prompts, the orchestrator may inline doc content so the implementer does not have to read each doc via read_file. This key sets the **token budget** for that inlined content. Omitted or `0` = do not inline (only paths are passed). Positive value = fill in this order until the budget is reached: (1) `docs/agent-field-guide.md`, (2) docs from context `doc_paths`, (3) docs from context `skill_docs`; later items are omitted or truncated if the budget is exceeded. Policy details: `.cursor/rules/subagent-dispatch.mdc` → Doc-inlining policy.
+- **`context_inline_doc_budget`** (number, optional): Token budget for inlining doc content into implementer prompts so the implementer does not have to read each doc via read_file. **Omitted or `0`** = do not inline (only `{{DOC_PATHS}}` and `{{SKILL_DOCS}}` paths are passed). **Positive value** = max tokens for inlined content per task (typical: 8000); when token counts are not available, use chars/4 as an approximation. Fill order until budget is reached: (1) `docs/agent-field-guide.md`, (2) docs from context `doc_paths`, (3) docs from context `skill_docs`; later items are omitted or truncated. Policy and placeholder `{{DOC_CONTENT}}`: `.cursor/rules/subagent-dispatch.mdc` → Doc-inlining policy. Config table: [architecture.md](architecture.md#configuration-taskgraphconfigjson).
 
 **Output (human):** Task title and ID; change type; domain doc path(s) (`docs/<domain>.md`); skill guide path(s) (`docs/skills/<skill>.md`); up to 5 related done tasks by domain; up to 5 by skill. If the task has `suggested_changes`, the plan has `file_tree`, or the plan has `risks`, those are printed as well. Ends with approximate context size in tokens.
 
@@ -813,6 +859,16 @@ Lists initiatives with optional cycle context (cycle name or inline dates). Huma
 ```bash
 tg initiative list [--json]
 ```
+
+### `tg initiative show <initiativeId>`
+
+Shows one initiative by ID: title, description, status, cycle, dates, and list of projects in that initiative.
+
+```bash
+tg initiative show <initiativeId> [--json]
+```
+
+**Output (human):** Initiative title, ID, status, description, cycle (name or date range), created/updated, and projects list (plan_id, title). **Output (JSON):** Single object with initiative fields plus `projects` array of `{ plan_id, title }`.
 
 ### `tg initiative assign-project <initiativeId> <planId>`
 

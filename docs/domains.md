@@ -22,6 +22,7 @@ Docs in this folder form a **DDD-inspired domain knowledge base**. Each doc cove
 | `backend` | [backend.md](backend.md) | Template stub (project-specific content not added) |
 | `recommended-packages` | [recommended-packages.md](recommended-packages.md) | Recommended dependencies |
 | `performance` | [performance.md](performance.md) | System requirements, tg stats interpretation, optimization patterns |
+| `agent-context` | [agent-context.md](agent-context.md) | SQLite event store for cross-agent state visibility |
 
 Use the slug (e.g. `schema`, `plan-import`) as the task’s `domain` in plan YAML.
 

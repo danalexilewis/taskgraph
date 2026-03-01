@@ -115,6 +115,7 @@ export function initiativeCommand(program: Command) {
     .description("Manage initiatives (strategic containers for projects)")
     .addCommand(initiativeNewCommand())
     .addCommand(initiativeListCommand())
+    .addCommand(initiativeShowCommand())
     .addCommand(initiativeAssignProjectCommand())
     .addCommand(initiativeBackfillCommand());
 }
@@ -376,6 +377,130 @@ function initiativeListCommand(): Command {
         },
         (error: AppError) => {
           console.error(`Error listing initiatives: ${error.message}`);
+          if (rootOpts(cmd).json) {
+            console.log(
+              JSON.stringify({
+                status: "error",
+                code: error.code,
+                message: error.message,
+                cause: error.cause,
+              }),
+            );
+          }
+          process.exit(1);
+        },
+      );
+    });
+}
+
+interface InitiativeShowRow {
+  initiative_id: string;
+  title: string;
+  description: string;
+  status: string;
+  cycle_start: string | null;
+  cycle_end: string | null;
+  cycle_id?: string | null;
+  cycle_name?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface ProjectInInitiativeRow {
+  plan_id: string;
+  title: string;
+}
+
+function initiativeShowCommand(): Command {
+  return new Command("show")
+    .description("Show initiative details and its projects")
+    .argument("<initiativeId>", "Initiative ID (full UUID)")
+    .option("--json", "Output initiative and projects as JSON")
+    .action(async (initiativeId, _options, cmd) => {
+      const result = await readConfig().asyncAndThen((config: Config) =>
+        tableExists(config.doltRepoPath, "initiative").andThen((exists) => {
+          if (!exists) {
+            return errAsync(
+              buildError(
+                ErrorCode.DB_QUERY_FAILED,
+                "Initiative table does not exist. Run tg init (or ensure migrations have run) so the initiative table is created.",
+              ),
+            );
+          }
+          const q = query(config.doltRepoPath);
+          const escaped = sqlEscape(initiativeId);
+          const baseSql = `SELECT initiative_id, title, description, status, cycle_start, cycle_end, created_at, updated_at FROM \`initiative\` WHERE initiative_id = '${escaped}' LIMIT 1`;
+          const withCycleSql = `SELECT i.initiative_id, i.title, i.description, i.status, i.cycle_start, i.cycle_end, i.cycle_id, c.name AS cycle_name, i.created_at, i.updated_at FROM \`initiative\` i LEFT JOIN \`cycle\` c ON i.cycle_id = c.cycle_id WHERE i.initiative_id = '${escaped}' LIMIT 1`;
+          return tableExists(config.doltRepoPath, "cycle").andThen(
+            (cycleExists) => {
+              const fetchInit = cycleExists
+                ? q
+                    .raw<{ "1": number }>(
+                      "SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'initiative' AND COLUMN_NAME = 'cycle_id' LIMIT 1",
+                    )
+                    .andThen((colRows) =>
+                      colRows.length > 0
+                        ? q.raw<InitiativeShowRow>(withCycleSql)
+                        : q.raw<InitiativeShowRow>(baseSql),
+                    )
+                : q.raw<InitiativeShowRow>(baseSql);
+              return fetchInit.andThen((rows) => {
+                if (rows.length === 0) {
+                  return errAsync(
+                    buildError(
+                      ErrorCode.VALIDATION_FAILED,
+                      `Initiative not found: ${initiativeId}. Run \`tg initiative list\` to see existing initiatives.`,
+                    ),
+                  );
+                }
+                const init = rows[0];
+                return q
+                  .raw<ProjectInInitiativeRow>(
+                    `SELECT plan_id, title FROM \`project\` WHERE initiative_id = '${escaped}' ORDER BY title`,
+                  )
+                  .map((projects) => ({ initiative: init, projects }));
+              });
+            },
+          );
+        }),
+      );
+
+      result.match(
+        (data) => {
+          if (rootOpts(cmd).json) {
+            console.log(
+              JSON.stringify(
+                {
+                  ...data.initiative,
+                  projects: data.projects,
+                },
+                null,
+                2,
+              ),
+            );
+            return;
+          }
+          const i = data.initiative;
+          const cycleLabel =
+            i.cycle_name ?? (i.cycle_start && i.cycle_end ? `${i.cycle_start} – ${i.cycle_end}` : "—");
+          console.log(`Initiative: ${i.title}`);
+          console.log(`  ID: ${i.initiative_id}`);
+          console.log(`  Status: ${i.status}`);
+          if (i.description) console.log(`  Description: ${i.description}`);
+          console.log(`  Cycle: ${cycleLabel}`);
+          console.log(`  Created: ${i.created_at}`);
+          console.log(`  Updated: ${i.updated_at}`);
+          if (data.projects.length > 0) {
+            console.log(`  Projects (${data.projects.length}):`);
+            data.projects.forEach((p) => {
+              console.log(`    - ${p.plan_id}  ${p.title}`);
+            });
+          } else {
+            console.log("  Projects: (none)");
+          }
+        },
+        (error: AppError) => {
+          console.error(`Error showing initiative: ${error.message}`);
           if (rootOpts(cmd).json) {
             console.log(
               JSON.stringify({
