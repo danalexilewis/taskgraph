@@ -5,6 +5,7 @@ import { autoCompletePlanIfDone } from "../../src/domain/plan-completion";
 import { setupIntegrationTest, teardownIntegrationTest } from "./test-utils";
 
 describe("autoCompletePlanIfDone integration tests", () => {
+  // Suite-level setup only (beforeAll/afterAll). No per-test setup — each test seeds its own plan/task data.
   let context: Awaited<ReturnType<typeof setupIntegrationTest>> | undefined;
 
   beforeAll(async () => {
