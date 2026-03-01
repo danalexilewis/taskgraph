@@ -77,6 +77,20 @@ tg block <currentTaskId> --on <newBlockerTaskId> --reason "Requires human decisi
 
 4.  **Stop and Report**: After blocking, the agent should report the blockage and await further instructions from the human.
 
+## gate:full Orchestration Rules
+
+**Never run `pnpm gate:full` directly from the repo root (`main`).** The correct pattern:
+
+1. Implementers run `tg done` from _inside the worktree directory_ — this auto-merges the task branch into the plan branch. Without this, task branch changes stay unmerged.
+2. After all tasks in a wave are done, the orchestrator dispatches the `run-full-suite` task to an implementer sub-agent. That sub-agent runs `pnpm gate:full` from inside the plan worktree, where all merged task changes are visible.
+3. The orchestrator then runs the plan-merge step (`wt merge main` or `git merge`) to land everything on `main`.
+
+**Anti-pattern**: orchestrator runs `pnpm gate:full` on `main` — tests stale code, worktree changes are invisible.
+
+**Correct polling for long-running shell commands** (applies to `gate:full` and any other command that exceeds `block_until_ms`): use the **terminal-file polling pattern** — incremental short waits + terminal file check. See [docs/agent-field-guide.md § Shell / Long-Running Commands](agent-field-guide.md#shell--long-running-commands) for the full pattern, anti-patterns, and when to apply it.
+
+In brief: when a Shell tool call backgrounds a command, Cursor streams output to a terminal file. Poll that file with incremental sleeps until the `exit_code:` footer appears. Never chain `sleep N && tail` in one shell call — it kills the wait at a fixed offset and misses the footer if timing is off.
+
 ## Escalation ladder
 
 When a task is not completed after re-dispatch or direct execution, follow the escalation ladder: **re-dispatch** (same or adjusted sub-agent) → **direct execution** (orchestrator does the task) → **fixer** (stronger model) → **escalate to human**.
@@ -84,6 +98,14 @@ When a task is not completed after re-dispatch or direct execution, follow the e
 - **Escalation decision tree**: See [.cursor/rules/subagent-dispatch.mdc](../.cursor/rules/subagent-dispatch.mdc) (section "Escalation decision tree") for when to re-dispatch vs direct execution vs escalate to human.
 - **Fixer agent**: See [.cursor/agents/fixer.md](../.cursor/agents/fixer.md). Use when the implementer (and optionally reviewer) failed twice and the orchestrator escalates to a stronger model; the fixer receives task context, failure feedback, and diff.
 - **When to escalate to human**: Credentials or secrets; ambiguous intent that cannot be resolved from context; safety or approval (e.g. destructive change); or repeated direct-execution failure.
+
+- **Stuck agent / watchdog**: When the orchestrator detects a stall (terminal file shows repeated reads of the same path, sleep-loops, or error loops — see `.cursor/skills/work/SKILL.md → Sub-Agent Watchdog Protocol`):
+  - Kill the PID: `kill -TERM <pid>` (wait 5s), then `kill -KILL <pid>` if still alive
+  - Log: `tg note <taskId> --msg "WATCHDOG: killed, stall pattern: <pattern>"`
+  - Route based on `git status` in the worktree:
+    - Uncommitted file changes → dispatch **fixer** (partial work)
+    - No changes, first occurrence → **re-dispatch implementer** with note to avoid prior stall pattern
+    - No changes, second occurrence → dispatch **investigator** (task may be structurally problematic)
 
 ## Decisions
 

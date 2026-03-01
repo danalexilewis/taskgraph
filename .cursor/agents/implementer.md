@@ -16,7 +16,7 @@ The orchestrator must pass:
 
 - `{{TASK_ID}}` — task UUID
 - `{{AGENT_NAME}}` — unique name for this run (e.g. implementer-1 when running in parallel)
-- `{{WORKTREE_PATH}}` — (when using worktree isolation) absolute path to the task's worktree. Sub-agent work uses **Worktrunk** when available (config `useWorktrunk: true` or `wt` on PATH); the orchestrator runs `tg start ... --worktree` and passes this path so you run all work and `tg done` from here.
+- `{{WORKTREE_PATH}}` — **(optional)** absolute path to the task's worktree. When passed, the task is already started; `cd` to this path in Step 1 and run all work and `tg done` from there. When omitted, run `pnpm tg start {{TASK_ID}} --agent {{AGENT_NAME}} --worktree` yourself in Step 1 and obtain the path from `tg worktree list --json`. Sub-agent work uses **Worktrunk** when available (config `useWorktrunk: true` or `wt` on PATH).
 - `{{CONTEXT_JSON}}` or the following fields:
   - `{{TITLE}}` — task title
   - `{{INTENT}}` — detailed intent
@@ -118,6 +118,8 @@ You have been given task context below. Read any domain docs and skill guides li
 - Do not leave empty catch blocks
 - Do not refactor while fixing bugs (fix the bug only)
 - Do not write or edit documentation files (README, CHANGELOG, docs/) — note for orchestrator instead
+- Do not re-read the same terminal path more than 5 times in a row without making a file change between reads.
+- Do not call sleep or wait for a process to change state more than 3 times in a row without other progress.
 
 **Step 4 — Complete the task**
 When using a worktree, the commit in Step 3 must have happened before `tg done`, so that `tg done --merge` (when the orchestrator uses it) has a commit to squash. From the **worktree directory** (you must be in the worktree path when using worktree isolation), run: `pnpm tg done {{TASK_ID}} --evidence "<brief evidence: commands run, git ref, or implemented; no test run>"`. If the task was started with `--merge` intent, the orchestrator will run done with `--merge`; you only run `tg done` with evidence.
@@ -126,6 +128,11 @@ If your environment exposes token usage, append the optional self-report flags (
 `--tokens-in <n> --tokens-out <n> --tool-calls <n> --attempt <n>`
 
 Then report back to the orchestrator: task done and the evidence you used.
+
+**Loop budget:** You have a 10-minute implementation budget. If you have attempted the same approach 3+ times without progress, or read the same terminal path 5+ times in a row without an intervening file change, you are stuck. Stop. Run `pnpm tg note {{TASK_ID}} --msg 'STUCK: <brief pattern description>'`, then call `pnpm tg done {{TASK_ID}} --evidence 'STUCK: exiting early to allow reassignment'` and return:
+VERDICT: FAIL
+REASON: stuck-loop (<pattern>)
+SUGGESTED_FIX: reassign via watchdog - fixer if partial work, re-dispatch if no work
 
 If you cannot complete (blocked, unfixable gate/env issue): use the structured failure format (VERDICT: FAIL, REASON: ..., SUGGESTED_FIX: ...) in your reply or in `tg note {{TASK_ID}} --msg "..."`.
 ```
@@ -154,3 +161,5 @@ If you cannot complete (blocked, unfixable gate/env issue): use the structured f
 - **[2026-03-01]** A function that activates a mode via multiple env vars set only one of them. `getServerPool()` guards on both `TG_DOLT_SERVER_PORT` and `TG_DOLT_SERVER_DATABASE`; setting only `TG_DOLT_SERVER_PORT` caused it to return `null` silently. Before writing an env-var activation function, read the consuming function's entry guard to enumerate every required var; set them all in the same code path atomically.
 - **[2026-03-01]** `gate:full` run on a plan branch without a baseline failure count on `main` — ~80% of reported failures were pre-existing and unrelated to the plan, wasting investigator cycles. Before dispatching investigators, cross-check failures against the base branch (`git stash && pnpm gate:full`) or note "pre-existing" in evidence when failures are clearly in unchanged code.
 - **[2026-03-01]** `process.env.TG_DOLT_SERVER_PORT = value` assigned in test `beforeAll`/`beforeEach` without a matching `delete process.env.TG_DOLT_SERVER_PORT` in teardown. Bun runs all test files in the same process; stale env vars from integration tests leaked into E2E tests and caused `ECONNREFUSED`. Always `delete process.env.VAR` in the matching teardown for every env var set during test setup.
+- **[2026-03-01]** Migration function called `doltCommit` unconditionally even when all indexes/columns already existed — created spurious empty Dolt commits on idempotent re-runs. Every migration that calls `doltCommit` must guard the call behind a flag tracking whether any schema change was actually made. Pattern: `let changed = false; if (!exists) { runDDL(); changed = true; } if (changed) { doltCommit(...); }`. All migrations in `src/db/migrate.ts` should follow this pattern.
+- **[2026-03-01]** Spawned a background `dolt sql-server` with `stdio: "ignore"` — startup panics were invisible and the only failure signal was "did not become ready after 50 attempts" (15 s timeout). Add a `"exit"` event listener on the `ChildProcess` inside the polling loop: if `child.exitCode !== null`, throw immediately with the exit code instead of waiting the full duration. `stdio: "pipe"` during test infrastructure setup is also preferable: captured stderr is invaluable for debugging port conflicts and startup errors.

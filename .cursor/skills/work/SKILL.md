@@ -96,7 +96,7 @@ while true:
   5. Emit all Task/mcp_task calls for this batch in the same turn (batch-in-one-turn).
   6. for each task in batch:
        a. context = tg context <taskId> --json
-       b. (Worktrunk) Run tg start <taskId> --agent <name> --worktree from repo root. Get worktree path from tg worktree list --json (or started event). On the first tg start --worktree for a plan, capture the plan branch from the started event or from tg worktree list --json and store it in the plan_id map. Inject {{WORKTREE_PATH}} and {{PLAN_BRANCH}} in the implementer prompt (so the implementer has plan branch context even though each task has its own worktree).
+       b. (Worktrunk) Run tg start <taskId> --agent <name> --worktree from repo root. Get worktree path from tg worktree list --json (or started event). On the first tg start --worktree for a plan, capture the plan branch from the started event or from tg worktree list --json and store it in the plan_id map. Inject {{WORKTREE_PATH}} and {{PLAN_BRANCH}} in the implementer prompt (so the implementer has plan branch context even though each task has its own worktree). After obtaining the worktree path: `touch <worktree_path>/.tg-dispatch-marker` to set a baseline timestamp for the overseer's staleness detection.
        c. build implementer prompt from .cursor/agents/implementer.md + context + {{WORKTREE_PATH}} + {{PLAN_BRANCH}}
        d. dispatch sub-agent (Task tool or mcp_task, model=fast)
   7. wait for all sub-agents to complete
@@ -130,15 +130,38 @@ When a plan completes (after the run-full-suite task passes and `tg next` return
 
 Order: run plan-merge for all completed plans first, then **Final action — commit .taskgraph/dolt** (so the dolt commit runs after plan-merge, not before).
 
-## Sub-Agent Timeout
+## Sub-Agent Watchdog Protocol
 
-Each sub-agent gets a **budget of 90 seconds** of wall time. If a sub-agent has not returned after 90s:
+**Optional: Start the overseer daemon** before the first wave of dispatches:
+```bash
+bash scripts/overseer.sh /tmp/tg-overseer-status.json &
+```
+The daemon runs in the background, writing filesystem staleness data every 180s for active worktrees. No action needed if the script is absent or Dolt is unavailable — it degrades to an empty status file.
 
-1. Check the sub-agent's output file for progress.
-2. If making progress (new output in last 120s) → extend by another 120s, max 2 extension.
-3. If stalled → kill the sub-agent, mark the task as needing attention, and continue with the next task.
+Implementers run with a soft 10-minute budget (set `block_until_ms: 600000` when dispatching via Task tool).
 
-After the loop completes (or on timeout), the orchestrator reviews what happened and decides whether to retry, skip, or escalate.
+**Important:** `block_until_ms` backgrounds the Task call but does NOT kill the agent process. The agent keeps running in its terminal. Background = monitoring trigger, not kill signal.
+
+**Fast-path check (if overseer is running):** Before reading individual terminal files, check `cat /tmp/tg-overseer-status.json 2>/dev/null` — if the file exists and is under 6 minutes old, review it. Any worktree with `"stale": true` is a candidate for the watchdog protocol below. If the file is missing or stale (>6 min), proceed directly to terminal-file reads.
+
+**When a Task call backgrounds (exceeded block_until_ms):**
+
+1. Read the terminal file for that agent (last 60 lines). Terminal files are at `~/.cursor/projects/<project>/terminals/<id>.txt`; the PID is in the file header (`pid:` field).
+2. Evaluate stall heuristics — any one is sufficient to declare stall:
+   - a. 5+ consecutive reads of the same file path with no intervening file write between them
+   - b. 3+ consecutive `sleep` or `wait` calls with no other tool call between them
+   - c. Same error message repeated 3+ times without a different tool call between repeats
+3. **If stall confirmed:** kill the agent:
+   ```bash
+   kill -TERM <pid>
+   sleep 5
+   kill -KILL <pid> 2>/dev/null || true
+   ```
+4. Log the kill: `pnpm tg note <taskId> --msg "WATCHDOG: killed at $(date -u +%Y-%m-%dT%H:%M:%SZ), stall pattern: <pattern>"`
+5. **Reassignment routing** — check `git status` in the task's worktree:
+   - Uncommitted file changes exist → dispatch **fixer** with partial work context and the stall note
+   - No file changes at all, first kill → **re-dispatch implementer** once with note "prior attempt stalled on <pattern>, avoid this approach"
+   - No file changes, already re-dispatched → dispatch **investigator** to determine if the task itself is problematic
 
 ## File Conflict Check
 
