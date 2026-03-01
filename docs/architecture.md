@@ -71,6 +71,21 @@ The task graph lives in a Dolt repository (`.taskgraph/dolt/` by default). Dolt 
 
 The system employs a bottom-up data flow with `neverthrow` Result types for explicit error handling.
 
+### Query cache layer
+
+An in-process query result cache sits transparently between the CLI and Dolt:
+
+```
+CLI command → [QueryCache (in-process)] → cachedQuery() → query() → doltSql() / mysql2 pool → Dolt
+```
+
+- `cachedQuery()` checks the in-memory TTL cache before delegating to `query()`.
+- When TTL is `0` (default in CLI mode), the cache is a no-op passthrough; all calls go directly to Dolt.
+- Write operations trigger table-level cache invalidation to keep reads consistent.
+- Dashboard mode applies a `1500 ms` TTL floor automatically to reduce polling overhead.
+
+See [performance.md § Query Result Cache](performance.md#query-result-cache) for configuration details.
+
 ```mermaid
 flowchart TD
   dbLayer["db/ layer: doltSql, doltCommit"] --> domainLayer["domain/ layer: invariants"]

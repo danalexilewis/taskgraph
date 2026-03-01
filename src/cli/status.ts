@@ -6,7 +6,7 @@ import { tableExists } from "../db/migrate";
 import { query } from "../db/query";
 import type { AppError } from "../domain/errors";
 import { renderTable } from "./table";
-import { getTerminalWidth } from "./terminal";
+import { getTerminalHeight, getTerminalWidth } from "./terminal";
 import { boxedSection, getBoxInnerWidth } from "./tui/boxen";
 import { type Config, readConfig, rootOpts } from "./utils";
 
@@ -801,9 +801,8 @@ export function statusCommand(program: Command) {
           console.error("tg status --dashboard does not support --json");
           process.exit(1);
         }
-        const { runOpenTUILiveInitiatives } = await import(
-          "./tui/live-opentui.js"
-        );
+        const { runOpenTUILiveInitiatives } =
+          await import("./tui/live-opentui.js");
         try {
           await runOpenTUILiveInitiatives(config, statusOptions);
           return;
@@ -932,9 +931,8 @@ export function statusCommand(program: Command) {
         const config = configResult.value;
 
         if (viewMode === "projects") {
-          const { runOpenTUILiveProjects } = await import(
-            "./tui/live-opentui.js"
-          );
+          const { runOpenTUILiveProjects } =
+            await import("./tui/live-opentui.js");
           try {
             await runOpenTUILiveProjects(config, statusOptions);
             return;
@@ -1132,11 +1130,46 @@ function getCompletedSectionContent(d: StatusData): string {
   );
 }
 
-function getActivePlansSectionContent(d: StatusData, w: number): string {
+const NARROW_PLAN_WIDTH = 50;
+
+/** Reserve lines for box borders, section titles, completed summary. */
+const DASHBOARD_RESERVED_LINES = 12;
+
+/**
+ * Max data rows per dashboard table from terminal height. Plans get ~40%, tasks ~60%.
+ * Ensures no scrolling on small terminals.
+ */
+export function getDashboardRowLimits(terminalRows: number): {
+  maxPlanRows: number;
+  maxTaskRows: number;
+} {
+  const dataLines = Math.max(4, terminalRows - DASHBOARD_RESERVED_LINES);
+  return {
+    maxPlanRows: Math.max(2, Math.floor(dataLines * 0.4)),
+    maxTaskRows: Math.max(2, Math.floor(dataLines * 0.6)),
+  };
+}
+
+function truncatePlanTitle(title: string, maxLen: number): string {
+  if (title.length <= maxLen) return title;
+  return `${title.slice(0, maxLen - 1)}…`;
+}
+
+function getActivePlansSectionContent(
+  d: StatusData,
+  w: number,
+  maxRows?: number,
+): string {
   if (d.activePlans.length === 0) return "";
   const innerW = getBoxInnerWidth(w);
-  const planRows = d.activePlans.map((p) => [
-    p.title,
+  const narrow = innerW < NARROW_PLAN_WIDTH;
+  const planMaxLen = narrow ? 8 : 24;
+  let plans = d.activePlans;
+  if (maxRows != null && maxRows > 0) {
+    plans = plans.slice(0, maxRows - 1);
+  }
+  const planRows = plans.map((p) => [
+    truncatePlanTitle(p.title, planMaxLen),
     String(p.todo),
     p.doing > 0 ? chalk.cyan(String(p.doing)) : "0",
     p.blocked > 0 ? chalk.red(String(p.blocked)) : "0",
@@ -1156,12 +1189,17 @@ function getActivePlansSectionContent(d: StatusData, w: number): string {
     sumDone > 0 ? chalk.green(String(sumDone)) : "0",
     sumReady > 0 ? chalk.greenBright(String(sumReady)) : "0",
   ];
+  const headers = narrow
+    ? ["Plan", "To", "Do", "Blk", "Done", "Rdy"]
+    : ["Plan", "Todo", "Doing", "Blocked", "Done", "Ready"];
   return renderTable({
-    headers: ["Plan", "Todo", "Doing", "Blocked", "Done", "Ready"],
+    headers,
     rows: [...planRows, aggRow],
     maxWidth: innerW,
-    minWidths: [12, 4, 3, 5, 3, 5],
-    maxWidths: [undefined, undefined, 4, 6, 4, undefined],
+    minWidths: narrow ? [8, 2, 2, 3, 3, 3] : [12, 4, 3, 5, 3, 5],
+    maxWidths: narrow
+      ? [undefined, 2, 2, 3, 4, 3]
+      : [undefined, undefined, 4, 6, 4, undefined],
   });
 }
 
@@ -1189,10 +1227,15 @@ function truncatePlan(s: string): string {
 }
 
 /**
- * Single merged section: active work (doing) first, then next 3 runnable (todo).
+ * Single merged section: active work (doing) first, then next runnable (todo).
  * Table headers: Id, Task, Plan, Status, Agent. Id is thin (max 10); Task is flex; Plan truncated.
+ * When maxRows is set (dashboard), slice to that many rows so the screen does not scroll.
  */
-function getMergedActiveNextContent(d: StatusData, w: number): string {
+function getMergedActiveNextContent(
+  d: StatusData,
+  w: number,
+  maxRows?: number,
+): string {
   const innerW = getBoxInnerWidth(w);
   const doingRows = d.activeWork.map((work) => {
     const body =
@@ -1217,7 +1260,8 @@ function getMergedActiveNextContent(d: StatusData, w: number): string {
     "todo",
     "—",
   ]);
-  const rows = [...doingRows, ...todoRows];
+  let rows = [...doingRows, ...todoRows];
+  if (maxRows != null && maxRows > 0) rows = rows.slice(0, maxRows);
   const tableRows =
     rows.length > 0
       ? rows
@@ -1453,7 +1497,7 @@ export function formatInitiativesAsString(
 }
 
 export interface FormatStatusOptions {
-  /** When true, show only active sections plus a one-line Completed summary at the end (for tg dashboard). */
+  /** When true, show only two stacked tables (Active Projects, Active tasks and upcoming) plus one-line summary (for tg dashboard). */
   dashboard?: boolean;
   /** When true, format three sections: Active tasks, Next 7 runnable, Last 7 completed (for tg dashboard --tasks). */
   tasksView?: boolean;
@@ -1461,7 +1505,8 @@ export interface FormatStatusOptions {
 
 /**
  * Format status as a single string (with section headers). Used by OpenTUI live view
- * and for consistent section content.
+ * and for consistent section content. When dashboard is true, outputs only two stacked
+ * tables with row limits so the screen does not scroll.
  */
 export function formatStatusAsString(
   d: StatusData,
@@ -1477,26 +1522,35 @@ export function formatStatusAsString(
     parts.push(getCompletedSectionContent(d));
   }
 
+  if (dashboard) {
+    const height = getTerminalHeight();
+    const { maxPlanRows, maxTaskRows } = getDashboardRowLimits(height);
+    const activePlansContent = getActivePlansSectionContent(d, w, maxPlanRows);
+    if (activePlansContent) {
+      parts.push("Active Projects");
+      parts.push(activePlansContent);
+    }
+    parts.push("Active tasks and upcoming");
+    parts.push(getMergedActiveNextContent(d, w, maxTaskRows));
+    const summary =
+      d.staleDoingTasks.length > 0
+        ? `Completed: Plans: ${d.completedPlans} done, Tasks: ${d.completedTasks} done  │  ${chalk.yellow(`⚠ ${d.staleDoingTasks.length} stale doing (>2h)`)}`
+        : `Completed: Plans: ${d.completedPlans} done, Tasks: ${d.completedTasks} done`;
+    parts.push(summary);
+    return parts.join("\n\n");
+  }
+
   const activePlans = getActivePlansSectionContent(d, w);
   if (activePlans) {
     parts.push("Active Plans");
     parts.push(activePlans);
   }
-
-  parts.push("Active & next");
-  parts.push(getMergedActiveNextContent(d, w));
-
   if (d.staleDoingTasks.length > 0) {
     parts.push(chalk.yellow("⚠  Stale Doing Tasks (>2h)"));
     parts.push(getStaleDoingTasksContent(d.staleDoingTasks, w));
   }
-
-  if (dashboard) {
-    parts.push(
-      `Completed: Plans: ${d.completedPlans} done, Tasks: ${d.completedTasks} done`,
-    );
-  }
-
+  parts.push("Active & next");
+  parts.push(getMergedActiveNextContent(d, w));
   return parts.join("\n\n");
 }
 
@@ -1510,20 +1564,51 @@ function getStaleDoingTasksContent(
   w: number,
 ): string {
   const innerW = getBoxInnerWidth(w);
+  const narrow = innerW < 45;
   const rows = tasks.map((t) => [
-    t.hash_id ?? "—",
+    (t.hash_id ?? "—").slice(0, narrow ? 8 : 10),
     t.title,
-    t.owner ?? "—",
+    (t.owner ?? "—").slice(0, narrow ? 6 : 12),
     formatAgeHours(t.age_hours),
   ]);
   return renderTable({
     headers: ["Id", "Title", "Owner", "Age"],
     rows,
     maxWidth: innerW,
-    minWidths: [10, 16, 8, 6],
+    minWidths: narrow ? [8, 10, 6, 3] : [10, 16, 8, 6],
     flexColumnIndex: 1,
-    maxWidths: [10],
+    maxWidths: narrow ? [8, undefined, 6, 4] : [10],
   });
+}
+
+const SIDE_BY_SIDE_GAP = 2;
+
+/**
+ * Render two boxed sections side by side to reduce vertical height.
+ * Each box is given half of the terminal width (minus gap). Lines are merged with left padded to max left width.
+ */
+function renderSideBySideBoxes(
+  leftTitle: string,
+  leftContent: string,
+  rightTitle: string,
+  rightContent: string,
+  totalWidth: number,
+): string {
+  const halfW = Math.max(24, Math.floor((totalWidth - SIDE_BY_SIDE_GAP) / 2));
+  const leftBox = boxedSection(leftTitle, leftContent, halfW);
+  const rightBox = boxedSection(rightTitle, rightContent, halfW);
+  const leftLines = leftBox.split("\n");
+  const rightLines = rightBox.split("\n");
+  const maxLeftLen = Math.max(...leftLines.map((l) => l.length), halfW);
+  const gap = " ".repeat(SIDE_BY_SIDE_GAP);
+  const merged: string[] = [];
+  const maxRows = Math.max(leftLines.length, rightLines.length);
+  for (let i = 0; i < maxRows; i++) {
+    const left = (leftLines[i] ?? "").padEnd(maxLeftLen);
+    const right = rightLines[i] ?? "";
+    merged.push(left + gap + right);
+  }
+  return merged.join("\n");
 }
 
 function printHumanStatus(
@@ -1543,6 +1628,30 @@ function printHumanStatus(
     console.log(`\n  ${line}\n`);
   }
 
+  if (dashboard) {
+    const height = getTerminalHeight();
+    const { maxPlanRows, maxTaskRows } = getDashboardRowLimits(height);
+    const activePlansContent = getActivePlansSectionContent(d, w, maxPlanRows);
+    if (activePlansContent) {
+      console.log(
+        `\n${boxedSection("Active Projects", activePlansContent, w)}`,
+      );
+    }
+    console.log(
+      `\n${boxedSection("Active tasks and upcoming", getMergedActiveNextContent(d, w, maxTaskRows), w)}`,
+    );
+    const summary =
+      d.staleDoingTasks.length > 0
+        ? chalk.dim(
+            `Plans: ${chalk.green(d.completedPlans)} done, Tasks: ${chalk.green(d.completedTasks)} done  │  ${chalk.yellow(`⚠ ${d.staleDoingTasks.length} stale doing (>2h)`)}`,
+          )
+        : chalk.dim(
+            `Plans: ${chalk.green(d.completedPlans)} done, Tasks: ${chalk.green(d.completedTasks)} done`,
+          );
+    console.log(`\n  ${summary}\n`);
+    return;
+  }
+
   if (!dashboard) {
     console.log(
       `\n${boxedSection("Completed", getCompletedSectionContent(d), w)}`,
@@ -1553,23 +1662,14 @@ function printHumanStatus(
   if (activePlansContent) {
     console.log(`\n${boxedSection("Active Plans", activePlansContent, w)}`);
   }
-
-  console.log(
-    `\n${boxedSection("Active & next", getMergedActiveNextContent(d, w), w)}`,
-  );
-
   if (d.staleDoingTasks.length > 0) {
     const staleTitle = chalk.yellow("⚠  Stale Doing Tasks (>2h)");
     const staleContent = getStaleDoingTasksContent(d.staleDoingTasks, w);
     console.log(`\n${boxedSection(staleTitle, staleContent, w)}`);
   }
-
-  if (dashboard) {
-    console.log(
-      `\n  ${chalk.dim(`Plans: ${chalk.green(d.completedPlans)} done, Tasks: ${chalk.green(d.completedTasks)} done`)}`,
-    );
-  }
-
+  console.log(
+    `\n${boxedSection("Active & next", getMergedActiveNextContent(d, w), w)}`,
+  );
   console.log("");
 }
 

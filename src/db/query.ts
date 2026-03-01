@@ -3,6 +3,8 @@ import type { AppError } from "../domain/errors";
 import { type DoltSqlOptions, doltSql } from "./connection";
 import { sqlEscape } from "./escape";
 
+export { cachedQuery } from "./cached-query";
+
 export type JsonValue =
   | string
   | number

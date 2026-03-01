@@ -41,6 +41,12 @@ Domain guide for build tooling, CI validation, package publishing, and Dolt data
 
 - **Package**: `@danalexilewis/taskgraph` on npm. Publish from a clean build and version bump.
 
+## Environment variables
+
+| Variable | Type | Default | Description |
+|---|---|---|---|
+| `TG_QUERY_CACHE_TTL_MS` | number (optional) | `0` | Query result cache TTL in milliseconds. `0` = disabled (default). Dashboard mode uses a `1500 ms` floor regardless of this setting. |
+
 ## Decisions / gotchas
 
 - **CLI version in CJS**: `import.meta.url` is undefined in CommonJS. Do not use `createRequire(import.meta.url)` in the CLI entrypoint for reading `package.json`; use a hardcoded version or read from a path derived from `__dirname` in CJS.

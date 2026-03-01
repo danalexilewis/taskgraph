@@ -195,6 +195,8 @@ export interface Config {
   remoteUrl?: string;
   /** Strategic cycle length (e.g. { weeks: 16 }). Used for initiative planning. */
   strategicCycle?: { weeks: number };
+  /** Query result cache TTL in milliseconds. 0 = disabled (default). Dashboard mode uses 1500ms floor regardless. */
+  queryCacheTtlMs?: number;
 }
 
 export function readConfig(basePath?: string): Result<Config, AppError> {

@@ -131,6 +131,53 @@ Use this workflow to find where time and tokens are going:
 3. For tasks with high `tool_calls`: read the task intent and check if it was under-specified or missing a skill guide
 4. For tasks with long elapsed: check if they had a reviewer FAIL (look for `attempt: 2` in token data or `tg note` events)
 
+## Query Result Cache
+
+An in-process, TTL-based query result cache sits between the CLI commands and the Dolt query layer. It stores query results in memory and invalidates entries by table name when a write occurs on that table.
+
+### What it is
+
+- **In-memory key/value store**: results are keyed by query string + args. No persistence; cache is cleared on process exit.
+- **TTL-based expiry**: each entry expires after `TTL_MS` milliseconds. Once expired, the next call goes to Dolt and repopulates the cache.
+- **Table-level invalidation**: write operations (INSERT, UPDATE, etc.) invalidate all cached entries for the affected table, ensuring consistency without requiring global cache flushes.
+
+### When it helps
+
+| Scenario | Benefit |
+|---|---|
+| Dashboard polling (`tg status` repeated every 1–2 s) | Eliminates redundant Dolt queries between data changes |
+| Migration checks (run before every command) | Avoids re-querying the migrations table on back-to-back CLI invocations |
+| Future server-mode sessions | Amortises query cost across multiple in-process requests |
+
+### How to enable
+
+**Via environment variable:**
+
+```bash
+TG_QUERY_CACHE_TTL_MS=1500 pnpm tg status
+```
+
+**Via `.taskgraph/config.json`:**
+
+```json
+{
+  "queryCacheTtlMs": 1500
+}
+```
+
+**Defaults:**
+
+| Mode | Default TTL |
+|---|---|
+| CLI (single command) | `0` (disabled) |
+| Dashboard mode | `1500 ms` (applied automatically regardless of config) |
+
+Setting TTL to `0` disables the cache entirely; all queries pass through directly to Dolt.
+
+### Note on Dolt and query caching
+
+Dolt has no built-in query result cache. MySQL 8 removed the query cache (deprecated in MySQL 5.7). Application-layer caching — as implemented here — is the only option for amortising repeated identical reads.
+
 ## External Observability Options
 
 For deeper token-level analytics beyond what `tg stats` provides:
