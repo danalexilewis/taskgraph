@@ -13,6 +13,7 @@ import {
 } from "../db/migrate";
 import { type AppError, buildError, ErrorCode } from "../domain/errors";
 import { writeConfig } from "./utils";
+import { isWorktrunkAvailable } from "./worktree";
 
 const TASKGRAPH_DIR = ".taskgraph";
 const CONFIG_FILE = path.join(TASKGRAPH_DIR, "config.json");
@@ -93,6 +94,7 @@ export function initCommand(program: Command) {
             doltRepoPath: doltRepoPath,
             learningMode: false,
             ...(remoteUrl != null && remoteUrl !== "" ? { remoteUrl } : {}),
+            ...(isWorktrunkAvailable() ? { useWorktrunk: true } : {}),
           };
           // Use a valid ErrorCode, e.g., UNKNOWN_ERROR
           return writeConfig(config, repoPath).mapErr(

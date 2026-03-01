@@ -13,15 +13,20 @@ This document describes how Task-Graph supports 2–3 simultaneous agents workin
 - **Not Gastown-style orchestration**: No mayor/coordinator agent. The human is the coordinator.
 - **No convoys/swarms**: Overkill for 2–3 agents. We share one working copy.
 
+## Worktrunk — sub-agent worktree backend
+
+When delegating to implementer sub-agents, use worktree isolation so each task runs in its own directory. Task-Graph uses **Worktrunk (wt)** as the standard backend when available: set `"useWorktrunk": true` in `.taskgraph/config.json`, or ensure the `wt` CLI is on PATH (tg auto-detects). With Worktrunk, `tg start <taskId> --agent <name> --worktree` creates a wt-managed worktree; the orchestrator passes the worktree path to implementers (from `tg worktree list --json` or the started event) so they `cd` there and run all work and `tg done` from that directory. Raw git worktrees remain supported when `useWorktrunk` is false or wt is not installed. See [cli-reference.md](cli-reference.md) (worktree section) and `.cursor/rules/subagent-dispatch.mdc`.
+
 ## CLI Additions
 
-| Command                                                | Purpose                                                                          |
-| ------------------------------------------------------ | -------------------------------------------------------------------------------- |
-| `tg start <taskId> --agent <name>`                     | Claim a task with identity; record in started event body                         |
-| `tg start <taskId> --force`                            | Override claim when task is already being worked (human override)                |
-| `tg note <taskId> --msg <text> [--agent <name>]`       | Append a note event; visible in `tg show`                                        |
-| `tg status`                                            | Shows "Active work" section with doing tasks, agent_id, plan title, started_at   |
-| `tg stats [--agent <name>] [--plan <planId>] [--json]` | Derive agent metrics from events: tasks_done, review pass/fail, avg elapsed time |
+| Command                                                | Purpose                                                                           |
+| ------------------------------------------------------ | --------------------------------------------------------------------------------- |
+| `tg start <taskId> --agent <name> [--worktree]`        | Claim a task; with `--worktree` create isolated worktree (Worktrunk when enabled) |
+| `tg start <taskId> --force`                            | Override claim when task is already being worked (human override)                 |
+| `tg worktree list [--json]`                            | List active worktrees; use to get path for implementer dispatch                   |
+| `tg note <taskId> --msg <text> [--agent <name>]`       | Append a note event; visible in `tg show`                                         |
+| `tg status`                                            | Shows "Active work" section with doing tasks, agent_id, plan title, started_at    |
+| `tg stats [--agent <name>] [--plan <planId>] [--json]` | Derive agent metrics from events: tasks_done, review pass/fail, avg elapsed time  |
 
 ## Conventions
 

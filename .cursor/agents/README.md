@@ -95,20 +95,22 @@ Example:
 2. For each task, orchestrator runs `tg context <taskId> --json` and optionally runs the explorer.
 3. Orchestrator reads the appropriate agent template (e.g. `implementer.md`), replaces placeholders with the task's context.
 4. Orchestrator dispatches the sub-agent: Task tool, `agent` CLI, or mcp_task with the same description and interpolated prompt (see docs/cursor-agent-cli.md).
-5. Sub-agent runs in its own context, runs `tg start <taskId> --agent <name>`, does the work, runs `tg done <taskId> --evidence "..."`.
+5. Sub-agent runs in its own context. When using worktree isolation (Worktrunk standard): orchestrator runs `tg start <taskId> --agent <name> --worktree` and passes **{{WORKTREE_PATH}}**; sub-agent `cd`s there and runs work and `tg done` from that directory. Otherwise sub-agent runs `tg start <taskId> --agent <name>` (and optionally `--worktree` then gets path from `tg worktree list --json`), does the work, runs `tg done <taskId> --evidence "..."`.
 
 Placeholders commonly used:
 
-| Placeholder             | Source                                   | Example           |
-| ----------------------- | ---------------------------------------- | ----------------- |
-| `{{TASK_ID}}`           | task_id from tg next                     | UUID              |
-| `{{CONTEXT_JSON}}`      | Output of `tg context <taskId> --json`   | JSON object       |
-| `{{TITLE}}`             | context.title                            | Task title string |
-| `{{INTENT}}`            | context / task intent                    | Multi-line intent |
-| `{{DOC_PATHS}}`         | context.domain_docs                      | Paths to read     |
-| `{{SKILL_DOCS}}`        | context.skill_docs                       | Paths to read     |
-| `{{SUGGESTED_CHANGES}}` | context.suggested_changes                | Optional snippet  |
-| `{{EXPLORER_OUTPUT}}`   | Optional; output from explorer sub-agent | Structured text   |
+| Placeholder             | Source                                                                | Example                   |
+| ----------------------- | --------------------------------------------------------------------- | ------------------------- |
+| `{{TASK_ID}}`           | task_id from tg next                                                  | UUID                      |
+| `{{AGENT_NAME}}`        | Unique name for this run (e.g. implementer-1)                         | string                    |
+| `{{WORKTREE_PATH}}`     | When using worktrees; from `tg worktree list --json` or started event | Absolute path to worktree |
+| `{{CONTEXT_JSON}}`      | Output of `tg context <taskId> --json`                                | JSON object               |
+| `{{TITLE}}`             | context.title                                                         | Task title string         |
+| `{{INTENT}}`            | context / task intent                                                 | Multi-line intent         |
+| `{{DOC_PATHS}}`         | context.domain_docs                                                   | Paths to read             |
+| `{{SKILL_DOCS}}`        | context.skill_docs                                                    | Paths to read             |
+| `{{SUGGESTED_CHANGES}}` | context.suggested_changes                                             | Optional snippet          |
+| `{{EXPLORER_OUTPUT}}`   | Optional; output from explorer sub-agent                              | Structured text           |
 
 ## Adding a new agent
 

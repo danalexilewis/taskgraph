@@ -302,7 +302,7 @@ tg start <taskIds...> [--agent <name>] [--force] [--branch] [--worktree]
 - `--agent <name>`: Agent identifier for multi-agent visibility. Recorded in the started event body. Applies to all IDs.
 - `--force`: Override claim when a task is already being worked by another agent (human override). Applies to all IDs.
 - `--branch`: Create and checkout a Dolt agent branch for this task (e.g. `agent-<taskId-prefix>`). The branch name is stored in the started event; `tg done` will merge it into main (or `mainBranch` from config) and delete the branch. If merge conflicts occur, `tg done` reports an error and leaves the branch for manual resolution.
-- `--worktree`: Create a git worktree for the task at `.taskgraph/worktrees/<taskId>/` on branch `tg/<taskId>`. The worktree path and branch are stored in the **started event body** as `worktree_path` and `worktree_branch`. Use this for parallel implementers so each works in an isolated directory; the orchestrator should pass `worktree_path` to implementers (e.g. in the dispatch prompt) so they run their work from that path.
+- `--worktree`: Create a worktree for the task so the implementer runs in an isolated directory. **Worktrunk (wt)** is used when `"useWorktrunk": true` in `.taskgraph/config.json` or `wt` is on PATH (auto-detect); otherwise raw git worktrees at `.taskgraph/worktrees/<taskId>/`. The started event body stores `worktree_path`, `worktree_branch`, and (Worktrunk) `worktree_repo_root`. The orchestrator should pass the worktree path to implementers as **WORKTREE_PATH** so they run all work and `tg done` from that directory.
 
 **Example:**
 
@@ -369,11 +369,11 @@ tg worktree list
 
 ### Git worktree integration (parallel tasks)
 
-When running **parallel implementers**, use `tg start --worktree` so each task gets an isolated git worktree at `.taskgraph/worktrees/<taskId>/` on branch `tg/<taskId>`. The **started event body** stores `worktree_path` (absolute path to the worktree) and `worktree_branch`; the **orchestrator** should pass `worktree_path` to implementers in the dispatch prompt (e.g. "Work in &lt;worktree_path&gt;" or "Run all commands from &lt;worktree_path&gt;") so they perform their work in that directory and avoid file conflicts. When the task is complete, run `tg done --evidence "..."`; add `--merge` to merge the worktree branch into the base branch before removing the worktree. Use `tg worktree list` to see active worktrees.
+When running **parallel implementers**, use `tg start --worktree` so each task gets an isolated worktree. **Worktrunk (wt) is the standard backend** for sub-agent work: set `"useWorktrunk": true` in `.taskgraph/config.json` or ensure `wt` is on PATH (auto-detect). With Worktrunk, worktrees are wt-managed (e.g. `<repo>.tg-<hash_id>`); with raw git, worktrees live at `.taskgraph/worktrees/<taskId>/` on branch `tg/<taskId>` or `tg-<hash_id>`. The **started event body** stores `worktree_path`, `worktree_branch`, and (Worktrunk) `worktree_repo_root`. The **orchestrator** must pass the worktree path (e.g. from `tg worktree list --json`) to implementers as **WORKTREE_PATH** so they run all work and `tg done` from that directory. When the task is complete, run `tg done --evidence "..."`; add `--merge` to merge the worktree branch into the base branch before removing the worktree. See `.cursor/rules/subagent-dispatch.mdc` and [multi-agent.md](multi-agent.md).
 
 ### `tg gate create <name>`
 
-Creates an external gate and blocks the given task until the gate is resolved (e.g., human approval, CI pass, webhook). Gates represent dependencies on conditions *outside* the task graph; use `tg block` for task-on-task dependencies.
+Creates an external gate and blocks the given task until the gate is resolved (e.g., human approval, CI pass, webhook). Gates represent dependencies on conditions _outside_ the task graph; use `tg block` for task-on-task dependencies.
 
 ```bash
 tg gate create <name> --task <taskId> [--type human|ci|webhook]
@@ -435,14 +435,14 @@ tg gate list --pending
 # Output: Lists all pending gates.
 ```
 
-**Gates vs blocks:** **Gates** block a task on an *external* condition (human, CI, webhook). **Blocks** (`tg block`, `edge` with `type='blocks'`) block a task on *another task* in the graph. Use gates when the dependency is outside the task graph; use blocks for task-on-task dependencies.
+**Gates vs blocks:** **Gates** block a task on an _external_ condition (human, CI, webhook). **Blocks** (`tg block`, `edge` with `type='blocks'`) block a task on _another task_ in the graph. Use gates when the dependency is outside the task graph; use blocks for task-on-task dependencies.
 
 ### Multi-machine workflow and sync
 
 The task graph is stored in a Dolt repo (`.taskgraph/dolt/`). To use the same graph on multiple machines:
 
--   **No `tg sync` yet**: Sync is done via Dolt. From the project root, run Dolt in the repo (e.g. `cd .taskgraph/dolt && dolt remote add origin <url>` once, then `dolt pull` / `dolt push`). See [architecture.md](architecture.md) for the full multi-machine sync and workflow section.
--   **Planned**: A future `tg sync` may wrap Dolt pull/push and support an optional remote in `.taskgraph/config.json`. Until then, use Dolt remotes and pull/push manually.
+- **No `tg sync` yet**: Sync is done via Dolt. From the project root, run Dolt in the repo (e.g. `cd .taskgraph/dolt && dolt remote add origin <url>` once, then `dolt pull` / `dolt push`). See [architecture.md](architecture.md) for the full multi-machine sync and workflow section.
+- **Planned**: A future `tg sync` may wrap Dolt pull/push and support an optional remote in `.taskgraph/config.json`. Until then, use Dolt remotes and pull/push manually.
 
 ### `tg block <taskId> --on <blockerTaskId> --reason <text>`
 
@@ -800,10 +800,10 @@ tg portfolio hotspots
 
 ### `tg import <filePath>`
 
-Imports tasks and edges from a markdown plan file into the Dolt database. This command will upsert tasks based on their stable keys and create blocking edges as defined in the markdown.
+Imports tasks and edges from a markdown plan file into the Dolt database. This command will upsert tasks based on their stable keys (todo `id` in Cursor format, `TASK:` key in Legacy) and create blocking edges as defined in the markdown. If the plan already has tasks and the file’s keys don’t match them (e.g. you changed todo ids), the command fails unless you pass `--force` or `--replace`.
 
 ```bash
-tg import <filePath> --plan "<planTitleOrId>" [--format cursor|legacy]
+tg import <filePath> --plan "<planTitleOrId>" [--format cursor|legacy] [--force] [--replace]
 ```
 
 **Arguments:**
@@ -815,6 +815,8 @@ tg import <filePath> --plan "<planTitleOrId>" [--format cursor|legacy]
 - `--plan <planTitleOrId>`: **(Required)** The title or ID of the plan to associate the imported tasks with. If a plan with the given title/ID does not exist, a new one will be created.
 - `--format <format>`: Plan format. `cursor` for Cursor plans (YAML frontmatter with todos); `legacy` for TASK:/TITLE:/BLOCKED_BY: format (default).
 - `--no-suggest`: Disable auto-suggestion of docs/skills from plan file tree and task file patterns. When enabled (default), tasks with no docs/skills get suggestions and a console warning is printed.
+- `--force`: Proceed with import even when existing tasks would be unmatched (e.g. todo ids changed between imports). Unmatched tasks are left as-is; new tasks from the file are added. May create duplicates.
+- `--replace`: Cancel existing tasks that would not be matched by this import (soft-delete to `canceled`), then upsert. Use when the plan file is the new source of truth so the plan ends up with only the tasks from the file.
 
 **Example:**
 
@@ -841,6 +843,8 @@ tg template apply <file> --plan "<planName>" [--var key=value]...
 
 - `--plan <name>`: **(Required)** Plan name for the created plan (or existing plan to add tasks to). If no plan exists with this title/ID, a new plan is created.
 - `--var <pairs...>`: Variable substitutions as `key=value`. Multiple pairs: `--var feature=auth --var area=backend`. Any `{{varName}}` in the template is replaced by the value for `varName`.
+- `--force`: Proceed with apply even when existing tasks would be unmatched (may create duplicates). Same behavior as `tg import --force`.
+- `--replace`: Cancel existing tasks that would not be matched by this apply, then upsert. Same behavior as `tg import --replace`.
 
 **Template format**
 

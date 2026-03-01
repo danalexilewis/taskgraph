@@ -6,6 +6,7 @@
  * - Worktrees are created at .taskgraph/worktrees/<taskId>/ with branch tg/<taskId>.
  */
 
+import * as fs from "node:fs";
 import * as path from "node:path";
 import type { Command } from "commander";
 import { execa, execaSync } from "execa";
@@ -13,6 +14,12 @@ import { errAsync, okAsync, ResultAsync } from "neverthrow";
 import { type AppError, buildError, ErrorCode } from "../domain/errors";
 import type { Config } from "./utils";
 import { readConfig, rootOpts } from "./utils";
+
+function execaErrDetail(e: unknown): string {
+  const ex = e as { stderr?: string; stdout?: string };
+  const parts = [ex.stderr, ex.stdout].filter(Boolean);
+  return parts.length ? ` ${parts.join("; ").trim()}` : "";
+}
 
 let _wtAvailable: boolean | null = null;
 
@@ -116,10 +123,7 @@ export function createWorktree(
   repoPath: string = process.cwd(),
   baseBranch?: string,
   hashId?: string | null,
-): ResultAsync<
-  { worktree_path: string; worktree_branch: string },
-  AppError
-> {
+): ResultAsync<{ worktree_path: string; worktree_branch: string }, AppError> {
   const branch = worktreeBranchForTask(taskId, hashId);
   let backend: "worktrunk" | "git";
   try {
@@ -135,10 +139,24 @@ export function createWorktree(
   }
 
   if (backend === "worktrunk") {
+    const resolvedRepo = fs.realpathSync(path.resolve(repoPath));
     return ResultAsync.fromPromise(
-      execa("wt", ["switch", "--create", branch, "--no-cd", "--no-verify", "-y", "-C", repoPath], {
-        cwd: repoPath,
-      }),
+      execa(
+        "wt",
+        [
+          "switch",
+          "--create",
+          branch,
+          "--no-cd",
+          "--no-verify",
+          "-y",
+          "-C",
+          resolvedRepo,
+        ],
+        {
+          cwd: resolvedRepo,
+        },
+      ),
       (e) =>
         buildError(
           ErrorCode.UNKNOWN_ERROR,
@@ -147,8 +165,8 @@ export function createWorktree(
         ),
     ).andThen(() =>
       ResultAsync.fromPromise(
-        execa("wt", ["list", "--format", "json", "-C", repoPath], {
-          cwd: repoPath,
+        execa("wt", ["list", "--format", "json", "-C", resolvedRepo], {
+          cwd: resolvedRepo,
         }),
         (e) =>
           buildError(
@@ -198,34 +216,68 @@ export function createWorktree(
  * @param taskId - Task identifier (used for branch/path when branchOverride not provided)
  * @param repoPath - Git repo root. Defaults to process.cwd()
  * @param deleteBranch - If true (git backend), delete the branch after removing the worktree
- * @param branchOverride - When provided (worktrunk), use this branch name for wt remove
+ * @param branchOverride - When provided (worktrunk), use this branch name for wt remove (when worktreePathOverride not set)
+ * @param backendOverride - When provided, use this backend instead of resolving from config (avoids re-reading config from repoPath)
+ * @param worktreePathOverride - When provided (worktrunk), run wt remove from this path (removes current worktree) instead of -C repo + branch
  */
 export function removeWorktree(
   taskId: string,
   repoPath: string = process.cwd(),
   deleteBranch: boolean = false,
   branchOverride?: string,
+  backendOverride?: "worktrunk" | "git",
+  worktreePathOverride?: string,
 ): ResultAsync<void, AppError> {
-  const backend = resolveBackendFromConfig(repoPath);
+  const backend = backendOverride ?? resolveBackendFromConfig(repoPath);
   const branch = branchOverride ?? branchName(taskId);
 
   if (backend === "worktrunk") {
+    if (worktreePathOverride) {
+      const resolvedWorktree = fs.realpathSync(
+        path.resolve(worktreePathOverride),
+      );
+      return ResultAsync.fromPromise(
+        execa(
+          "wt",
+          [
+            "remove",
+            "--force",
+            "--force-delete",
+            "--no-verify",
+            "-y",
+            "--foreground",
+          ],
+          { cwd: resolvedWorktree },
+        ),
+        (e) =>
+          buildError(
+            ErrorCode.UNKNOWN_ERROR,
+            `Worktrunk worktree remove failed (from worktree path)${execaErrDetail(e)}`,
+            e,
+          ),
+      ).map(() => undefined);
+    }
+    const resolvedRepo = fs.realpathSync(path.resolve(repoPath));
     return ResultAsync.fromPromise(
-      execa("wt", [
-        "remove",
-        branch,
-        "--force",
-        "--force-delete",
-        "--no-verify",
-        "-y",
-        "--foreground",
-        "-C",
-        repoPath,
-      ], { cwd: repoPath }),
+      execa(
+        "wt",
+        [
+          "remove",
+          branch,
+          "--force",
+          "--force-delete",
+          "--no-verify",
+          "-y",
+          "--foreground",
+          "-C",
+          resolvedRepo,
+        ],
+        { cwd: resolvedRepo },
+      ),
       (e) =>
         buildError(
           ErrorCode.UNKNOWN_ERROR,
-          `Worktrunk worktree remove failed for ${branch}`,
+          `Worktrunk worktree remove failed for ${branch}${execaErrDetail(e)}`,
           e,
         ),
     ).map(() => undefined);
@@ -264,14 +316,16 @@ export function removeWorktree(
  * - Git: `git checkout main && git merge <branch>`. Caller must call removeWorktree separately.
  *
  * @param worktreePath - Required when backend is worktrunk. Path to the worktree directory (for -C).
+ * @param backendOverride - When provided, use this backend instead of resolving from config.
  */
 export function mergeWorktreeBranchIntoMain(
   repoPath: string,
   branchName: string,
   mainBranch: string = "main",
   worktreePath?: string,
+  backendOverride?: "worktrunk" | "git",
 ): ResultAsync<void, AppError> {
-  const backend = resolveBackendFromConfig(repoPath);
+  const backend = backendOverride ?? resolveBackendFromConfig(repoPath);
   if (backend === "worktrunk") {
     if (!worktreePath) {
       return errAsync(
@@ -281,19 +335,18 @@ export function mergeWorktreeBranchIntoMain(
         ),
       );
     }
+    const resolvedRepo = fs.realpathSync(path.resolve(repoPath));
+    const resolvedWorktree = fs.realpathSync(path.resolve(worktreePath));
     return ResultAsync.fromPromise(
-      execa("wt", [
-        "merge",
-        mainBranch,
-        "-C",
-        worktreePath,
-        "--no-verify",
-        "-y",
-      ], { cwd: repoPath }),
+      execa(
+        "wt",
+        ["merge", mainBranch, "-C", resolvedWorktree, "--no-verify", "-y"],
+        { cwd: resolvedRepo },
+      ),
       (e) =>
         buildError(
           ErrorCode.UNKNOWN_ERROR,
-          `Worktrunk merge ${branchName} into ${mainBranch} failed`,
+          `Worktrunk merge ${branchName} into ${mainBranch} failed${execaErrDetail(e)}`,
           e,
         ),
     ).map(() => undefined);
@@ -345,7 +398,11 @@ export function listWorktrees(
         cwd: repoPath,
       }),
       (e) =>
-        buildError(ErrorCode.UNKNOWN_ERROR, "Worktrunk worktree list failed", e),
+        buildError(
+          ErrorCode.UNKNOWN_ERROR,
+          "Worktrunk worktree list failed",
+          e,
+        ),
     ).map((result) => {
       const raw = JSON.parse(result.stdout) as Array<{
         path: string;
@@ -403,8 +460,9 @@ export function worktreeCommand(program: Command) {
       const json = rootOpts(cmd).json ?? false;
 
       const configResult = readConfig(repoPath);
-      const backend =
-        configResult.isOk() ? resolveWorktreeBackend(configResult.value) : "git";
+      const backend = configResult.isOk()
+        ? resolveWorktreeBackend(configResult.value)
+        : "git";
 
       if (!json && backend === "worktrunk") {
         try {

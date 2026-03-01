@@ -1,3 +1,4 @@
+import * as fs from "node:fs";
 import * as path from "node:path";
 import type { Command } from "commander";
 import { err, ok, ResultAsync } from "neverthrow";
@@ -238,17 +239,39 @@ export function doneCommand(program: Command) {
           );
           const worktree = worktreeResult.isOk() ? worktreeResult.value : null;
           if (worktree) {
-            const gitRepoPath = path.dirname(
-              path.dirname(path.dirname(worktree.worktree_path)),
-            );
             const backend = resolveWorktreeBackend(config);
+            const worktreePathClean =
+              worktree.worktree_path?.trim().replace(/^["']|["']$/g, "") ?? "";
+            const rawRepoRoot = worktree.worktree_repo_root
+              ?.trim()
+              .replace(/^["']|["']$/g, "");
+            // Worktrunk: repo root is either stored, or derived from worktree_path (e.g. .../tg-integration-XXX.tg-3cd86e → .../tg-integration-XXX)
+            const derivedRepoRoot =
+              worktreePathClean &&
+              (() => {
+                const d = path.dirname(worktreePathClean);
+                const b = path
+                  .basename(worktreePathClean)
+                  .replace(/\.tg-[a-f0-9]+$/i, "");
+                return b ? path.join(d, b) : "";
+              })();
+            // Prefer derived repo root for worktrunk so remove/merge use the path that matches the worktree
+            const worktrunkRepoRoot =
+              derivedRepoRoot || rawRepoRoot || process.cwd();
+            const gitRepoPath =
+              backend === "worktrunk"
+                ? fs.realpathSync(path.resolve(worktrunkRepoRoot))
+                : path.dirname(
+                    path.dirname(path.dirname(worktree.worktree_path)),
+                  );
             let worktreeMergeFailed = false;
             if (options.merge) {
               const mergeWtResult = await mergeWorktreeBranchIntoMain(
                 gitRepoPath,
                 worktree.worktree_branch,
                 config.mainBranch ?? "main",
-                backend === "worktrunk" ? worktree.worktree_path : undefined,
+                backend === "worktrunk" ? worktreePathClean : undefined,
+                backend,
               );
               mergeWtResult.match(
                 () => {},
@@ -263,12 +286,33 @@ export function doneCommand(program: Command) {
                 },
               );
               if (backend === "worktrunk") {
-                // wt merge handles worktree removal; do not call removeWorktree
+                // Ensure worktree is removed (wt merge may have already removed it)
+                const removeAfterMerge = await removeWorktree(
+                  resolved,
+                  gitRepoPath,
+                  true,
+                  undefined,
+                  backend,
+                  worktreePathClean,
+                );
+                removeAfterMerge.match(
+                  () => {},
+                  (removeErr: AppError) => {
+                    const idx = results.length - 1;
+                    const last = results[idx];
+                    if (last && !("error" in last)) {
+                      results[idx] = { id: last.id, error: removeErr.message };
+                      anyFailed = true;
+                    }
+                  },
+                );
               } else if (!worktreeMergeFailed) {
                 const removeResult = await removeWorktree(
                   resolved,
                   gitRepoPath,
                   true,
+                  undefined,
+                  backend,
                 );
                 removeResult.match(
                   () => {},
@@ -288,6 +332,8 @@ export function doneCommand(program: Command) {
                 gitRepoPath,
                 false,
                 backend === "worktrunk" ? worktree.worktree_branch : undefined,
+                backend,
+                backend === "worktrunk" ? worktreePathClean : undefined,
               );
               removeResult.match(
                 () => {},

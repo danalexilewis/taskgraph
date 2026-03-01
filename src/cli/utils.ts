@@ -103,7 +103,11 @@ export function getStartedEventWorktree(
   taskId: string,
   doltRepoPath: string,
 ): ResultAsync<
-  { worktree_path: string; worktree_branch: string } | null,
+  {
+    worktree_path: string;
+    worktree_branch: string;
+    worktree_repo_root?: string;
+  } | null,
   AppError
 > {
   const sql = `SELECT body FROM \`event\` WHERE task_id = '${sqlEscape(taskId)}' AND kind = 'started' ORDER BY created_at DESC LIMIT 1`;
@@ -111,15 +115,24 @@ export function getStartedEventWorktree(
     const row = rows[0];
     if (!row?.body) return null;
     const raw = row.body;
-    let parsed: { worktree_path?: string; worktree_branch?: string };
+    let parsed: {
+      worktree_path?: string;
+      worktree_branch?: string;
+      worktree_repo_root?: string;
+    };
     try {
       parsed =
         typeof raw === "string"
           ? (JSON.parse(raw) as {
               worktree_path?: string;
               worktree_branch?: string;
+              worktree_repo_root?: string;
             })
-          : (raw as { worktree_path?: string; worktree_branch?: string });
+          : (raw as {
+              worktree_path?: string;
+              worktree_branch?: string;
+              worktree_repo_root?: string;
+            });
     } catch {
       return null;
     }
@@ -130,6 +143,7 @@ export function getStartedEventWorktree(
       return {
         worktree_path: parsed.worktree_path,
         worktree_branch: parsed.worktree_branch,
+        worktree_repo_root: parsed.worktree_repo_root,
       };
     }
     return null;

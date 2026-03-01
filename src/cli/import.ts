@@ -4,12 +4,16 @@ import { v4 as uuidv4 } from "uuid";
 import { doltCommit } from "../db/commit";
 import { now, query, type SqlValue } from "../db/query";
 import { type AppError, buildError, ErrorCode } from "../domain/errors";
-import { upsertTasksAndEdges } from "../plan-import/importer";
+import {
+  computeUnmatchedExistingTasks,
+  upsertTasksAndEdges,
+} from "../plan-import/importer";
 import {
   type ParsedPlan,
   parseCursorPlan,
   parsePlanMarkdown,
 } from "../plan-import/parser";
+import { cancelOne } from "./cancel";
 import { type Config, readConfig } from "./utils";
 
 export function importCommand(program: Command) {
@@ -37,6 +41,14 @@ export function importCommand(program: Command) {
       "--no-suggest",
       "Disable auto-suggestion of docs/skills from file patterns (default: suggest enabled)",
     )
+    .option(
+      "--force",
+      "Proceed with import even when existing tasks would be unmatched (may create duplicates)",
+    )
+    .option(
+      "--replace",
+      "Cancel existing tasks that would not be matched by this import, then upsert",
+    )
     .action(async (filePath, options, cmd) => {
       const result = await readConfig().asyncAndThen((config: Config) => {
         const currentTimestamp = now();
@@ -58,6 +70,7 @@ export function importCommand(program: Command) {
                 tests,
               } = parsedPlan;
               let planId: string | null = null;
+              let planJustCreated = false;
 
               // Try to find plan by ID first
               if (
@@ -94,6 +107,7 @@ export function importCommand(program: Command) {
 
               // If plan still not found, create a new one
               if (!planId) {
+                planJustCreated = true;
                 planId = uuidv4();
                 const newPlanTitle = planTitle || options.plan;
                 const newPlanIntent = planIntent || `Imported from ${filePath}`;
@@ -151,6 +165,45 @@ export function importCommand(program: Command) {
                   { plan_id: planId },
                 );
                 if (planUpdateResult.isErr()) throw planUpdateResult.error;
+              }
+
+              // Pre-flight: when plan already had tasks, check for unmatched
+              if (!planJustCreated) {
+                const unmatchedResult = await computeUnmatchedExistingTasks(
+                  planId,
+                  parsedTasks,
+                  config.doltRepoPath,
+                  options.externalKeyPrefix,
+                );
+                if (unmatchedResult.isErr()) throw unmatchedResult.error;
+                const { unmatchedTaskIds, unmatchedExternalKeys = [] } =
+                  unmatchedResult.value;
+                if (
+                  unmatchedTaskIds.length > 0 &&
+                  !options.force &&
+                  !options.replace
+                ) {
+                  const sample = unmatchedExternalKeys.slice(0, 10);
+                  const more =
+                    unmatchedExternalKeys.length > 10
+                      ? ` (and ${unmatchedExternalKeys.length - 10} more)`
+                      : "";
+                  throw buildError(
+                    ErrorCode.VALIDATION_FAILED,
+                    `Import would leave ${unmatchedTaskIds.length} existing task(s) unmatched: ${sample.join(", ")}${more}. Use --force to import anyway (may create duplicates) or --replace to cancel those tasks first.`,
+                  );
+                }
+                if (unmatchedTaskIds.length > 0 && options.replace) {
+                  for (const taskId of unmatchedTaskIds) {
+                    const cancelResult = await cancelOne(
+                      taskId,
+                      config,
+                      { type: "task" },
+                      cmd,
+                    );
+                    if (cancelResult.isErr()) throw cancelResult.error;
+                  }
+                }
               }
 
               const upsertResult = await upsertTasksAndEdges(

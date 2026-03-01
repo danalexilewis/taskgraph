@@ -1,5 +1,5 @@
-import { createPool, type Pool } from "mysql2/promise";
 import { execa } from "execa";
+import { createPool, type Pool } from "mysql2/promise";
 import { err, errAsync, ok, ResultAsync } from "neverthrow";
 import { type AppError, buildError, ErrorCode } from "../domain/errors";
 import { checkoutBranch } from "./branch";

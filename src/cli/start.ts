@@ -1,3 +1,4 @@
+import * as fs from "node:fs";
 import type { Command } from "commander";
 import { err, errAsync, okAsync, type ResultAsync } from "neverthrow";
 import { v4 as uuidv4 } from "uuid";
@@ -116,10 +117,11 @@ export function startOne(
               agent: agentName,
               timestamp: currentTimestamp,
               ...(branchName ? { branch: branchName } : {}),
-              ...(worktreeInfo
+              ...(worktreeInfo && worktreeRepoPath
                 ? {
                     worktree_path: worktreeInfo.worktree_path,
                     worktree_branch: worktreeInfo.worktree_branch,
+                    worktree_repo_root: fs.realpathSync(worktreeRepoPath),
                   }
                 : {}),
             }),

@@ -12,7 +12,9 @@ export function autoCompletePlanIfDone(
     .raw<{
       status: string;
       count: number;
-    }>(`SELECT status, COUNT(*) as count FROM \`task\` WHERE plan_id = '${sqlEscape(planId)}' GROUP BY status`)
+    }>(
+      `SELECT status, COUNT(*) as count FROM \`task\` WHERE plan_id = '${sqlEscape(planId)}' GROUP BY status`,
+    )
     .andThen((rows) => {
       const counts = Object.fromEntries(rows.map((r) => [r.status, r.count]));
       const total = rows.reduce((sum, r) => sum + r.count, 0);

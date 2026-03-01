@@ -95,6 +95,7 @@ Everything else is proposal-only.
 
 Multi-agent awareness (when 2–3 agents work alongside the human)
 
+- **Worktrunk for sub-agent worktrees:** When delegating to implementers, use worktree isolation so each task has its own directory. **Worktrunk (wt)** is the standard backend: set `"useWorktrunk": true` in `.taskgraph/config.json` or ensure `wt` is on PATH (auto-detect). Use `tg start <taskId> --agent <name> --worktree`; pass the worktree path (from `tg worktree list --json` or the started event) to the implementer as **WORKTREE_PATH** so they run all work and `tg done` from that directory. See .cursor/rules/subagent-dispatch.mdc.
 - Always pass --agent <session-name> on tg start so other agents see who claimed each task.
 - Read "Active work" from tg status before picking a task; avoid overlapping on the same files/area.
 - Use tg note <taskId> --msg "..." to leave breadcrumbs when changing shared interfaces (types, schema, parser) or discovering anything relevant beyond the current task's scope. Notes are the cross-dimensional transmission between introspective (single-task) and connective (multi-task) agent perspectives. See docs/agent-strategy.md.

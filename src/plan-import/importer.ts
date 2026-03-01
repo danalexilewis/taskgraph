@@ -4,7 +4,6 @@ import { v4 as uuidv4 } from "uuid";
 import { doltCommit } from "../db/commit";
 import { sqlEscape } from "../db/escape";
 import { allocateHashId } from "../db/hash-id";
-import { planHashFromPlanId } from "../domain/hash-id";
 import { jsonObj, now, query } from "../db/query";
 import { syncBlockedStatusForTask } from "../domain/blocked-status";
 import {
@@ -14,6 +13,7 @@ import {
   type RegistryEntry,
 } from "../domain/doc-skill-registry";
 import type { AppError } from "../domain/errors";
+import { planHashFromPlanId } from "../domain/hash-id";
 import type { Task } from "../domain/types";
 
 interface ParsedTask {

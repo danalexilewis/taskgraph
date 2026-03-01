@@ -20,12 +20,13 @@ type PerIdResult =
   | { id: string; type?: "plan" | "task"; status?: string }
   | { id: string; error: string };
 
-async function cancelOne(
+/** Cancel one plan or task by ID; used by cancel command and by import --replace. */
+export function cancelOne(
   id: string,
   config: Config,
   options: { type?: string; reason?: string },
   cmd: Command,
-): Promise<ResultAsync<CancelOneResult, AppError>> {
+): ResultAsync<CancelOneResult, AppError> {
   const currentTimestamp = now();
   const q = query(config.doltRepoPath);
   const typeHint =

@@ -3,10 +3,14 @@ import { ResultAsync } from "neverthrow";
 import { v4 as uuidv4 } from "uuid";
 import { doltCommit } from "../db/commit";
 import { now, query, type SqlValue } from "../db/query";
-import type { AppError } from "../domain/errors";
+import { type AppError, buildError, ErrorCode } from "../domain/errors";
 import { loadAndSubstituteTemplate } from "../domain/template-schema";
-import { upsertTasksAndEdges } from "../plan-import/importer";
+import {
+  computeUnmatchedExistingTasks,
+  upsertTasksAndEdges,
+} from "../plan-import/importer";
 import type { ParsedPlan } from "../plan-import/parser";
+import { cancelOne } from "./cancel";
 import { type Config, readConfig, rootOpts } from "./utils";
 
 /** Parse --var key=value pairs into a record. Invalid entries are skipped. */
@@ -40,8 +44,25 @@ export function templateCommand(program: Command) {
       "--var <pairs...>",
       "Variable substitutions as key=value (e.g. --var feature=auth --var area=backend)",
     )
+    .option(
+      "--force",
+      "Proceed with apply even when existing tasks would be unmatched (may create duplicates)",
+    )
+    .option(
+      "--replace",
+      "Cancel existing tasks that would not be matched by this apply, then upsert",
+    )
     .action(
-      async (file: string, options: { plan: string; var?: string[] }, cmd) => {
+      async (
+        file: string,
+        options: {
+          plan: string;
+          var?: string[];
+          force?: boolean;
+          replace?: boolean;
+        },
+        cmd,
+      ) => {
         const vars = parseVarPairs(options.var);
         const result = await readConfig().asyncAndThen((config: Config) => {
           const loadResult = loadAndSubstituteTemplate(file, vars);
@@ -59,6 +80,7 @@ export function templateCommand(program: Command) {
                   tests,
                 } = parsedPlan;
                 let planId: string | null = null;
+                let planJustCreated = false;
                 const planName = options.plan;
 
                 // Try to find plan by ID first
@@ -96,6 +118,7 @@ export function templateCommand(program: Command) {
 
                 // If still not found, create new plan
                 if (!planId) {
+                  planJustCreated = true;
                   planId = uuidv4();
                   const newPlanTitle = planTitle ?? planName;
                   const newPlanIntent =
@@ -127,6 +150,45 @@ export function templateCommand(program: Command) {
                     cmd.parent?.opts().noCommit,
                   );
                   if (commitResult.isErr()) throw commitResult.error;
+                }
+
+                // Pre-flight: when plan already had tasks, check for unmatched (mirror import)
+                if (!planJustCreated && planId) {
+                  const unmatchedResult = await computeUnmatchedExistingTasks(
+                    planId,
+                    parsedTasks,
+                    config.doltRepoPath,
+                    undefined,
+                  );
+                  if (unmatchedResult.isErr()) throw unmatchedResult.error;
+                  const { unmatchedTaskIds, unmatchedExternalKeys = [] } =
+                    unmatchedResult.value;
+                  if (
+                    unmatchedTaskIds.length > 0 &&
+                    !options.force &&
+                    !options.replace
+                  ) {
+                    const sample = unmatchedExternalKeys.slice(0, 10);
+                    const more =
+                      unmatchedExternalKeys.length > 10
+                        ? ` (and ${unmatchedExternalKeys.length - 10} more)`
+                        : "";
+                    throw buildError(
+                      ErrorCode.VALIDATION_FAILED,
+                      `Apply would leave ${unmatchedTaskIds.length} existing task(s) unmatched: ${sample.join(", ")}${more}. Use --force to apply anyway (may create duplicates) or --replace to cancel those tasks first.`,
+                    );
+                  }
+                  if (unmatchedTaskIds.length > 0 && options.replace) {
+                    for (const taskId of unmatchedTaskIds) {
+                      const cancelResult = await cancelOne(
+                        taskId,
+                        config,
+                        { type: "task" },
+                        cmd,
+                      );
+                      if (cancelResult.isErr()) throw cancelResult.error;
+                    }
+                  }
                 }
 
                 const upsertResult = await upsertTasksAndEdges(

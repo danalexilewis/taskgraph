@@ -106,6 +106,19 @@ ACCEPTANCE:
 - Invalid credentials return 401 error.
 ```
 
+## Re-import and ID stability
+
+Tasks are matched to the plan by **stable keys**: in Cursor format the todo `id` maps to `external_key`; in Legacy format the `TASK:` stable-key does. Re-importing the same plan (or an updated version) **upserts** by these keys: existing tasks are updated, new keys create new tasks.
+
+If you **change todo ids** (or stable keys) between imports, existing tasks in the plan no longer match any task in the file. The importer treats them as **unmatched existing tasks**. In that case the command **fails** unless you pass:
+
+- **`--force`**: Proceed anyway. The import runs and upserts/creates tasks from the file. Existing tasks that no longer match any key are left unchanged. You may end up with **duplicates** (old tasks plus new ones from the file).
+- **`--replace`**: Cancel all existing tasks that would not be matched by this import (soft-delete to `canceled`), then run the upsert. Afterward the plan’s tasks are exactly those from the file (matched ones updated, new ones created; no leftover unmatched tasks).
+
+Use **`--replace`** when you have rewritten the plan and want the graph to reflect only the new task set. Use **`--force`** only when you intentionally want to keep existing tasks and add new ones (e.g. one-off extra tasks from a variant file).
+
+**Template apply** (`tg template apply`) uses the same logic when applying to an **existing** plan that already has tasks: it runs the same unmatched check before upserting. Use `--force` or `--replace` with `tg template apply` the same way as with `tg import` when the template’s task set would leave existing tasks unmatched.
+
 ## Importer Rules
 
 The `tg import` command processes the markdown file based on these rules:
@@ -124,12 +137,14 @@ The `tg import` command processes the markdown file based on these rules:
 To import a markdown plan file:
 
 ```bash
-tg import <filePath> --plan "<planTitleOrId>" [--format cursor|legacy]
+tg import <filePath> --plan "<planTitleOrId>" [--format cursor|legacy] [--force] [--replace]
 ```
 
 -   `<filePath>`: The path to your markdown plan file (e.g., `plans/my-new-feature.md`).
 -   `--plan <planTitleOrId>`: **(Required)** Specify the title or ID of the plan to which these tasks should belong. If the plan doesn't exist, it will be created using the markdown's title and intent, or fallback values.
 -   `--format <format>`: Plan format. `cursor` for YAML frontmatter with todos; `legacy` for TASK:/TITLE:/BLOCKED_BY: (default).
+-   `--force`: Proceed with import even when some existing tasks would be unmatched (e.g. todo ids changed). May create duplicates; unmatched tasks are left as-is.
+-   `--replace`: Cancel existing tasks that would not be matched by this import, then upsert. Use when the plan file is the new source of truth and you want no leftover unmatched tasks.
 
 **Example:**
 

@@ -15,7 +15,7 @@ Invoked when the user says **/work**, **go**, **execute**, or **grind**.
 ## Pattern
 
 1. **Loop:** `tg next` (plan name or multi-plan) → get runnable tasks.
-2. **Dispatch:** Send up to **5** implementers in parallel (one task per implementer).
+2. **Dispatch:** Use **Worktrunk** for worktree isolation when available (config `useWorktrunk: true` or `wt` on PATH). Run `tg start <taskId> --agent <name> --worktree`; pass the worktree path (from `tg worktree list --json`) to each implementer as **WORKTREE_PATH**. Send up to **5** implementers in parallel (one task per implementer).
 3. **Review:** Two-stage — spec-reviewer then quality-reviewer (or reviewer when single-stage).
 4. **Repeat** until no runnable tasks or plan complete.
 

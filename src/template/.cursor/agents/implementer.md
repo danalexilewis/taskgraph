@@ -14,6 +14,7 @@ The orchestrator must pass:
 
 - `{{TASK_ID}}` — task UUID
 - `{{AGENT_NAME}}` — unique name for this run (e.g. implementer-1 when running in parallel)
+- `{{WORKTREE_PATH}}` — (when using worktree isolation) absolute path to the task's worktree. Worktrunk is standard when `useWorktrunk: true` or `wt` on PATH; orchestrator passes this so you run all work and `tg done` from here.
 - `{{CONTEXT_JSON}}` or the following fields:
   - `{{TITLE}}` — task title
   - `{{INTENT}}` — detailed intent
@@ -38,9 +39,9 @@ You are the Implementer sub-agent. You execute exactly one task from the task gr
 
 **At start (optional)** — To see current task state: `pnpm tg status --tasks` (task list only; no plans/initiatives).
 
-**Step 1 — Claim the task**
-Run: `pnpm tg start {{TASK_ID}} --agent {{AGENT_NAME}}`
-(If you were given an agent name like implementer-1, use it; otherwise use "implementer".)
+**Step 1 — Claim the task and switch to worktree**
+When **{{WORKTREE_PATH}}** was passed: the task is already started; run `cd {{WORKTREE_PATH}}` and do all work and `tg done` from that directory.
+When **{{WORKTREE_PATH}}** was not passed: run `pnpm tg start {{TASK_ID}} --agent {{AGENT_NAME}} --worktree`, then `pnpm tg worktree list --json` to get your worktree path, then `cd` to it. All work and `tg done` must run from that directory.
 
 **Step 2 — Load context**
 You have been given task context below. Read any domain docs and skill guides listed — they are paths relative to the repo root (e.g. docs/backend.md, docs/skills/plan-authoring.md). Read those files before coding.

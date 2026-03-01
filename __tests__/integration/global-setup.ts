@@ -1,8 +1,8 @@
+import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as net from "node:net";
 import * as os from "node:os";
 import * as path from "node:path";
-import { spawn } from "node:child_process";
 import { execa } from "execa";
 import {
   applyDomainToDocRenameMigration,
@@ -95,7 +95,13 @@ export default async function globalSetup(): Promise<void> {
   // Start dolt sql-server on the golden template so a single server is available; per-test servers are started in test-utils
   const server = spawn(
     DOLT_PATH,
-    ["sql-server", "--port", String(GOLDEN_SERVER_PORT), "--data-dir", doltRepoPath],
+    [
+      "sql-server",
+      "--port",
+      String(GOLDEN_SERVER_PORT),
+      "--data-dir",
+      doltRepoPath,
+    ],
     {
       cwd: doltRepoPath,
       detached: true,

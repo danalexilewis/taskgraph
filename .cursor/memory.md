@@ -112,3 +112,7 @@ Notes are stored task-scoped (event table, kind='note') but their _value_ is cro
 ## Pre-commit anti-pattern hook
 
 - `.cursor/hooks/pre-commit-check.sh` enforces agent MUST NOT DO (as any, @ts-ignore, empty catch). Opt-in: install by copying or symlinking to `.git/hooks/pre-commit` (or use your git hooks manager). Script is executable; Cursor hooks.json has no pre-commit event, so this is git-level only.
+
+## Worktrunk (wt) remove in tg done
+
+- `wt remove <branch> -C <repoRoot>` can fail with "No branch named" when repo path differs from the path used at create (e.g. in-process CLI cwd vs stored path). **Reliable fix:** run `wt remove` with **no branch argument** and **cwd = worktree path** (the path to the worktree to remove). Then wt removes the "current" worktree. Pass `worktreePathOverride` from done into `removeWorktree()` and use it for worktrunk; fallback remains `-C repo + branch` when override not set. For worktrunk after merge, always call remove with worktree path so the worktree is cleaned up even if `wt merge` already removed it.

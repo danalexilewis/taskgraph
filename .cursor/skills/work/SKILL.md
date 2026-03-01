@@ -14,11 +14,11 @@ When this skill is invoked, enter an autonomous execution loop. Do not stop to a
 - **You (orchestrator / execution lead)**: Coordinates the execution loop. Dispatches implementers, reviews results, escalates failures.
 - **Sub-agents**:
 
-  | Agent | Purpose | Permission |
-  |-------|---------|------------|
-  | implementer | Execute task (code, tests, docs) | read-write |
-  | reviewer (or spec-reviewer + quality-reviewer) | Evaluate implementation | read-only |
-  | fixer | Escalation after 2 implementer failures | read-write |
+  | Agent                                          | Purpose                                 | Permission |
+  | ---------------------------------------------- | --------------------------------------- | ---------- |
+  | implementer                                    | Execute task (code, tests, docs)        | read-write |
+  | reviewer (or spec-reviewer + quality-reviewer) | Evaluate implementation                 | read-only  |
+  | fixer                                          | Escalation after 2 implementer failures | read-write |
 
 ## Permissions
 
@@ -26,11 +26,11 @@ When this skill is invoked, enter an autonomous execution loop. Do not stop to a
 - **Propagation**: Mixed. Implementer and fixer are read-write. Reviewers are read-only.
 - **Sub-agents**:
 
-  | Agent | Permission |
-  |-------|------------|
-  | implementer | read-write |
-  | reviewer / spec-reviewer / quality-reviewer | read-only |
-  | fixer | read-write |
+  | Agent                                       | Permission |
+  | ------------------------------------------- | ---------- |
+  | implementer                                 | read-write |
+  | reviewer / spec-reviewer / quality-reviewer | read-only  |
+  | fixer                                       | read-write |
 
 ## Decision tree
 
@@ -94,8 +94,9 @@ while true:
   5. Emit all Task/mcp_task calls for this batch in the same turn (batch-in-one-turn).
   6. for each task in batch:
        a. context = tg context <taskId> --json
-       b. build implementer prompt from .cursor/agents/implementer.md + context
-       c. dispatch sub-agent (Task tool or mcp_task, model=fast)
+       b. (Worktrunk) Run tg start <taskId> --agent <name> --worktree from repo root; get worktree path from tg worktree list --json (or started event). Inject as {{WORKTREE_PATH}} in implementer prompt.
+       c. build implementer prompt from .cursor/agents/implementer.md + context + {{WORKTREE_PATH}}
+       d. dispatch sub-agent (Task tool or mcp_task, model=fast)
   7. wait for all sub-agents to complete
   8. for each completed sub-agent:
        a. TodoWrite merge=true to update progress (e.g. mark that task complete in the todo list).

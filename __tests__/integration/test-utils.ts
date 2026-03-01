@@ -1,8 +1,8 @@
+import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as net from "node:net";
 import * as os from "node:os";
 import * as path from "node:path";
-import { spawn } from "node:child_process";
 import { CommanderError } from "commander";
 import { type ExecaError, execa } from "execa";
 import { createProgram } from "../../src/cli/index";

@@ -20,7 +20,9 @@ export function doltCommit(
   if (pool) {
     return doltSqlServer("CALL DOLT_ADD('-A')", pool)
       .andThen(() =>
-        doltSqlServer("CALL DOLT_COMMIT('-m', ?, '--allow-empty')", pool, [msg]),
+        doltSqlServer("CALL DOLT_COMMIT('-m', ?, '--allow-empty')", pool, [
+          msg,
+        ]),
       )
       .map(() => undefined);
   }

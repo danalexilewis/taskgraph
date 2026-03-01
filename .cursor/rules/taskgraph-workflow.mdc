@@ -57,9 +57,9 @@ Task execution uses sub-agents. Follow `.cursor/rules/subagent-dispatch.mdc` Pat
 
 Use only when: a sub-agent has failed twice on the same task, or the task is explicitly exploratory/ambiguous. In this case follow the direct steps:
 
-1. `pnpm tg start <taskId> --agent <name>`
+1. `pnpm tg start <taskId> --agent <name> --worktree` (Worktrunk is used when `useWorktrunk: true` or `wt` on PATH; then `cd` to the worktree path from `tg worktree list --json`), or `pnpm tg start <taskId> --agent <name>` if not using a worktree
 2. `pnpm tg context <taskId>` — read and load docs
-3. Do the work
+3. Do the work (from the worktree directory if you used `--worktree`)
 4. `pnpm tg done <taskId> --evidence "..."`
 5. Log the reason: `pnpm tg note <taskId> --msg "Direct execution: <reason>"`
 

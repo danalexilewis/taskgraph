@@ -16,6 +16,7 @@ The orchestrator must pass:
 
 - `{{TASK_ID}}` — task UUID
 - `{{AGENT_NAME}}` — unique name for this run (e.g. implementer-1 when running in parallel)
+- `{{WORKTREE_PATH}}` — (when using worktree isolation) absolute path to the task's worktree. Sub-agent work uses **Worktrunk** when available (config `useWorktrunk: true` or `wt` on PATH); the orchestrator runs `tg start ... --worktree` and passes this path so you run all work and `tg done` from here.
 - `{{CONTEXT_JSON}}` or the following fields:
   - `{{TITLE}}` — task title
   - `{{INTENT}}` — detailed intent
@@ -54,9 +55,10 @@ You are the Implementer sub-agent. You execute exactly one task from the task gr
 
 **At start (optional)** — To see current task state: `pnpm tg status --tasks` (task list only; no plans/initiatives).
 
-**Step 1 — Claim the task**
-Run: `pnpm tg start {{TASK_ID}} --agent {{AGENT_NAME}}`
-(If you were given an agent name like implementer-1, use it; otherwise use "implementer".)
+**Step 1 — Claim the task and switch to worktree**
+When the orchestrator passed **{{WORKTREE_PATH}}**: the task is already started with a worktree. Run: `cd {{WORKTREE_PATH}}` and do all work (and `tg done`) from that directory.
+When **{{WORKTREE_PATH}}** was not passed: run from repo root: `pnpm tg start {{TASK_ID}} --agent {{AGENT_NAME}} --worktree`. Then run `pnpm tg worktree list --json`, find the entry for this task's branch (e.g. `tg-<hash>`), and `cd` to its `path`. All work and `tg done` must run from that worktree directory. (Worktrunk is the standard backend when `wt` is installed; ensure `.taskgraph/config.json` has `useWorktrunk: true` or leave unset for auto-detect.)
+Use a unique agent name (e.g. implementer-1) when running in parallel.
 
 **Step 2 — Load context**
 You have been given task context below. Read any domain docs and skill guides listed — they are paths relative to the repo root (e.g. docs/backend.md, docs/skills/plan-authoring.md). Read those files before coding.
@@ -108,7 +110,7 @@ You have been given task context below. Read any domain docs and skill guides li
 - Do not write or edit documentation files (README, CHANGELOG, docs/) — note for orchestrator instead
 
 **Step 4 — Complete the task**
-Run: `pnpm tg done {{TASK_ID}} --evidence "<brief evidence: commands run, git ref, or implemented; no test run>"`
+From the **worktree directory** (you must be in the worktree path when using worktree isolation), run: `pnpm tg done {{TASK_ID}} --evidence "<brief evidence: commands run, git ref, or implemented; no test run>"`. If the task was started with `--merge` intent, the orchestrator will run done with `--merge`; you only run `tg done` with evidence.
 
 Then report back to the orchestrator: task done and the evidence you used.
 
