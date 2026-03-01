@@ -12,8 +12,8 @@ export interface TableOptions {
    * Default 0 (first column).
    */
   flexColumnIndex?: number;
-  /** Maximum column widths (indexed by column). Caps natural width so column never exceeds this. */
-  maxWidths?: number[];
+  /** Maximum column widths (indexed by column). Use undefined for no cap. */
+  maxWidths?: (number | undefined)[];
 }
 
 /**
@@ -34,11 +34,12 @@ export function renderTable(opts: TableOptions): string {
   } = opts;
   const colCount = headers.length;
 
-  // cli-table3 colWidths include padding (1 left + 1 right = 2).
-  // Total rendered width = sum(colWidths) + (colCount + 1) borders.
+  // Table width = content + padding on both sides of each cell + vertical bars.
+  // cli-table3 colWidths = content + 2 (1 left + 1 right padding per cell).
+  // Total rendered = sum(colWidths) + (colCount + 1) vertical bars (left, between, right).
   const borders = colCount + 1;
+  const cellPaddingTotal = colCount * 2;
 
-  // Available content+padding space
   const available = Math.max(colCount * 3, maxWidth - borders);
 
   // Measure natural content widths (max of header + all rows per column); apply maxWidths cap
@@ -54,8 +55,8 @@ export function renderTable(opts: TableOptions): string {
     }
   }
 
-  // colWidths = content width + 2 (for padding). We work in content-space first.
-  const contentBudget = available - colCount * 2; // subtract padding
+  // Content budget: available minus padding on both sides of every cell.
+  const contentBudget = available - cellPaddingTotal;
 
   const fixedMax = Math.max(4, Math.floor(contentBudget / colCount));
 
@@ -88,7 +89,7 @@ export function renderTable(opts: TableOptions): string {
 
   // Cap total width so we never exceed maxWidth (no terminal wrap)
   let totalContent = contentWidths.reduce((s, x) => s + x, 0);
-  let totalRendered = totalContent + colCount * 2 + borders;
+  let totalRendered = totalContent + cellPaddingTotal + borders;
   if (totalRendered > maxWidth) {
     const overflow = totalRendered - maxWidth;
     const flexMin = minWidths[flexColumnIndex] ?? 3;
@@ -98,7 +99,7 @@ export function renderTable(opts: TableOptions): string {
       Math.min(flexMax, contentWidths[flexColumnIndex] - overflow),
     );
     totalContent = contentWidths.reduce((s, x) => s + x, 0);
-    totalRendered = totalContent + colCount * 2 + borders;
+    totalRendered = totalContent + cellPaddingTotal + borders;
     if (totalRendered > maxWidth) {
       const remainingOverflow = totalRendered - maxWidth;
       let slack = 0;

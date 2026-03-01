@@ -268,6 +268,7 @@ function runPlans(
       SUM(CASE WHEN t.status = 'canceled' THEN 1 ELSE 0 END) AS canceled
     FROM \`plan\` p
     LEFT JOIN \`task\` t ON p.plan_id = t.plan_id
+    WHERE p.status != 'abandoned'
     GROUP BY p.plan_id, p.title, p.status
     ORDER BY task_count DESC, p.title ASC
   `;
@@ -299,6 +300,7 @@ function runDomains(
     FROM \`task_doc\` td
     JOIN \`task\` t ON td.task_id = t.task_id
     JOIN \`project\` p ON t.plan_id = p.plan_id
+    WHERE p.status != 'abandoned'
     GROUP BY td.doc
     HAVING plan_count > 1
     ORDER BY plan_count DESC, task_count DESC
@@ -336,6 +338,7 @@ function runSkills(
     FROM \`task_skill\` ts
     JOIN \`task\` t ON ts.task_id = t.task_id
     JOIN \`project\` p ON t.plan_id = p.plan_id
+    WHERE p.status != 'abandoned'
     GROUP BY ts.skill
     HAVING plan_count > 1
     ORDER BY plan_count DESC, task_count DESC
@@ -366,12 +369,11 @@ function runFiles(
 ): ResultAsync<unknown, AppError> {
   const q = query(config.doltRepoPath);
   return q
-    .select<{ plan_id: string; title: string; file_tree: string | null }>(
-      "project",
-      {
-        columns: ["plan_id", "title", "file_tree"],
-      },
-    )
+    .raw<{
+      plan_id: string;
+      title: string;
+      file_tree: string | null;
+    }>("SELECT plan_id, title, file_tree FROM `project` WHERE status != 'abandoned'")
     .map((plans) => {
       const fileToPlans = new Map<
         string,
@@ -441,7 +443,11 @@ function runEdges(
     JOIN \`task_doc\` td2 ON td1.doc = td2.doc AND td1.task_id < td2.task_id
     JOIN \`task\` t1 ON td1.task_id = t1.task_id
     JOIN \`task\` t2 ON td2.task_id = t2.task_id
+    JOIN \`project\` p1 ON t1.plan_id = p1.plan_id
+    JOIN \`project\` p2 ON t2.plan_id = p2.plan_id
     WHERE t1.plan_id != t2.plan_id
+      AND p1.status != 'abandoned'
+      AND p2.status != 'abandoned'
   `;
       const domainRows = await q.raw<{
         from_id: string;
@@ -458,13 +464,13 @@ function runEdges(
         });
       }
 
-      const planRows = await q.select<{
+      const planRows = await q.raw<{
         plan_id: string;
         title: string;
         file_tree: string | null;
-      }>("project", {
-        columns: ["plan_id", "title", "file_tree"],
-      });
+      }>(
+        "SELECT plan_id, title, file_tree FROM `project` WHERE status != 'abandoned'",
+      );
       if (planRows.isErr()) return err(planRows.error);
       const plans = planRows.value.filter((p) => p.file_tree);
       const fileToPlanIds = new Map<string, string[]>();
@@ -607,11 +613,8 @@ function runSummary(
       const [domainsRes, skillsRes, plansRes] = await Promise.all([
         runDomains(config, true),
         runSkills(config, true),
-        q.select<{ plan_id: string; title: string; file_tree: string | null }>(
-          "project",
-          {
-            columns: ["plan_id", "title", "file_tree"],
-          },
+        q.raw<{ plan_id: string; title: string; file_tree: string | null }>(
+          "SELECT plan_id, title, file_tree FROM `project` WHERE status != 'abandoned'",
         ),
       ]);
       const domains = domainsRes.isOk() ? domainsRes.value : [];

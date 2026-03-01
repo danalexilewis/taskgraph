@@ -2,7 +2,8 @@
   "version": 1,
   "hooks": {
     "stop": [
-      { "command": "node hooks/rebuild-if-src-changed.js" }
+      { "command": "node hooks/rebuild-if-src-changed.js" },
+      { "command": "node hooks/extract-learnings.js" }
     ]
   }
 }

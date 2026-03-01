@@ -1,5 +1,7 @@
 **Agent architecture:** See [docs/agent-strategy.md](docs/agent-strategy.md) for the canonical agent architecture doc.
 
+**Naming and definitions:** Use [docs/glossary.md](docs/glossary.md) as the source of truth for terminology. Key distinction: **plan** = markdown strategic document in `plans/` (pre–task graph); **project** = task-graph entity after import. Use "project" for CLI/API/code when referring to the entity in the graph (e.g. `tg project list`, `--project <id>`). Execution groupings are **waves** (Wave 1, Wave 2), not phases.
+
 Plan creation and review
 
 **Planning uses the planner-analyst sub-agent first. Do not skip this.**

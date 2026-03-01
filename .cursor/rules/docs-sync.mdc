@@ -9,13 +9,16 @@ alwaysApply: false
 ## Source of Truth
 
 - **AGENT.md** — canonical agent contract. Plan creation/review, execution loop, blocking.
+- **docs/glossary.md** — naming conventions and definitions (plan vs project, waves, and other terms). Single source for terminology.
 - **docs/cli-reference.md** — CLI commands and options. Must match actual `tg` behavior.
 - **docs/agent-contract.md** — detailed version; keep aligned with AGENT.md.
 
 ## Update Triggers
 
 - **New CLI option or command** → update `docs/cli-reference.md`
+- **CLI table or TUI rendering change** → update `docs/cli-tables.md`
 - **Agent workflow change** → update AGENT.md and `docs/agent-contract.md`
+- **New or renamed term, naming convention, or definition** → update `docs/glossary.md`; then align AGENT.md, agent-contract, and other docs that use the term.
 - **New import format or plan format** → update `docs/plan-import.md`
 - **Schema or architecture change** → update `docs/schema.md` or `docs/architecture.md`
 

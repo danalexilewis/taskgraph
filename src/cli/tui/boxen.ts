@@ -1,11 +1,17 @@
 import boxen from "boxen";
 
+/** Chars taken by box per side: 1 border + 1 padding = 2. Both sides = 4. */
+const BOX_HORIZONTAL_DEDUCTION = 4;
+/** Extra buffer so table does not touch box inner edge (2 per side). */
+const BOX_INNER_BUFFER = 4;
+
 /**
- * Effective inner width for content inside a boxedSection (outer width minus borders and padding).
- * boxedSection uses padding: 1 and border, so inner width = outerWidth - 4. Floored at 20.
+ * Effective inner width for content inside a boxedSection.
+ * Account for padding on both sides: box uses 2 chars left (border+padding) and 2 right,
+ * then we subtract a small buffer so the table stays clear of the box. Floored at 20.
  */
 export function getBoxInnerWidth(outerWidth: number): number {
-  return Math.max(20, outerWidth - 4);
+  return Math.max(20, outerWidth - BOX_HORIZONTAL_DEDUCTION - BOX_INNER_BUFFER);
 }
 
 /**

@@ -9,7 +9,7 @@ triggers:
 
 This document outlines the protocol and responsibilities of an agent interacting with the Task Graph system. The goal is to enable "centaur development", where a human plans and audits, and an agent executes, ensuring determinism and auditability.
 
-**Canonical source**: [AGENT.md](../AGENT.md) in the repo root. This doc expands on it. See also [docs/agent-strategy.md](agent-strategy.md) (agent architecture) and [docs/leads/](leads/) (lead docs).
+**Canonical source**: [AGENT.md](../AGENT.md) in the repo root. This doc expands on it. See also [docs/glossary.md](glossary.md) (naming: plan vs project, waves, etc.), [docs/agent-strategy.md](agent-strategy.md) (agent architecture), and [docs/leads/](leads/) (lead docs).
 
 ## Plan Creation and Review
 

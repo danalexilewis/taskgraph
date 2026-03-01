@@ -16,37 +16,46 @@ export function planCommand(program: Command) {
 function planListCommand(): Command {
   return new Command("list")
     .alias("ls")
-    .description("List all plans")
-    .action(async (_options, cmd) => {
+    .description(
+      "List plans (excludes abandoned by default; use --cancelled to show only abandoned)",
+    )
+    .option(
+      "--cancelled",
+      "Show only cancelled/abandoned plans instead of active ones",
+      false,
+    )
+    .action(async (options, cmd) => {
+      const showCancelled = options.cancelled === true;
       const result = await readConfig().asyncAndThen((config: Config) => {
         const q = query(config.doltRepoPath);
-        return q.select<{
+        const statusFilter = showCancelled
+          ? "WHERE status = 'abandoned'"
+          : "WHERE status != 'abandoned'";
+        return q.raw<{
           plan_id: string;
           title: string;
           status: string;
           created_at: string;
-        }>("project", {
-          columns: ["plan_id", "title", "status", "created_at"],
-          orderBy: "`created_at` DESC",
-        });
+        }>(
+          `SELECT plan_id, title, status, created_at FROM \`project\` ${statusFilter} ORDER BY \`created_at\` DESC`,
+        );
       });
 
       result.match(
-        (plans: unknown) => {
-          const plansArray = plans as Array<{
-            plan_id: string;
-            title: string;
-            status: string;
-            created_at: string;
-          }>;
+        (plansArray) => {
           if (!rootOpts(cmd).json) {
             if (plansArray.length > 0) {
-              console.log("Plans:");
+              const label = showCancelled
+                ? "Cancelled/Abandoned Plans:"
+                : "Plans:";
+              console.log(label);
               plansArray.forEach((p) => {
                 console.log(`  ${p.plan_id}  ${p.title}  (${p.status})`);
               });
             } else {
-              console.log("No plans found.");
+              console.log(
+                showCancelled ? "No cancelled plans." : "No plans found.",
+              );
             }
           } else {
             console.log(JSON.stringify(plansArray, null, 2));

@@ -24,6 +24,9 @@ coverage/
 # Local env (integration test paths; Bun loads .env.local when running tests)
 .env.local
 
+# Learnings hook (transient; processed and deleted by next session)
+.cursor/pending-learnings.md
+
 # IDE & OS
 .DS_Store
 *.log

@@ -191,8 +191,8 @@ export function fetchStatusData(
       AND t.status NOT IN ('canceled')
     ${options.plan ? (isUUID ? `AND p.plan_id = '${sqlEscape(options.plan)}'` : `AND p.title = '${sqlEscape(options.plan)}'`) : ""}
     ${dimFilter}
-    GROUP BY p.plan_id, p.title, t.status
-    ORDER BY p.title ASC
+    GROUP BY p.plan_id, p.title, p.status, p.priority, p.updated_at, t.status
+    ORDER BY CASE WHEN p.status = 'draft' THEN 1 ELSE 0 END, p.priority DESC, p.updated_at DESC, p.title ASC
   `;
 
   const actionablePerPlanSql = `
@@ -278,7 +278,7 @@ export function fetchStatusData(
     FROM ${bt("project")}
     WHERE status IN ('draft', 'active', 'paused')
     ${options.plan ? (isUUID ? `AND plan_id = '${sqlEscape(options.plan)}'` : `AND title = '${sqlEscape(options.plan)}'`) : ""}
-    ORDER BY priority DESC, updated_at DESC
+    ORDER BY CASE WHEN status = 'draft' THEN 1 ELSE 0 END, priority DESC, updated_at DESC
     LIMIT 7
   `;
   const last7CompletedPlansSql = `
@@ -286,7 +286,7 @@ export function fetchStatusData(
     FROM ${bt("project")}
     WHERE status = 'done'
     ${options.plan ? (isUUID ? `AND plan_id = '${sqlEscape(options.plan)}'` : `AND title = '${sqlEscape(options.plan)}'`) : ""}
-    ORDER BY updated_at DESC
+    ORDER BY updated_at ASC
     LIMIT 7
   `;
   const activeWorkSql = `
@@ -475,7 +475,7 @@ export function fetchProjectsTableData(
       : "";
 
   const projectsSql = `
-    SELECT p.plan_id, p.title, p.status,
+    SELECT p.plan_id, p.title, p.status, p.updated_at,
       COALESCE(SUM(CASE WHEN t.status = 'todo' THEN 1 ELSE 0 END), 0) AS todo,
       COALESCE(SUM(CASE WHEN t.status = 'doing' THEN 1 ELSE 0 END), 0) AS doing,
       COALESCE(SUM(CASE WHEN t.status = 'blocked' THEN 1 ELSE 0 END), 0) AS blocked,
@@ -483,8 +483,11 @@ export function fetchProjectsTableData(
     FROM ${bt("project")} p
     LEFT JOIN ${bt("task")} t ON t.plan_id = p.plan_id ${taskNotCanceled} ${dimJoin}
     WHERE 1=1 ${planWhere} ${planNotAbandoned} ${filterActive}
-    GROUP BY p.plan_id, p.title, p.status
-    ORDER BY p.title ASC
+    GROUP BY p.plan_id, p.title, p.status, p.updated_at
+    ORDER BY CASE WHEN p.status = 'draft' THEN 2 WHEN p.status = 'done' THEN 0 ELSE 1 END,
+      CASE WHEN p.status = 'done' THEN p.updated_at END ASC,
+      CASE WHEN p.status IN ('active','paused') THEN p.updated_at END DESC,
+      p.title ASC
   `;
 
   return q.raw<{
@@ -704,9 +707,8 @@ export function statusCommand(program: Command) {
           console.error("tg status --dashboard does not support --json");
           process.exit(1);
         }
-        const { runOpenTUILiveInitiatives } = await import(
-          "./tui/live-opentui.js"
-        );
+        const { runOpenTUILiveInitiatives } =
+          await import("./tui/live-opentui.js");
         try {
           await runOpenTUILiveInitiatives(config, statusOptions);
           return;
@@ -835,9 +837,8 @@ export function statusCommand(program: Command) {
         const config = configResult.value;
 
         if (viewMode === "projects") {
-          const { runOpenTUILiveProjects } = await import(
-            "./tui/live-opentui.js"
-          );
+          const { runOpenTUILiveProjects } =
+            await import("./tui/live-opentui.js");
           try {
             await runOpenTUILiveProjects(config, statusOptions);
             return;
@@ -1063,7 +1064,8 @@ function getActivePlansSectionContent(d: StatusData, w: number): string {
     headers: ["Plan", "Todo", "Doing", "Blocked", "Done", "Ready"],
     rows: [...planRows, aggRow],
     maxWidth: innerW,
-    minWidths: [12, 4, 5, 7, 4, 5],
+    minWidths: [12, 4, 3, 5, 3, 5],
+    maxWidths: [undefined, undefined, 4, 6, 4, undefined],
   });
 }
 
@@ -1158,7 +1160,8 @@ export function formatProjectsAsString(
         ? projectRows
         : [["No projects", "—", "0", "0", "0", "0"]],
     maxWidth: innerW,
-    minWidths: [12, 8, 4, 5, 7, 4],
+    minWidths: [12, 8, 4, 3, 5, 3],
+    maxWidths: [undefined, undefined, undefined, 4, 6, 4],
   });
   return boxedSection("Projects", table, w);
 }
@@ -1179,6 +1182,8 @@ export function formatTasksAsString(rows: TaskRow[], width: number): string {
     rows: taskRows.length > 0 ? taskRows : [["—", "No tasks", "—", "—", "—"]],
     maxWidth: innerW,
     minWidths: [10, 12, 10, 8, 6],
+    flexColumnIndex: 1,
+    maxWidths: [10],
   });
   return boxedSection("Tasks", table, w);
 }
@@ -1211,6 +1216,8 @@ export function formatDashboardTasksView(
     rows: activeRows,
     maxWidth: innerW,
     minWidths: [10, 12, 10, 8, 6],
+    flexColumnIndex: 1,
+    maxWidths: [10],
   });
   parts.push(boxedSection("Active tasks", activeTable, w));
 
@@ -1227,6 +1234,8 @@ export function formatDashboardTasksView(
     rows: next7Rows,
     maxWidth: innerW,
     minWidths: [10, 12, 10],
+    flexColumnIndex: 1,
+    maxWidths: [10],
   });
   parts.push(boxedSection("Next 7 runnable", next7Table, w));
 
@@ -1244,6 +1253,8 @@ export function formatDashboardTasksView(
     rows: last7Rows,
     maxWidth: innerW,
     minWidths: [10, 12, 10, 16],
+    flexColumnIndex: 1,
+    maxWidths: [10],
   });
   parts.push(boxedSection("Last 7 completed", last7Table, w));
 
@@ -1277,7 +1288,8 @@ export function formatDashboardProjectsView(
     headers: ["Plan", "Todo", "Doing", "Blocked", "Done", "Ready"],
     rows: activeRows,
     maxWidth: innerW,
-    minWidths: [12, 4, 5, 7, 4, 5],
+    minWidths: [12, 4, 3, 5, 3, 5],
+    maxWidths: [undefined, undefined, 4, 6, 4, undefined],
   });
   parts.push(boxedSection("Active plans", activeTable, w));
 

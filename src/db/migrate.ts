@@ -438,6 +438,8 @@ export function applyDefaultInitiativeMigration(
         (rows: InitiativeRow[]) => {
           const unassignedId =
             rows.length > 0 ? rows[0].initiative_id : UNASSIGNED_INITIATIVE_ID;
+          let didInsert = rows.length === 0;
+          let didAlter = false;
 
           let chain: ResultAsync<void, AppError> = ResultAsync.fromSafePromise(
             Promise.resolve(undefined),
@@ -464,18 +466,20 @@ export function applyDefaultInitiativeMigration(
             .andThen((nullable) => {
               if (!nullable)
                 return ResultAsync.fromSafePromise(Promise.resolve());
+              didAlter = true;
               return doltSql(
                 `ALTER TABLE \`project\` MODIFY COLUMN initiative_id CHAR(36) NOT NULL DEFAULT '${UNASSIGNED_INITIATIVE_ID}'`,
                 repoPath,
               ).map(() => undefined);
             })
-            .andThen(() =>
-              doltCommit(
+            .andThen(() => {
+              if (!didInsert && !didAlter) return ResultAsync.fromSafePromise(Promise.resolve());
+              return doltCommit(
                 "db: default Unassigned initiative; project.initiative_id NOT NULL",
                 repoPath,
                 noCommit,
-              ),
-            )
+              );
+            })
             .map(() => undefined);
         },
       );

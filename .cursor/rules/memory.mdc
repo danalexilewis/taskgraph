@@ -1,43 +1,63 @@
 ---
-description: Mandatory read/update of project's persistent dev & architecture memory
+description: Read project memory at start; process pending learnings if present
 alwaysApply: true
 ---
 
-# Persistent Memory (Dev & Architecture)
+# Persistent Memory and Learnings
 
-Maintains project-wide persistent memory for **development, tooling, and system architecture** learnings. This is NOT for document content corrections — those belong in `src/sources/corrections.md` (ingest normalization) and `.cursor/corrections.md` (content generation). This rule tracks agent mistakes, environment surprises, and engineering patterns.
+Two-part system: **memory** (`.cursor/memory.md`) for transient dev context, and **formal docs** (`docs/`) for durable architectural knowledge.
 
 ## 1. Read First
 
 Every request MUST start by reading `.cursor/memory.md`. Internalize corrections, preferences, and patterns. Do not announce that you are reading it.
 
-## 2. Update Last (mandatory hook)
+## 2. Process Pending Learnings (if present)
 
-**Trigger**: You MUST update `.cursor/memory.md` in the same response when any of the following happened in that response:
+Check if `.cursor/pending-learnings.md` exists. If it does:
 
-- You fixed a bug or addressed a failure.
-- You added or changed a pattern, convention, or rule (including when the user asked you to).
-- You discovered an environment/tooling quirk (e.g. DB returns object not string).
-- **The user corrected you** or asked you to do something differently regarding dev workflow or architecture (e.g. "always use X", "update the rule to Y").
+1. Read the file — it contains a conversation digest from the previous session.
+2. Extract actionable learnings (bugs fixed, patterns discovered, user corrections, environment quirks, architectural decisions).
+3. **Route each learning** to the right destination:
 
-**Before you consider your response complete**: If any trigger above applied, perform a write or search_replace to `.cursor/memory.md` before ending. Do not skip this step.
+| Learning type                                                        | Destination                      | Example                                           |
+| -------------------------------------------------------------------- | -------------------------------- | ------------------------------------------------- |
+| Specific to a subsystem with an existing doc                         | Update the formal doc in `docs/` | CLI table layout rules → `docs/cli-tables.md`     |
+| Specific to a subsystem that _should_ have a doc                     | Create a new doc in `docs/`      | New integration test patterns → `docs/testing.md` |
+| Transient dev context (env quirks, one-off fixes, tooling surprises) | Append to `.cursor/memory.md`    | "Dolt returns object not string for JSON columns" |
+| Already captured in memory or docs                                   | Skip                             | Don't duplicate                                   |
+| Routine operations that worked as expected                           | Skip                             | Don't log noise                                   |
 
-### What to log
+4. **Delete** `.cursor/pending-learnings.md` after processing.
 
-- **Mistakes**: Wrong assumptions, misread code, failed commands.
-- **User corrections**: Anything the user told you to do differently regarding dev workflow or architecture.
-- **Tool / environment surprises**: Unexpected repo patterns, CLI behaviors, dependency quirks.
-- **Dev preferences**: Build conventions, naming rules, framework idioms the user enforces.
-- **Successes**: Non-obvious approaches that worked well.
+### Formal docs routing guide
 
-### What NOT to log
+| Area                               | Doc path                 | What belongs there                                |
+| ---------------------------------- | ------------------------ | ------------------------------------------------- |
+| CLI commands and options           | `docs/cli-reference.md`  | New flags, changed behavior, option semantics     |
+| CLI rendering (tables, boxen, TUI) | `docs/cli-tables.md`     | Layout rules, padding calculations, column config |
+| Database schema and migrations     | `docs/schema.md`         | Table changes, migration patterns, Dolt quirks    |
+| Architecture and layering          | `docs/architecture.md`   | Module boundaries, data flow, design decisions    |
+| Testing patterns                   | `docs/testing.md`        | Test isolation, concurrency, harness patterns     |
+| Error handling                     | `docs/error-handling.md` | Result types, error codes, boundary patterns      |
+| Agent workflow                     | `docs/agent-contract.md` | Execution protocol, sub-agent dispatch, evidence  |
+| Plan authoring                     | `docs/plan-format.md`    | Plan structure, import format, YAML conventions   |
+| Infrastructure                     | `docs/infra.md`          | Build, deploy, CI, environment setup              |
 
-- Routine operations that worked as expected.
-- Information already captured in the memory.
-- **Document content corrections** — those go in `src/sources/corrections.md` or `.cursor/corrections.md`.
-- Verbose restatements — keep entries terse and actionable.
+When a learning doesn't fit an existing doc, check if it's substantial enough to warrant a new one. If not, it goes in memory.
 
-## 3. Maintenance
+## 3. Memory file guidelines
 
-- **Consolidate**: When the Corrections table exceeds ~50 entries, merge redundant ones into Preferences or Patterns.
-- **Target**: Keep total length under 300 lines for high-signal context.
+`.cursor/memory.md` is for **transient** knowledge that doesn't belong in formal docs:
+
+- Environment-specific quirks and workarounds
+- Recent user corrections not yet formalized
+- One-off debugging discoveries
+- Tooling surprises
+
+**Keep it lean**: under 150 lines. When entries accumulate, promote durable knowledge to formal docs and remove the memory entry.
+
+**Agents do not manually update memory during normal work.** The `extract-learnings` stop hook captures conversation context automatically. The next session processes it via step 2 above. The only exception: if the user explicitly asks you to record something to memory, do it immediately.
+
+## 4. Config flag
+
+The learnings system is controlled by `learningMode` in `.taskgraph/config.json`. When `false`, the stop hook skips transcript extraction and no `pending-learnings.md` is generated. Agents still read memory at session start regardless of this flag.
