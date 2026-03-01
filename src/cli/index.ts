@@ -4,6 +4,7 @@ import { ErrorCode } from "../domain/errors";
 import { blockCommand } from "./block";
 import { cancelCommand } from "./cancel";
 import { contextCommand } from "./context";
+import { cycleCommand } from "./cycle";
 import { crossplanCommand } from "./crossplan";
 import { dashboardCommand } from "./dashboard";
 import { doneCommand } from "./done";
@@ -104,6 +105,7 @@ export function createProgram(): Command {
   noteCommand(program);
   contextCommand(program);
   crossplanCommand(program);
+  cycleCommand(program);
   templateCommand(program);
   worktreeCommand(program);
   syncCommand(program);
