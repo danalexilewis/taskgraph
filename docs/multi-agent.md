@@ -75,6 +75,54 @@ See [cli-reference.md](cli-reference.md) (worktree section) and `.cursor/rules/s
 
 Missing `agent` is treated as `"unknown"`.
 
+## Heartbeat Events
+
+Agents emit heartbeat notes at key transition points during task execution. Heartbeats reuse the existing structured-note pattern (same `kind = "note"` event) with `message.type = "heartbeat"` as the discriminator.
+
+### Body shape
+
+```json
+{
+  "message": {
+    "type": "heartbeat",
+    "agent": "<agent-name>",
+    "phase": "start" | "mid-work" | "pre-done",
+    "files": ["src/path/to/file.ts"]
+  },
+  "agent": "<agent-name>",
+  "timestamp": "<ISO datetime>"
+}
+```
+
+The outer `agent` and `timestamp` fields match the existing note body convention. The `message` object is the structured payload.
+
+### Phase values
+
+| Phase | When to emit | `files` value |
+| ----------- | ------------------------------------ | ------------------------------------------ |
+| `start` | Immediately after `tg start` | `[]` (no files touched yet) |
+| `mid-work` | Before touching files | List of files about to be modified |
+| `pre-done` | Just before calling `tg done` | Final list of files modified |
+
+### Command template
+
+```bash
+pnpm tg note <taskId> --msg '{"type":"heartbeat","agent":"<AGENT_NAME>","phase":"<PHASE>","files":["path/to/file.ts"]}' --agent <AGENT_NAME>
+```
+
+The `--msg` value must be valid JSON. List only files being **actively modified**, not every file read.
+
+### Notes
+
+- `tg agents` queries heartbeat events using `JSON_UNQUOTE(JSON_EXTRACT(...))` on `message.type` — the same double-extract approach used for review events. **Do not change the body shape without also updating `src/cli/agents.ts`.**
+- `files` should be a minimal list of files the agent is writing, not an exhaustive read list.
+
+## Decisions / gotchas
+
+- **Verify plan branch exists before dispatching Wave 1.** After the first `tg start --worktree` for a new plan, run `tg worktree list --json` and confirm a `plan-p-XXXXXX` entry appears. If only task branches (`tg-XXXXXX`) are visible but no `plan-p-*` worktree, the plan branch was not created. When sub-agents subsequently call `tg done` from their worktrees, the task worktrees are cleaned up without merging — all commits are silently destroyed. Root cause: `plan_worktree` row was not written (possible Dolt server startup timing, missing `hash_id` on the plan, or `tg start` error that was swallowed). Fix: create the plan branch manually before dispatching, or investigate why the row is missing.
+
+- **Task branches from a missing plan branch will target `main` as fallback** (per the merge-target logic above) — but only when `tg done --merge` explicitly passes the merge flag. Without `--merge`, `tg done` marks the task done and cleans up the worktree with no merge at all.
+
 ## Using stats for dispatch
 
 `tg stats` shows tasks completed, review pass/fail counts, and average elapsed time per agent. Use it to inform dispatch: rebalance workload (e.g. assign more to faster or less-loaded agents), spot agents with high review fail rates (consider re-dispatch or different reviewer), or choose which agent to assign follow-up tasks.
