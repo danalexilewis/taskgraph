@@ -1,214 +1,125 @@
 import { describe, expect, it } from "bun:test";
-import { TaskTemplateSchema } from "../../src/domain/template-schema";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import {
+  loadAndSubstituteTemplate,
+  substituteInValue,
+  substituteVars,
+} from "../../src/domain/template-schema";
 
 describe("template-schema", () => {
-  describe("TaskTemplateSchema", () => {
-    it("parses a minimal valid template (name + title)", () => {
-      const valid = {
-        name: "fix-bug",
-        title: "Fix the bug in {{area}}",
-      };
-      expect(TaskTemplateSchema.parse(valid)).toEqual({
-        name: "fix-bug",
-        title: "Fix the bug in {{area}}",
-        owner: "agent",
-        risk: "low",
-      });
+  describe("substituteVars", () => {
+    it("replaces {{key}} with vars value", () => {
+      expect(substituteVars("Hello {{name}}", { name: "World" })).toBe(
+        "Hello World",
+      );
     });
 
-    it("parses a full valid template", () => {
-      const valid = {
-        name: "feature-task",
-        description: "Standard feature implementation task",
-        title: "Implement {{feature}}",
-        intent: "Deliver the feature per spec.",
-        scope_in: "Code in src/",
-        scope_out: "No docs changes",
-        acceptance: ["Tests pass", "Lint clean"],
-        owner: "agent",
-        risk: "medium",
-        change_type: "create",
-      };
-      expect(TaskTemplateSchema.parse(valid)).toEqual(valid);
+    it("leaves unknown placeholders as-is", () => {
+      expect(substituteVars("Hello {{name}}", { other: "x" })).toBe(
+        "Hello {{name}}",
+      );
     });
 
-    it("rejects missing name", () => {
-      const invalid = { title: "Some task" };
-      expect(() => TaskTemplateSchema.parse(invalid)).toThrow();
+    it("replaces multiple occurrences", () => {
+      expect(substituteVars("{{x}} and {{x}}", { x: "a" })).toBe("a and a");
     });
 
-    it("rejects missing title", () => {
-      const invalid = { name: "my-template" };
-      expect(() => TaskTemplateSchema.parse(invalid)).toThrow();
+    it("handles empty vars", () => {
+      expect(substituteVars("{{a}}", {})).toBe("{{a}}");
     });
 
-    it("rejects empty name", () => {
-      const invalid = { name: "", title: "Task" };
-      expect(() => TaskTemplateSchema.parse(invalid)).toThrow();
-    });
-
-    it("rejects empty title", () => {
-      const invalid = { name: "t", title: "" };
-      expect(() => TaskTemplateSchema.parse(invalid)).toThrow();
-    });
-
-    it("rejects invalid owner", () => {
-      const invalid = {
-        name: "t",
-        title: "Task",
-        owner: "robot",
-      };
-      expect(() => TaskTemplateSchema.parse(invalid)).toThrow();
-    });
-
-    it("rejects invalid risk", () => {
-      const invalid = {
-        name: "t",
-        title: "Task",
-        risk: "critical",
-      };
-      expect(() => TaskTemplateSchema.parse(invalid)).toThrow();
-    });
-
-    it("rejects invalid change_type", () => {
-      const invalid = {
-        name: "t",
-        title: "Task",
-        change_type: "delete",
-      };
-      expect(() => TaskTemplateSchema.parse(invalid)).toThrow();
-    });
-
-    it("rejects name over 64 chars", () => {
-      const invalid = {
-        name: "a".repeat(65),
-        title: "Task",
-      };
-      expect(() => TaskTemplateSchema.parse(invalid)).toThrow();
-    });
-
-    it("rejects title over 255 chars", () => {
-      const invalid = {
-        name: "t",
-        title: "a".repeat(256),
-      };
-      expect(() => TaskTemplateSchema.parse(invalid)).toThrow();
-    });
-
-    it("accepts name with max length 64", () => {
-      const valid = { name: "a".repeat(64), title: "Task" };
-      expect(TaskTemplateSchema.parse(valid).name).toBe("a".repeat(64));
-    });
-
-    it("accepts title with max length 255", () => {
-      const valid = { name: "t", title: "a".repeat(255) };
-      expect(TaskTemplateSchema.parse(valid).title).toBe("a".repeat(255));
-    });
-
-    it("strips unknown extra fields", () => {
-      const input = {
-        name: "t",
-        title: "Task",
-        extra: "ignored",
-        unknown_key: 123,
-      };
-      const parsed = TaskTemplateSchema.parse(input);
-      expect(parsed).not.toHaveProperty("extra");
-      expect(parsed).not.toHaveProperty("unknown_key");
-      expect(parsed.name).toBe("t");
-      expect(parsed.title).toBe("Task");
-    });
-
-    it("accepts valid owner enum values", () => {
+    it("uses only word chars in placeholder names", () => {
       expect(
-        TaskTemplateSchema.parse({ name: "t", title: "T", owner: "human" })
-          .owner,
-      ).toBe("human");
-      expect(
-        TaskTemplateSchema.parse({ name: "t", title: "T", owner: "agent" })
-          .owner,
-      ).toBe("agent");
+        substituteVars("{{key1}} {{key_2}}", {
+          key1: "v1",
+          key_2: "v2",
+        }),
+      ).toBe("v1 v2");
+    });
+  });
+
+  describe("substituteInValue", () => {
+    it("substitutes in string", () => {
+      expect(substituteInValue("{{x}}", { x: "y" })).toBe("y");
     });
 
-    it("accepts valid risk enum values", () => {
-      expect(
-        TaskTemplateSchema.parse({ name: "t", title: "T", risk: "low" }).risk,
-      ).toBe("low");
-      expect(
-        TaskTemplateSchema.parse({ name: "t", title: "T", risk: "medium" })
-          .risk,
-      ).toBe("medium");
-      expect(
-        TaskTemplateSchema.parse({ name: "t", title: "T", risk: "high" }).risk,
-      ).toBe("high");
+    it("recursively substitutes in array", () => {
+      expect(substituteInValue(["{{a}}", "{{b}}"], { a: "1", b: "2" })).toEqual(
+        ["1", "2"],
+      );
     });
 
-    it("accepts valid change_type enum values", () => {
-      const types = [
-        "create",
-        "modify",
-        "refactor",
-        "fix",
-        "investigate",
-        "test",
-        "document",
-      ] as const;
-      for (const ct of types) {
-        expect(
-          TaskTemplateSchema.parse({ name: "t", title: "T", change_type: ct })
-            .change_type,
-        ).toBe(ct);
+    it("recursively substitutes in object", () => {
+      expect(
+        substituteInValue(
+          { name: "{{n}}", nested: { t: "{{n}}" } },
+          { n: "Plan" },
+        ),
+      ).toEqual({ name: "Plan", nested: { t: "Plan" } });
+    });
+
+    it("leaves non-strings unchanged", () => {
+      expect(substituteInValue(42, { x: "y" })).toBe(42);
+      expect(substituteInValue(null, { x: "y" })).toBe(null);
+    });
+  });
+
+  describe("loadAndSubstituteTemplate", () => {
+    it("loads YAML and substitutes vars into ParsedPlan", () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tg-template-"));
+      const file = path.join(dir, "t.yaml");
+      fs.writeFileSync(
+        file,
+        `
+name: "{{planName}}"
+overview: "Overview for {{feature}}."
+todos:
+  - id: task-1
+    content: "Implement {{feature}}"
+  - id: task-2
+    content: "Test {{feature}}"
+    blockedBy: [task-1]
+`,
+      );
+      try {
+        const result = loadAndSubstituteTemplate(file, {
+          planName: "Auth Plan",
+          feature: "Auth",
+        });
+        expect(result.isOk()).toBe(true);
+        if (result.isOk()) {
+          const plan = result.value;
+          expect(plan.planTitle).toBe("Auth Plan");
+          expect(plan.planIntent).toBe("Overview for Auth.");
+          expect(plan.tasks).toHaveLength(2);
+          expect(plan.tasks[0].title).toBe("Implement Auth");
+          expect(plan.tasks[1].blockedBy).toEqual(["task-1"]);
+        }
+      } finally {
+        fs.rmSync(dir, { recursive: true });
       }
     });
 
-    it("accepts omitted optional fields (minimal valid)", () => {
-      const parsed = TaskTemplateSchema.parse({
-        name: "min",
-        title: "Minimal",
-      });
-      expect(parsed.description).toBeUndefined();
-      expect(parsed.intent).toBeUndefined();
-      expect(parsed.scope_in).toBeUndefined();
-      expect(parsed.scope_out).toBeUndefined();
-      expect(parsed.acceptance).toBeUndefined();
-      expect(parsed.change_type).toBeUndefined();
+    it("returns error for missing file", () => {
+      const result = loadAndSubstituteTemplate(
+        path.join(os.tmpdir(), "nonexistent-tg-template-12345.yaml"),
+        {},
+      );
+      expect(result.isErr()).toBe(true);
     });
 
-    it("accepts description at max length 512", () => {
-      const valid = { name: "t", title: "T", description: "d".repeat(512) };
-      expect(TaskTemplateSchema.parse(valid).description).toBe("d".repeat(512));
-    });
-
-    it("rejects description over 512 chars", () => {
-      const invalid = { name: "t", title: "T", description: "d".repeat(513) };
-      expect(() => TaskTemplateSchema.parse(invalid)).toThrow();
-    });
-
-    it("accepts intent at max length 2048", () => {
-      const valid = { name: "t", title: "T", intent: "i".repeat(2048) };
-      expect(TaskTemplateSchema.parse(valid).intent).toBe("i".repeat(2048));
-    });
-
-    it("rejects intent over 2048 chars", () => {
-      const invalid = { name: "t", title: "T", intent: "i".repeat(2049) };
-      expect(() => TaskTemplateSchema.parse(invalid)).toThrow();
-    });
-
-    it("accepts acceptance item at max length 512", () => {
-      const valid = { name: "t", title: "T", acceptance: ["a".repeat(512)] };
-      expect(TaskTemplateSchema.parse(valid).acceptance).toEqual([
-        "a".repeat(512),
-      ]);
-    });
-
-    it("rejects acceptance item over 512 chars", () => {
-      const invalid = { name: "t", title: "T", acceptance: ["a".repeat(513)] };
-      expect(() => TaskTemplateSchema.parse(invalid)).toThrow();
-    });
-
-    it("accepts empty acceptance array", () => {
-      const valid = { name: "t", title: "T", acceptance: [] };
-      expect(TaskTemplateSchema.parse(valid).acceptance).toEqual([]);
+    it("returns error when todos is not an array", () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tg-template-"));
+      const file = path.join(dir, "bad.yaml");
+      fs.writeFileSync(file, "name: only\ntodos: not-an-array\n");
+      try {
+        const result = loadAndSubstituteTemplate(file, {});
+        expect(result.isErr()).toBe(true);
+      } finally {
+        fs.rmSync(dir, { recursive: true });
+      }
     });
   });
 });

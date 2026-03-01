@@ -7,7 +7,11 @@ import {
   teardownIntegrationTest,
 } from "./test-utils";
 
-describe("Crossplan integration", () => {
+/**
+ * Integration tests for tg crossplan: plans, domains, skills, files, summary.
+ * Uses describe.serial so steps run in order against the same Dolt repo.
+ */
+describe.serial("Crossplan integration", () => {
   let context: Awaited<ReturnType<typeof setupIntegrationTest>> | undefined;
 
   beforeAll(async () => {
@@ -65,6 +69,39 @@ fileTree: |
     if (context) {
       teardownIntegrationTest(context.tempDir);
     }
+  });
+
+  it("crossplan plans --json returns plan summary with task counts by status", async () => {
+    if (!context) throw new Error("Context not initialized");
+    const { exitCode, stdout } = await runTgCli(
+      `crossplan plans --json`,
+      context.tempDir,
+    );
+    expect(exitCode).toBe(0);
+    const data = JSON.parse(stdout) as Array<{
+      plan_id: string;
+      title: string;
+      status: string;
+      task_count: number;
+      todo: number;
+      doing: number;
+      blocked: number;
+      done: number;
+      canceled: number;
+    }>;
+    expect(Array.isArray(data)).toBe(true);
+    expect(data.length).toBeGreaterThanOrEqual(2);
+    const row = data.find((r) => r.title === "Crossplan Plan A");
+    expect(row).toBeDefined();
+    expect(typeof row?.plan_id).toBe("string");
+    expect(typeof row?.title).toBe("string");
+    expect(typeof row?.status).toBe("string");
+    expect(typeof row?.task_count).toBe("number");
+    expect(typeof row?.todo).toBe("number");
+    expect(typeof row?.doing).toBe("number");
+    expect(typeof row?.blocked).toBe("number");
+    expect(typeof row?.done).toBe("number");
+    expect(typeof row?.canceled).toBe("number");
   });
 
   it("crossplan domains --json returns domains shared across plans", async () => {
