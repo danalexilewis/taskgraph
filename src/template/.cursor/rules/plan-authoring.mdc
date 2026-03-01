@@ -78,17 +78,17 @@ Below the closing `---`, add the markdown body: **Analysis**, **Proposed changes
 
 ## Todo Fields
 
-| Field              | Required | Description                                                                   |
-| ------------------ | -------- | ----------------------------------------------------------------------------- |
-| `id`               | yes      | Stable key → maps to `external_key`. Use kebab-case.                          |
-| `content`          | yes      | Task title (maps to task title; VARCHAR(255) — keep under 255 chars).         |
-| `intent`           | yes      | Detailed scope and rationale; stored on task, shown in `tg context`.          |
-| `status`           | no       | `pending` → todo, `completed` → done                                          |
-| `blockedBy`        | no       | Array of todo `id`s that block this task. Creates `blocks` edges on import.   |
-| `domain`           | no       | Single slug or array → `docs/<domain>.md`. Agent reads these before starting. |
-| `skill`            | no       | Single slug or array → `docs/skills/<skill>.md`. Use kebab-case.              |
-| `changeType`       | no       | `create`, `modify`, `refactor`, `fix`, `investigate`, `test`, `document`.     |
-| `suggestedChanges` | no       | Directional snippets for the agent when the task touches specific code.       |
+| Field              | Required | Description                                                                         |
+| ------------------ | -------- | ----------------------------------------------------------------------------------- |
+| `id`               | yes      | Stable key → maps to `external_key` (import adds 6-char plan hash). Use kebab-case. |
+| `content`          | yes      | Task title (maps to task title; VARCHAR(255) — keep under 255 chars).               |
+| `intent`           | yes      | Detailed scope and rationale; stored on task, shown in `tg context`.                |
+| `status`           | no       | `pending` → todo, `completed` → done                                                |
+| `blockedBy`        | no       | Array of todo `id`s that block this task. Creates `blocks` edges on import.         |
+| `domain`           | no       | Single slug or array → `docs/<domain>.md`. Agent reads these before starting.       |
+| `skill`            | no       | Single slug or array → `docs/skills/<skill>.md`. Use kebab-case.                    |
+| `changeType`       | no       | `create`, `modify`, `refactor`, `fix`, `investigate`, `test`, `document`.           |
+| `suggestedChanges` | no       | Directional snippets for the agent when the task touches specific code.             |
 
 ## Dependency and scope
 

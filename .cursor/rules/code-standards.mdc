@@ -32,3 +32,9 @@ alwaysApply: false
 - E2E: `__tests__/e2e/` (full CLI)
 
 Run: `pnpm test`, `pnpm run test:integration`, `pnpm run test:e2e`
+
+## Pragmatic (Eddy-inspired)
+
+- **Simplicity first** — Start with the simplest solution that solves the real problem; add complexity when needed.
+- **Test what matters** — Edge cases, integration points, business logic. Avoid testing implementation details or chasing 100% coverage.
+- **Locality** — Prefer keeping a flow understandable in one place; avoid scattering related behavior across many layers when a single module is clearer.

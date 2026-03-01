@@ -1,38 +1,69 @@
 ---
-description: Opinionated coding guidelines for consistent, high-quality code
+description: Opinionated coding guidelines for consistent, high-quality code (Eddy-inspired)
 alwaysApply: true
 ---
 
 # Code Guidelines
 
-When writing or modifying code, follow these conventions so agents and humans produce consistent, maintainable output.
+When writing or modifying code, follow these conventions so agents and humans produce consistent, maintainable output. Guidelines are informed by the [Eddy Dev Handbook](https://dev-handbook.eddy.works/) (code practice, pragmatic programming, good development).
 
 ## TypeScript / JavaScript
 
 - **Strict mode** — Use TypeScript strict mode. No `any`; no `@ts-ignore` or `@ts-expect-error` except when documenting a known upstream bug with a comment.
-- **Naming** — Descriptive names; avoid abbreviations. Use camelCase for variables/functions, PascalCase for types/classes, UPPER_SNAKE for constants.
-- **Types** — Prefer interfaces for objects; use discriminated unions for variants. Use Zod (or similar) for runtime validation of inputs and boundaries.
+- **Naming** — Descriptive names; avoid abbreviations. Use camelCase for variables/functions, PascalCase for types/classes, UPPER_SNAKE for constants. Files should match the primary export (e.g. `WorkflowCard.tsx` exports `WorkflowCard`).
+- **Types** — Prefer `interface` for object shapes; use `type` for unions, intersections, and utilities. Use discriminated unions for variants. Use Zod (or similar) for runtime validation of inputs and boundaries.
+- **Explicit signatures** — Define types for function parameters and return values. Use `unknown` for truly unknown types, then narrow with type guards.
+
+## Functional style
+
+- **Immutability** — Avoid mutating data. Use spread, `map`, `filter`, `reduce` instead of mutating arrays or objects.
+- **Pure functions** — Prefer same output for same input without side effects when possible.
+- **Signal side effects** — When side effects are necessary (I/O, DB, DOM), make them explicit and isolated; name and place them clearly.
+
+## Naming (functions)
+
+- Use `{verb}{Domain}` or `{verb}{Domain}{Detail}` so the name clearly communicates what the function does.
+- Verbs: `create`, `update`, `delete`, `fetch`, `get`, `set`, `validate`, `serialize`, `calculate`, `transform`, `format`, `handle`.
+- Avoid vague names: `doStuff`, `handler`, `process(data: any)`.
 
 ## Error handling
 
 - Prefer **Result types** (e.g. neverthrow) or explicit error returns over throw/catch.
 - **Never** swallow errors with empty catch blocks. Log or rethrow with context.
 - Unwrap Result/Option only at boundaries (e.g. CLI handler); use `.match()` or equivalent.
+- **Fail fast** — Validate inputs early and return errors immediately.
+- **Specific messages** — Provide clear, actionable error messages (user-facing where applicable).
 
 ## Structure
 
-- **Imports** — Group by external then internal; no circular imports. Prefer named exports.
-- **Functions** — Small and focused (under ~50 lines); single responsibility; pure where possible.
-- **Dependencies** — Before adding a new package, check `docs/recommended-packages.md` and prefer a recommended option when it fits.
+- **Imports** — Group by external then internal; no circular imports. Prefer named exports. Order: external deps → internal (utils, types, services) → components → styles (if applicable).
+- **Functions** — Small and focused (under ~50 lines); single responsibility; pure where possible. Split when hard to understand, when you need to reuse part, or when doing multiple unrelated things — not for arbitrary line counts or "testability" alone.
+- **Dependencies** — Before adding a new package, check project docs (e.g. `docs/recommended-packages.md`) and prefer a recommended option when it fits.
+
+## Comments & documentation
+
+- **JSDoc for public APIs** — Use for functions meant to be used across the codebase.
+- **Document complex logic** — Explain non-obvious algorithms or business rules.
+- **Comment the "why", not the "what"** — Explain reasoning; avoid stating the obvious.
+- **Self-documenting code** — Write clear code that doesn't rely on comments for basic behavior.
 
 ## Testing
 
 - Co-locate tests with source or in a mirror tree (e.g. `__tests__/`).
 - Descriptive test names; test behavior, not implementation.
 - No test interdependence; each test can run in isolation.
+- **Test what matters** — Edge cases that caused bugs, integration points, business logic, user-facing behavior. Avoid testing implementation details, getters/setters, or code that will change imminently.
+
+## Pragmatic practices
+
+- **Appropriate simplicity** — Match code complexity to the problem. Don't force oversimplification; complex problems may need structured solutions.
+- **Locality of behavior** — Where practical, keep behavior obvious from the unit of code in front of you; avoid scattering one flow across many files when a single place is clearer.
+- **Abstractions** — Prefer discovering abstractions (e.g. after a second or third concrete case) over inventing them up front. Wrong abstraction is costlier than some duplication.
+- **LLM-generated code** — Verify against docs and patterns; treat as draft. Understand before committing; document complex logic that was generated.
 
 ## Anti-patterns to avoid
 
 - Nested ternaries; magic numbers or strings; mutating function parameters.
 - `console.log` left in production code paths.
 - Suppressing type errors instead of fixing types.
+- Splitting functions only to satisfy line-count rules or to "improve testability" without testing behavior.

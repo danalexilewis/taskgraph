@@ -169,6 +169,8 @@ export interface Config {
   mainBranch?: string;
   /** When true, tg start auto-creates agent branches (same as --branch). Default false. */
   useDoltBranches?: boolean;
+  /** Use Worktrunk (wt) for worktree ops when true; raw git when false; auto-detect when undefined. */
+  useWorktrunk?: boolean;
   /** Optional Dolt remote URL for push/pull (used by tg sync when implemented). */
   remoteUrl?: string;
   /** Strategic cycle length (e.g. { weeks: 16 }). Used for initiative planning. */

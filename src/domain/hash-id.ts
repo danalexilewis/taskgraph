@@ -19,6 +19,13 @@ export function isHashId(input: string): boolean {
   return HASH_ID_REGEX.test(input);
 }
 
+/** Deterministically derives a 6-character hex suffix from a plan id (e.g. UUID).
+ * Used to scope task external_key per plan and avoid duplicate unique key across plans. */
+export function planHashFromPlanId(planId: string): string {
+  const hash = createHash("sha256").update(planId).digest("hex");
+  return hash.slice(0, 6).toLowerCase();
+}
+
 /** Returns a unique hash_id for the given task_id, avoiding collisions with usedIds.
  * On collision, appends extra hex chars from the hash until unique (up to 7 chars). */
 export function generateUniqueHashId(

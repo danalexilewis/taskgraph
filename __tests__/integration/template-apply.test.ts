@@ -70,7 +70,11 @@ todos:
       title: string;
     }>;
     expect(tasks.length).toBe(2);
-    const byKey = Object.fromEntries(tasks.map((t) => [t.external_key, t]));
+    // external_key may include plan-scoped 6-char suffix
+    const stableKey = (ek: string) => ek.replace(/-[0-9a-f]{6}$/i, "");
+    const byKey = Object.fromEntries(
+      tasks.map((t) => [stableKey(t.external_key), t]),
+    );
     expect(byKey["task-1"].title).toBe("Add Auth API in backend");
     expect(byKey["task-2"].title).toBe("Wire Auth into UI");
 

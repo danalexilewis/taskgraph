@@ -1,0 +1,10 @@
+# Worktrunk project hooks (wt switch --create, wt merge)
+# Uncomment and adapt for your project's build system.
+
+# [post-create]
+# install = "pnpm install"   # or npm install, yarn install, bun install
+# build = "pnpm build"      # or npm run build, cargo build
+# env = "cp \"$ROOT_WORKTREE_PATH/.env.local\" .env.local 2>/dev/null || true"
+
+# [pre-merge]
+# gate = "pnpm gate"        # or npm test, cargo test, make check

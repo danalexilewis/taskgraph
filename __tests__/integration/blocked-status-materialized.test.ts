@@ -69,8 +69,14 @@ todos:
       status: string;
     }>;
     expect(tasks.length).toBe(2);
-    const blockerRow = tasks.find((t) => t.external_key === "blocker");
-    const dependentRow = tasks.find((t) => t.external_key === "dependent");
+    // external_key may include plan-scoped 6-char suffix
+    const stableKey = (ek: string) => ek.replace(/-[0-9a-f]{6}$/i, "");
+    const blockerRow = tasks.find(
+      (t) => stableKey(t.external_key) === "blocker",
+    );
+    const dependentRow = tasks.find(
+      (t) => stableKey(t.external_key) === "dependent",
+    );
     expect(blockerRow).toBeDefined();
     expect(dependentRow).toBeDefined();
     blockerTaskId = blockerRow?.task_id;

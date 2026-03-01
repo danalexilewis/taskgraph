@@ -17,7 +17,11 @@ import {
   readConfig,
   resolveTaskId,
 } from "./utils";
-import { mergeWorktreeBranchIntoMain, removeWorktree } from "./worktree";
+import {
+  mergeWorktreeBranchIntoMain,
+  removeWorktree,
+  resolveWorktreeBackend,
+} from "./worktree";
 
 type DoneResult =
   | { id: string; status: "done"; plan_completed?: boolean }
@@ -237,12 +241,14 @@ export function doneCommand(program: Command) {
             const gitRepoPath = path.dirname(
               path.dirname(path.dirname(worktree.worktree_path)),
             );
+            const backend = resolveWorktreeBackend(config);
             let worktreeMergeFailed = false;
             if (options.merge) {
               const mergeWtResult = await mergeWorktreeBranchIntoMain(
                 gitRepoPath,
                 worktree.worktree_branch,
                 config.mainBranch ?? "main",
+                backend === "worktrunk" ? worktree.worktree_path : undefined,
               );
               mergeWtResult.match(
                 () => {},
@@ -256,12 +262,32 @@ export function doneCommand(program: Command) {
                   }
                 },
               );
-            }
-            if (!worktreeMergeFailed) {
+              if (backend === "worktrunk") {
+                // wt merge handles worktree removal; do not call removeWorktree
+              } else if (!worktreeMergeFailed) {
+                const removeResult = await removeWorktree(
+                  resolved,
+                  gitRepoPath,
+                  true,
+                );
+                removeResult.match(
+                  () => {},
+                  (removeErr: AppError) => {
+                    const idx = results.length - 1;
+                    const last = results[idx];
+                    if (last) {
+                      results[idx] = { id: last.id, error: removeErr.message };
+                      anyFailed = true;
+                    }
+                  },
+                );
+              }
+            } else {
               const removeResult = await removeWorktree(
                 resolved,
                 gitRepoPath,
-                options.merge,
+                false,
+                backend === "worktrunk" ? worktree.worktree_branch : undefined,
               );
               removeResult.match(
                 () => {},

@@ -3,6 +3,7 @@
 ## Plan import
 
 - Task **title** (from todo `content`) is stored in `task.title` (VARCHAR(255)). Keep plan todo titles under 255 characters or import will fail.
+- **Task external_key** is plan-scoped: import appends a 6-char hex hash of `plan_id` (e.g. `wt-integration-tests-a1b2c3`) so the same todo id in different plans does not violate the unique constraint. Re-import of the same plan still upserts by stable key; export strips the suffix so round-trip YAML uses stable ids.
 - **INSERT/UPDATE plan data**: After the plan→project rename migration, `plan` is a view. Dolt does not allow INSERT into a view. Use table **`project`** (not `plan`) for `q.insert` and `q.update` in import and template apply. See `src/cli/import.ts` and `src/cli/template.ts`.
 
 ## tg context
@@ -103,6 +104,10 @@ Notes are stored task-scoped (event table, kind='note') but their _value_ is cro
 ## .env.local for integration tests
 
 - `.env.local` values `DOLT_ROOT_PATH` and `TG_GOLDEN_TEMPLATE` must be **empty** (or set to the actual temp directory path, not to the `.taskgraph/tg-*.txt` path files). Bun auto-loads `.env.local`; if these point to the path files instead of the directories they contain, `getGoldenTemplatePath()` returns a file path, and `fs.cpSync(file, dir, {recursive:true})` fails with EISDIR. The `.env.local.example` correctly shows empty values.
+
+## Coding guidelines (Eddy Dev Handbook)
+
+- **code-guidelines.mdc** and **code-standards.mdc** were updated from a detailed pass over https://dev-handbook.eddy.works/ (Code Guidelines, Good Development Practices, LLM Usage, Pragmatic Programming, Code Style & Best Practices). Additions: functional style (immutability, pure functions, signal side effects), function naming ({verb}{Domain}), comments (JSDoc, "why" not "what"), fail fast + specific errors, pragmatic practices (appropriate simplicity, locality of behavior, abstractions discovered not invented, LLM-generated code verify/understand), test what matters, anti-patterns (splitting for line count only). Template `src/template/.cursor/rules/code-guidelines.mdc` updated to match; template uses "check project docs" for dependencies.
 
 ## Pre-commit anti-pattern hook
 

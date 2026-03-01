@@ -100,6 +100,18 @@ export function setupCommand(program: Command) {
           );
         }
 
+        // .config/ (Worktrunk wt.toml, etc.) — always scaffold when template has it
+        const configSrc = path.join(templateRoot, ".config");
+        if (fs.existsSync(configSrc)) {
+          copyTree(
+            configSrc,
+            path.join(repoRoot, ".config"),
+            repoRoot,
+            options,
+            result,
+          );
+        }
+
         // Always install minimal rule so the system knows how to use tg
         for (const rel of MINIMAL_CURSOR_RULES) {
           const srcPath = path.join(templateRoot, rel);

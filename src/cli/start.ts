@@ -10,7 +10,7 @@ import { type AppError, buildError, ErrorCode } from "../domain/errors";
 import { checkRunnable, checkValidTransition } from "../domain/invariants";
 import type { TaskStatus } from "../domain/types";
 import { type Config, parseIdList, readConfig, resolveTaskId } from "./utils";
-import { createWorktree, worktreeBranchName } from "./worktree";
+import { createWorktree } from "./worktree";
 
 function agentBranchName(taskId: string): string {
   return `agent-${taskId.slice(0, 8)}`;
@@ -37,75 +37,75 @@ export function startOne(
         )
       : okAsync(undefined);
 
-  const ensureWorktree =
-    useWorktree && worktreeRepoPath
-      ? createWorktree(taskId, worktreeRepoPath).map((wtPath) => ({
-          worktree_path: wtPath,
-          worktree_branch: worktreeBranchName(taskId),
-        }))
-      : okAsync(
-          undefined as
-            | { worktree_path: string; worktree_branch: string }
-            | undefined,
-        );
-
   return ensureBranch
-    .andThen(() => ensureWorktree)
+    .andThen(() =>
+      q.select<{ status: TaskStatus; hash_id?: string | null }>("task", {
+        columns: ["status", "hash_id"],
+        where: { task_id: taskId },
+      }),
+    )
+    .andThen((currentStatusResult) => {
+      if (currentStatusResult.length === 0) {
+        return err(
+          buildError(
+            ErrorCode.TASK_NOT_FOUND,
+            `Task with ID ${taskId} not found.`,
+          ),
+        );
+      }
+      const { status: currentStatus, hash_id } = currentStatusResult[0];
+
+      let statusCheck: ResultAsync<void | undefined, AppError>;
+      if (currentStatus === "doing" && !force) {
+        const sql = `SELECT body FROM \`event\` WHERE task_id = '${sqlEscape(taskId)}' AND kind = 'started' ORDER BY created_at DESC LIMIT 1`;
+        statusCheck = doltSql(sql, config.doltRepoPath).andThen((rows) => {
+          const row = (rows as { body: string | object }[])[0];
+          const raw = row?.body;
+          const parsed =
+            raw != null
+              ? typeof raw === "string"
+                ? (JSON.parse(raw) as { agent?: string })
+                : (raw as { agent?: string })
+              : null;
+          const claimant = parsed?.agent ?? "unknown";
+          return err(
+            buildError(
+              ErrorCode.TASK_ALREADY_CLAIMED,
+              `Task is being worked by ${claimant}. Use --force to override.`,
+            ),
+          );
+        });
+      } else if (currentStatus === "todo") {
+        statusCheck = checkRunnable(taskId, config.doltRepoPath);
+      } else if (currentStatus === "doing" && force) {
+        statusCheck = okAsync(undefined);
+      } else {
+        const tr = checkValidTransition(currentStatus, "doing");
+        statusCheck = tr.isOk() ? okAsync(undefined) : errAsync(tr.error);
+      }
+
+      const ensureWorktree =
+        useWorktree && worktreeRepoPath
+          ? createWorktree(
+              taskId,
+              worktreeRepoPath,
+              undefined,
+              hash_id ?? undefined,
+            )
+          : okAsync(
+              undefined as
+                | { worktree_path: string; worktree_branch: string }
+                | undefined,
+            );
+
+      return statusCheck.andThen(() => ensureWorktree);
+    })
     .andThen((worktreeInfo) =>
       q
-        .select<{ status: TaskStatus }>("task", {
-          columns: ["status"],
-          where: { task_id: taskId },
-        })
-        .andThen((currentStatusResult) => {
-          if (currentStatusResult.length === 0) {
-            return err(
-              buildError(
-                ErrorCode.TASK_NOT_FOUND,
-                `Task with ID ${taskId} not found.`,
-              ),
-            );
-          }
-          const currentStatus = currentStatusResult[0].status;
-
-          if (currentStatus === "doing" && !force) {
-            const sql = `SELECT body FROM \`event\` WHERE task_id = '${sqlEscape(taskId)}' AND kind = 'started' ORDER BY created_at DESC LIMIT 1`;
-            return doltSql(sql, config.doltRepoPath).andThen((rows) => {
-              const row = (rows as { body: string | object }[])[0];
-              const raw = row?.body;
-              const parsed =
-                raw != null
-                  ? typeof raw === "string"
-                    ? (JSON.parse(raw) as { agent?: string })
-                    : (raw as { agent?: string })
-                  : null;
-              const claimant = parsed?.agent ?? "unknown";
-              return err(
-                buildError(
-                  ErrorCode.TASK_ALREADY_CLAIMED,
-                  `Task is being worked by ${claimant}. Use --force to override.`,
-                ),
-              );
-            });
-          }
-
-          if (currentStatus === "todo") {
-            return checkRunnable(taskId, config.doltRepoPath);
-          }
-
-          if (currentStatus === "doing" && force) {
-            return okAsync(undefined);
-          }
-
-          const tr = checkValidTransition(currentStatus, "doing");
-          return tr.isOk() ? okAsync(undefined) : errAsync(tr.error);
-        })
-        .andThen(() =>
-          q.update(
-            "task",
-            { status: "doing", updated_at: currentTimestamp },
-            { task_id: taskId },
-          ),
+        .update(
+          "task",
+          { status: "doing", updated_at: currentTimestamp },
+          { task_id: taskId },
         )
         .andThen(() =>
           q.insert("event", {

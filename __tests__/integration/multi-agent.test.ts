@@ -32,8 +32,9 @@ isProject: false
       context.tempDir,
     );
     expect(exitCode).toBe(0);
+    // external_key includes plan-scoped 6-char suffix (e.g. ma-task-1-abc123)
     const tasksResult = await doltSql(
-      `SELECT task_id FROM \`task\` WHERE external_key = 'ma-task-1'`,
+      `SELECT task_id FROM \`task\` WHERE external_key LIKE 'ma-task-1-%' LIMIT 1`,
       context.doltRepoPath,
     );
     expect(tasksResult.isOk()).toBe(true);

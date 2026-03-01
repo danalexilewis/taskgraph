@@ -1,0 +1,7 @@
+[post-create]
+install = "pnpm install"
+build = "pnpm build"
+env = "cp \"$ROOT_WORKTREE_PATH/.env.local\" .env.local 2>/dev/null || true"
+
+[pre-merge]
+gate = "pnpm gate"

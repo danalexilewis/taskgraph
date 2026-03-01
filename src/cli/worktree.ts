@@ -8,10 +8,50 @@
 
 import * as path from "node:path";
 import type { Command } from "commander";
-import { execa } from "execa";
-import { ResultAsync } from "neverthrow";
+import { execa, execaSync } from "execa";
+import { errAsync, okAsync, ResultAsync } from "neverthrow";
 import { type AppError, buildError, ErrorCode } from "../domain/errors";
-import { rootOpts } from "./utils";
+import type { Config } from "./utils";
+import { readConfig, rootOpts } from "./utils";
+
+let _wtAvailable: boolean | null = null;
+
+/**
+ * Checks if Worktrunk (wt) is on PATH. Caches result for process lifetime.
+ */
+export function isWorktrunkAvailable(): boolean {
+  if (_wtAvailable !== null) {
+    return _wtAvailable;
+  }
+  try {
+    execaSync("wt", ["--version"]);
+    _wtAvailable = true;
+  } catch {
+    _wtAvailable = false;
+  }
+  return _wtAvailable;
+}
+
+/**
+ * Resolves which worktree backend to use based on config.
+ * - useWorktrunk true: use wt (errors if not found)
+ * - useWorktrunk false: use raw git
+ * - useWorktrunk undefined: auto-detect (wt if available, else git)
+ */
+export function resolveWorktreeBackend(config: Config): "worktrunk" | "git" {
+  if (config.useWorktrunk === true) {
+    if (!isWorktrunkAvailable()) {
+      throw new Error(
+        "Worktrunk (wt) requested but not found on PATH. Install Worktrunk or set useWorktrunk to false.",
+      );
+    }
+    return "worktrunk";
+  }
+  if (config.useWorktrunk === false) {
+    return "git";
+  }
+  return isWorktrunkAvailable() ? "worktrunk" : "git";
+}
 
 const WORKTREES_DIR = ".taskgraph/worktrees";
 const BRANCH_PREFIX = "tg/";
@@ -20,8 +60,27 @@ function worktreePath(repoPath: string, taskId: string): string {
   return path.join(repoPath, WORKTREES_DIR, taskId);
 }
 
-export function worktreeBranchName(taskId: string): string {
+/**
+ * Returns the worktree branch name for a task.
+ * - When hashId is provided: returns `tg-<hashId>` (or hashId as-is if it already has the tg- prefix).
+ * - When hashId is null/undefined: returns `tg/<taskId>` (backward compat for raw git).
+ */
+export function worktreeBranchForTask(
+  taskId: string,
+  hashId?: string | null,
+): string {
+  if (hashId != null) {
+    return hashId.startsWith("tg-") ? hashId : `tg-${hashId}`;
+  }
   return `${BRANCH_PREFIX}${taskId}`;
+}
+
+/**
+ * @deprecated Use worktreeBranchForTask(taskId, hashId) instead.
+ * Returns tg/<taskId> for backward compatibility.
+ */
+export function worktreeBranchName(taskId: string): string {
+  return worktreeBranchForTask(taskId);
 }
 
 function branchName(taskId: string): string {
@@ -29,20 +88,94 @@ function branchName(taskId: string): string {
 }
 
 /**
- * Creates branch tg/<taskId> and a worktree at .taskgraph/worktrees/<taskId>/.
- * If baseBranch is provided, the new branch is created from it; otherwise from current HEAD.
+ * Resolves backend from config. Defaults to 'git' if readConfig fails.
+ */
+function resolveBackendFromConfig(repoPath: string): "worktrunk" | "git" {
+  const configResult = readConfig(repoPath);
+  if (configResult.isErr()) {
+    return "git";
+  }
+  return resolveWorktreeBackend(configResult.value);
+}
+
+/**
+ * Creates a worktree for the task. Backend is determined by config (worktrunk or git).
  *
- * @param taskId - Task identifier (used for branch name and worktree path)
- * @param repoPath - Git repo root (directory containing .git). Defaults to process.cwd()
- * @param baseBranch - Optional branch to create from (e.g. "main")
+ * **Worktrunk path**: Runs `wt switch --create <branch> --no-cd --no-verify -y -C <repoPath>`,
+ * then discovers the worktree path via `wt list --format json`.
+ *
+ * **Git path**: Creates worktree at .taskgraph/worktrees/<taskId>/ with `git worktree add -b`.
+ *
+ * @param taskId - Task identifier
+ * @param repoPath - Git repo root. Defaults to process.cwd()
+ * @param baseBranch - Optional branch to create from (git backend only)
+ * @param hashId - Optional hash_id for branch name (tg-<hashId> vs tg/<taskId>)
  */
 export function createWorktree(
   taskId: string,
   repoPath: string = process.cwd(),
   baseBranch?: string,
-): ResultAsync<string, AppError> {
+  hashId?: string | null,
+): ResultAsync<
+  { worktree_path: string; worktree_branch: string },
+  AppError
+> {
+  const branch = worktreeBranchForTask(taskId, hashId);
+  let backend: "worktrunk" | "git";
+  try {
+    backend = resolveBackendFromConfig(repoPath);
+  } catch (e) {
+    return errAsync(
+      buildError(
+        ErrorCode.UNKNOWN_ERROR,
+        "Worktrunk requested but not available",
+        e,
+      ),
+    );
+  }
+
+  if (backend === "worktrunk") {
+    return ResultAsync.fromPromise(
+      execa("wt", ["switch", "--create", branch, "--no-cd", "--no-verify", "-y", "-C", repoPath], {
+        cwd: repoPath,
+      }),
+      (e) =>
+        buildError(
+          ErrorCode.UNKNOWN_ERROR,
+          `Worktrunk worktree create failed for ${taskId}`,
+          e,
+        ),
+    ).andThen(() =>
+      ResultAsync.fromPromise(
+        execa("wt", ["list", "--format", "json", "-C", repoPath], {
+          cwd: repoPath,
+        }),
+        (e) =>
+          buildError(
+            ErrorCode.UNKNOWN_ERROR,
+            "Worktrunk worktree list failed",
+            e,
+          ),
+      ).andThen((result) => {
+        const raw = JSON.parse(result.stdout) as Array<{
+          path: string;
+          branch?: string;
+        }>;
+        const entry = raw.find((e) => e.branch === branch);
+        if (!entry?.path) {
+          return errAsync(
+            buildError(
+              ErrorCode.UNKNOWN_ERROR,
+              `Could not find worktree path for branch ${branch} after creation`,
+            ),
+          );
+        }
+        return okAsync({ worktree_path: entry.path, worktree_branch: branch });
+      }),
+    );
+  }
+
   const wtPath = worktreePath(repoPath, taskId);
-  const branch = branchName(taskId);
   const args = ["worktree", "add", "-b", branch, wtPath];
   if (baseBranch) {
     args.push(baseBranch);
@@ -54,24 +187,51 @@ export function createWorktree(
       `Git worktree create failed for ${taskId}`,
       e,
     ),
-  ).map(() => wtPath);
+  ).map(() => ({ worktree_path: wtPath, worktree_branch: branch }));
 }
 
 /**
- * Removes the worktree at .taskgraph/worktrees/<taskId>/ and optionally deletes the branch tg/<taskId>.
+ * Removes the worktree and optionally deletes the branch.
+ * - Worktrunk: `wt remove <branchName> --force --force-delete --no-verify -y --foreground -C <repoPath>`
+ * - Git: `git worktree remove --force` + optional `git branch -d`
  *
- * @param taskId - Task identifier
+ * @param taskId - Task identifier (used for branch/path when branchOverride not provided)
  * @param repoPath - Git repo root. Defaults to process.cwd()
- * @param deleteBranch - If true, delete the branch tg/<taskId> after removing the worktree
+ * @param deleteBranch - If true (git backend), delete the branch after removing the worktree
+ * @param branchOverride - When provided (worktrunk), use this branch name for wt remove
  */
 export function removeWorktree(
   taskId: string,
   repoPath: string = process.cwd(),
   deleteBranch: boolean = false,
+  branchOverride?: string,
 ): ResultAsync<void, AppError> {
-  const branch = branchName(taskId);
-  const relativePath = path.join(WORKTREES_DIR, taskId);
+  const backend = resolveBackendFromConfig(repoPath);
+  const branch = branchOverride ?? branchName(taskId);
 
+  if (backend === "worktrunk") {
+    return ResultAsync.fromPromise(
+      execa("wt", [
+        "remove",
+        branch,
+        "--force",
+        "--force-delete",
+        "--no-verify",
+        "-y",
+        "--foreground",
+        "-C",
+        repoPath,
+      ], { cwd: repoPath }),
+      (e) =>
+        buildError(
+          ErrorCode.UNKNOWN_ERROR,
+          `Worktrunk worktree remove failed for ${branch}`,
+          e,
+        ),
+    ).map(() => undefined);
+  }
+
+  const relativePath = path.join(WORKTREES_DIR, taskId);
   return ResultAsync.fromPromise(
     execa("git", ["worktree", "remove", "--force", relativePath], {
       cwd: repoPath,
@@ -100,13 +260,44 @@ export function removeWorktree(
 
 /**
  * Merge a worktree branch into the base branch (e.g. main) in the git repo.
- * Call before removeWorktree when user requests --merge on tg done.
+ * - Worktrunk: `wt merge <mainBranch> -C <worktreePath>` does squash + rebase + merge + worktree removal + branch deletion in one step. Caller must NOT call removeWorktree afterward.
+ * - Git: `git checkout main && git merge <branch>`. Caller must call removeWorktree separately.
+ *
+ * @param worktreePath - Required when backend is worktrunk. Path to the worktree directory (for -C).
  */
 export function mergeWorktreeBranchIntoMain(
   repoPath: string,
   branchName: string,
   mainBranch: string = "main",
+  worktreePath?: string,
 ): ResultAsync<void, AppError> {
+  const backend = resolveBackendFromConfig(repoPath);
+  if (backend === "worktrunk") {
+    if (!worktreePath) {
+      return errAsync(
+        buildError(
+          ErrorCode.UNKNOWN_ERROR,
+          "mergeWorktreeBranchIntoMain: worktreePath required for worktrunk backend",
+        ),
+      );
+    }
+    return ResultAsync.fromPromise(
+      execa("wt", [
+        "merge",
+        mainBranch,
+        "-C",
+        worktreePath,
+        "--no-verify",
+        "-y",
+      ], { cwd: repoPath }),
+      (e) =>
+        buildError(
+          ErrorCode.UNKNOWN_ERROR,
+          `Worktrunk merge ${branchName} into ${mainBranch} failed`,
+          e,
+        ),
+    ).map(() => undefined);
+  }
   return ResultAsync.fromPromise(
     execa("git", ["checkout", mainBranch], { cwd: repoPath }),
     (e) =>
@@ -137,13 +328,38 @@ export interface WorktreeEntry {
 }
 
 /**
- * Returns active git worktrees (main + linked worktrees). Parses `git worktree list`.
+ * Returns active git worktrees (main + linked worktrees).
+ * - backend 'worktrunk': runs `wt list --format json`, maps to WorktreeEntry[]
+ * - backend 'git' or undefined: parses `git worktree list --porcelain`
  *
  * @param repoPath - Git repo root. Defaults to process.cwd()
+ * @param backend - 'worktrunk' or 'git'. When undefined, uses git.
  */
 export function listWorktrees(
   repoPath: string = process.cwd(),
+  backend?: "worktrunk" | "git",
 ): ResultAsync<WorktreeEntry[], AppError> {
+  if (backend === "worktrunk") {
+    return ResultAsync.fromPromise(
+      execa("wt", ["list", "--format", "json", "-C", repoPath], {
+        cwd: repoPath,
+      }),
+      (e) =>
+        buildError(ErrorCode.UNKNOWN_ERROR, "Worktrunk worktree list failed", e),
+    ).map((result) => {
+      const raw = JSON.parse(result.stdout) as Array<{
+        path: string;
+        branch?: string;
+        commit?: { sha?: string };
+      }>;
+      return raw.map((entry) => ({
+        path: entry.path,
+        commit: entry.commit?.sha ?? "",
+        branch: entry.branch,
+      }));
+    });
+  }
+
   return ResultAsync.fromPromise(
     execa("git", ["worktree", "list", "--porcelain"], { cwd: repoPath }),
     (e) => buildError(ErrorCode.UNKNOWN_ERROR, "Git worktree list failed", e),
@@ -184,10 +400,30 @@ export function worktreeCommand(program: Command) {
     .description("List active git worktrees")
     .action(async (_options, cmd) => {
       const repoPath = process.cwd();
-      const result = await listWorktrees(repoPath);
+      const json = rootOpts(cmd).json ?? false;
+
+      const configResult = readConfig(repoPath);
+      const backend =
+        configResult.isOk() ? resolveWorktreeBackend(configResult.value) : "git";
+
+      if (!json && backend === "worktrunk") {
+        try {
+          await execa("wt", ["list", "-C", repoPath], {
+            cwd: repoPath,
+            stdio: "inherit",
+          });
+        } catch (e) {
+          console.error(
+            e instanceof Error ? e.message : "Worktrunk list failed",
+          );
+          process.exit(1);
+        }
+        return;
+      }
+
+      const result = await listWorktrees(repoPath, backend);
       result.match(
         (entries) => {
-          const json = rootOpts(cmd).json ?? false;
           if (json) {
             console.log(JSON.stringify(entries));
           } else {

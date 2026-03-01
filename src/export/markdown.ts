@@ -24,6 +24,11 @@ interface EdgeRow {
   type: string;
 }
 
+/** Strip plan-scoped 6-char suffix from external_key for stable export ids. */
+function stableExternalKey(ek: string): string {
+  return ek.replace(/-[0-9a-f]{6}$/i, "");
+}
+
 /** Generates Cursor-format markdown from plan and tasks. */
 export function generateMarkdown(
   planId: string,
@@ -93,7 +98,10 @@ export function generateMarkdown(
                     const taskIdToKey = new Map<string, string>();
                     tasks.forEach((t) => {
                       if (t.external_key) {
-                        taskIdToKey.set(t.task_id, t.external_key);
+                        taskIdToKey.set(
+                          t.task_id,
+                          stableExternalKey(t.external_key),
+                        );
                       }
                     });
 
@@ -118,7 +126,9 @@ export function generateMarkdown(
                     const todos = tasks
                       .filter((t) => t.external_key)
                       .map((t) => {
-                        const extKey = t.external_key as string;
+                        const extKey = stableExternalKey(
+                          t.external_key as string,
+                        );
                         const status =
                           t.status === "done" ? "completed" : "pending";
                         const blockedBy = blockedByMap.get(extKey) ?? [];

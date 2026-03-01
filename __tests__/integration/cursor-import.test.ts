@@ -70,8 +70,10 @@ isProject: false
       title: string;
       status: string;
     };
+    // external_key may include plan-scoped 6-char suffix (e.g. cursor-task-a-abc123)
+    const stableKey = (ek: string) => ek.replace(/-[0-9a-f]{6}$/i, "");
     const byKey = Object.fromEntries(
-      (tasks as TaskRow[]).map((t) => [t.external_key, t]),
+      (tasks as TaskRow[]).map((t) => [stableKey(t.external_key), t]),
     ) as Record<string, TaskRow>;
     expect(byKey["cursor-task-a"].title).toBe("Task A");
     expect(byKey["cursor-task-a"].status).toBe("todo");

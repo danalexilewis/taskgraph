@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from "uuid";
 import { doltCommit } from "../db/commit";
 import { sqlEscape } from "../db/escape";
 import { allocateHashId } from "../db/hash-id";
+import { planHashFromPlanId } from "../domain/hash-id";
 import { jsonObj, now, query } from "../db/query";
 import { syncBlockedStatusForTask } from "../domain/blocked-status";
 import {
@@ -41,6 +42,58 @@ interface ParsedTask {
 interface ImportResult {
   importedTasksCount: number;
   createdPlansCount: number;
+}
+
+/** Plan-scoped external_key suffix (-[0-9a-f]{6}). Strip for stable key lookup. */
+const PLAN_HASH_SUFFIX = /-[0-9a-f]{6}$/i;
+
+/**
+ * Pre-flight: load existing tasks for the plan and return those whose normalized
+ * stableKey is not in the parsed task set. No DB writes. Uses same load and
+ * normalization as upsertTasksAndEdges so behavior stays in sync.
+ */
+export function computeUnmatchedExistingTasks(
+  planId: string,
+  parsedTasks: ParsedTask[],
+  repoPath: string,
+  externalKeyPrefix?: string,
+): ResultAsync<
+  { unmatchedTaskIds: string[]; unmatchedExternalKeys?: string[] },
+  AppError
+> {
+  const q = query(repoPath);
+  const parsedStableKeys = new Set(parsedTasks.map((t) => t.stableKey));
+
+  return q
+    .select<Task>("task", {
+      columns: ["task_id", "external_key"],
+      where: { plan_id: planId },
+    })
+    .map((existingTasksResult) => {
+      const existingTasks = existingTasksResult as Task[];
+      const unmatchedTaskIds: string[] = [];
+      const unmatchedExternalKeys: string[] = [];
+
+      for (const task of existingTasks) {
+        if (!task.external_key) continue;
+        let normalizedKey = task.external_key.replace(PLAN_HASH_SUFFIX, "");
+        if (
+          externalKeyPrefix &&
+          normalizedKey.startsWith(`${externalKeyPrefix}-`)
+        ) {
+          normalizedKey = normalizedKey.slice(externalKeyPrefix.length + 1);
+        }
+        if (!parsedStableKeys.has(normalizedKey)) {
+          unmatchedTaskIds.push(task.task_id);
+          unmatchedExternalKeys.push(task.external_key);
+        }
+      }
+
+      return {
+        unmatchedTaskIds,
+        unmatchedExternalKeys,
+      };
+    });
 }
 
 /** Derive repo root from Dolt repo path (e.g. .taskgraph/dolt -> repo root). */
@@ -106,14 +159,22 @@ export function upsertTasksAndEdges(
       return ResultAsync.fromPromise(
         (async () => {
           const existingTasks = existingTasksResult as Task[];
+          const planHash = planHashFromPlanId(planId);
           const externalKeyToTaskId = new Map<string, string>();
           existingTasks.forEach((task) => {
             if (task.external_key) {
-              const normalizedKey =
+              let normalizedKey = task.external_key.replace(
+                PLAN_HASH_SUFFIX,
+                "",
+              );
+              if (
                 externalKeyPrefix &&
-                task.external_key.startsWith(`${externalKeyPrefix}-`)
-                  ? task.external_key.slice(externalKeyPrefix.length + 1)
-                  : task.external_key;
+                normalizedKey.startsWith(`${externalKeyPrefix}-`)
+              ) {
+                normalizedKey = normalizedKey.slice(
+                  externalKeyPrefix.length + 1,
+                );
+              }
               externalKeyToTaskId.set(normalizedKey, task.task_id);
             }
           });
@@ -166,10 +227,15 @@ export function upsertTasksAndEdges(
             let taskId = externalKeyToTaskId.get(parsedTask.stableKey);
 
             if (taskId) {
-              // Update existing task
+              // Update existing task (include external_key to migrate to plan-scoped format)
+              const baseKey = externalKeyPrefix
+                ? `${externalKeyPrefix}-${parsedTask.stableKey}`
+                : parsedTask.stableKey;
+              const externalKey = `${baseKey}-${planHash}`;
               const updateResult = await q.update(
                 "task",
                 {
+                  external_key: externalKey,
                   title: parsedTask.title,
                   feature_key: parsedTask.feature ?? null,
                   area: parsedTask.area ?? null,
@@ -200,9 +266,10 @@ export function upsertTasksAndEdges(
               if (hashIdRes.isErr()) throw hashIdRes.error;
               const hashId = hashIdRes.value;
               const taskStatus = parsedTask.status ?? "todo";
-              const externalKey = externalKeyPrefix
+              const baseKey = externalKeyPrefix
                 ? `${externalKeyPrefix}-${parsedTask.stableKey}`
                 : parsedTask.stableKey;
+              const externalKey = `${baseKey}-${planHash}`;
               const insertResult = await q.insert("task", {
                 task_id: taskId,
                 plan_id: planId,

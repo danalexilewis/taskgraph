@@ -22,7 +22,7 @@ Write Cursor-format plans in `plans/` that import cleanly into taskgraph: clear 
 
 ## Gotchas
 
-- `id` must be unique and stable; it becomes `external_key`. Changing it on re-import creates a new task instead of updating.
+- `id` must be unique and stable; it becomes `external_key` (import appends a 6-char plan hash so the same id in different plans does not collide). Changing it on re-import creates a new task instead of updating.
 - `blockedBy` references are resolved at import time; only reference `id`s that exist in the same plan (or were previously imported with that external_key).
 - Task titles are truncated at 255 characters in the DB; keep `content` concise.
 - If the plan has many tasks, consider grouping by phase or feature in the overview so reviewers can follow.
