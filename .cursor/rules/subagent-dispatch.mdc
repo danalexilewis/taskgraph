@@ -43,7 +43,7 @@ Agent templates live in `.cursor/agents/` (see README there). You build each sub
 
 ## Dispatch mechanisms (choose by environment)
 
-- **In-IDE or terminal**: Use the Cursor Task tool (with `model="fast"`) or the **agent CLI** (`agent --model <fast-model> --print --trust ...`). See [docs/cursor-agent-cli.md](../docs/cursor-agent-cli.md) for CLI options and usage.
+- **In-IDE or terminal**: Use the Cursor Task tool or the **agent CLI** (`agent --model <fast-model> --print --trust ...`). See [docs/cursor-agent-cli.md](../docs/cursor-agent-cli.md) for CLI options and usage. **Model selection**: Use `model="fast"` for **implementers** only. Omit `model` for **planner-analysts, reviewers (spec-reviewer, quality-reviewer), and investigators** — they inherit the session model (Sonnet) for better reasoning quality.
 - **This environment** (when the Task tool or agent CLI is not available): Use **mcp_task** with the same built prompt and a short `description` (e.g. "Implement task: &lt;title&gt;" or "Planner analyst: gather context for plan"). Use `subagent_type` generalPurpose or explore as appropriate (e.g. explore for planner-analyst, generalPurpose for implementer/reviewer). The prompt and workflow are unchanged; only the invocation differs. Do not skip dispatch because the Task tool is not visible — use mcp_task.
 
 ## Test coverage / execution

@@ -1,9 +1,13 @@
 ---
 name: rescope
-description: Clarifies desired functionality when shipped behavior does not match intent. The agent acts as a product manager; the user provides a directive describing what the system should do. May dispatch explorer, quality-reviewer, planner-analyst, or spec-reviewer to assess what was done and what remains. Use when the user says rescope, clarifies requirements, or describes how the system should behave after tasks are already done.
+description: "DEPRECATED — use /plan instead (Pivot/Rescope mode handles this). This skill is kept for reference only."
 ---
 
-# Rescope
+# Rescope (Deprecated)
+
+> **This skill is deprecated.** Use `/plan` instead. The Plan skill now includes a **Pivot/Rescope** mode that handles exactly this case: when work has shipped but the behavior is not what was intended. When the user says "rescope", "this isn't right", or describes a desired behavior change, classify the plan request as Pivot/Rescope mode — the plan skill will dispatch the analyst with current-state focus and optionally a spec-reviewer to surface gaps.
+
+The content below is kept for reference.
 
 **Lead documentation:** See [docs/leads/rescope.md](../../../docs/leads/rescope.md).
 

@@ -6,7 +6,7 @@ Do the legwork before plan creation so the expensive planning model can focus on
 
 ## Model
 
-`fast` — exploration and summarization; the session model does the reasoning.
+Default (session model — Sonnet). Planning analysis requires careful reasoning about architecture and dependencies; do not use a fast model here.
 
 ## Input contract
 

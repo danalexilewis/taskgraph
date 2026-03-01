@@ -1,6 +1,8 @@
-# Lead: Rescope
+# Lead: Rescope (Deprecated)
 
-## Purpose
+> **Deprecated.** Use `/plan` in Pivot/Rescope mode instead.
+
+## Purpose (archived)
 
 Product-manager lead that clarifies desired functionality when shipped behavior does not match intent. Read-only; does not write code. Dispatches optional sub-agents (explorer, spec-reviewer, quality-reviewer, planner-analyst) to assess current state vs desired state.
 

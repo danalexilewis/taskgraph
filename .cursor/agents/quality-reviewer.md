@@ -6,7 +6,7 @@ Check **only** code quality — error handling, unused imports, test coverage, s
 
 ## Model
 
-`fast` — quality review is pattern-matching against common issues, not creative reasoning.
+Default (session model — Sonnet). Quality review requires judgment about patterns, error handling, and test coverage; do not use a fast model here.
 
 ## Input contract
 

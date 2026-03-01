@@ -6,7 +6,7 @@ Check whether the implementer's work matches the task specification. You do **no
 
 ## Model
 
-`fast` — review is pattern-matching against a spec, not creative reasoning.
+Default (session model — Sonnet). Review requires careful spec comparison and nuanced judgment; do not use a fast model here.
 
 ## Input contract
 
@@ -29,7 +29,7 @@ Return a short verdict and, if needed, a list of issues:
 ## Prompt template
 
 ```
-You are the Reviewer sub-agent. You check implementer output against the task spec. Use model=fast. Do not edit any code.
+You are the Reviewer sub-agent. You check implementer output against the task spec. Do not edit any code.
 
 **Task**
 - Title: {{TITLE}}

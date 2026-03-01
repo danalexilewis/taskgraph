@@ -9,39 +9,77 @@ description: Create a rich project plan with codebase analysis, file trees, risk
 
 ## Architecture
 
-- **You (orchestrator / planner lead)**: Dispatches analyst, applies critique checklist, writes the plan, presents for review.
+- **You (orchestrator / planner lead)**: Classifies request mode, dispatches analyst (and optional mode-specific sub-agents), applies critique checklist, writes the plan, presents for review.
 - **Sub-agents**:
 
-  | Agent | Purpose | Permission |
-  |-------|---------|------------|
-  | planner-analyst | Gathers codebase context and rough task breakdown | read-only |
+  | Agent | Purpose | Permission | Model |
+  |-------|---------|------------|-------|
+  | planner-analyst | Gathers codebase context and rough task breakdown | read-only | default (Sonnet) |
+  | spec-reviewer | Assesses current impl vs intent (Pivot mode only) | read-only | default (Sonnet) |
+  | explore | Maps current behavior (Pivot/Refactor modes) | read-only | fast |
 
 The analyst gathers facts; the orchestrator owns architecture, dependencies, and task design.
 
 ## Permissions
 
 - **Lead**: read-write (writes plan file to plans/)
-- **Propagation**: Planner-analyst MUST use readonly=true (model="fast", subagent_type="explore").
+- **Propagation**: Planner-analyst MUST use readonly=true, subagent_type="explore". Do NOT pass model="fast" — analyst uses the session model (Sonnet) for reasoning quality.
 - **Rule**: Analyst does not write files. Only the orchestrator writes the plan.
 
-## Decision tree
+## Mode Classification (do this before Phase 1)
+
+Before dispatching the analyst, classify the request into one of these modes. The mode shapes the analyst prompt focus and whether additional sub-agents run.
+
+| Mode | When | Keywords / signals |
+|------|------|--------------------|
+| **Greenfields** | New feature or subsystem with no existing code | "add", "build", "create", "implement" + new area |
+| **Improvement** | Enhancing or extending an existing feature | "improve", "enhance", "extend", "update", "upgrade" |
+| **Refactor** | Structural change without behavior change | "refactor", "restructure", "clean up", "simplify", "rename" |
+| **Pivot/Rescope** | Feature exists but direction has changed; tasks already done but result isn't right | "rescope", "this isn't right", "instead of", "change X to Y", tasks already done but UX/behavior is wrong |
+| **Bug fix** | Something is broken | "fix", "broken", "not working", "bug", "error" → **redirect to `/investigate` or `/debug`** unless the fix is small and clearly scoped |
+| **Unclear** | Request is ambiguous | Ask one clarifying question before dispatching analyst |
 
 ```mermaid
 flowchart TD
-    A[User: plan / create plan] --> B[Phase 1: Dispatch planner-analyst]
-    B --> C[Analyst returns structured analysis]
-    C --> D[Phase 2: Apply critique checklist]
-    D --> E[Write plan to plans/*.md]
-    E --> F[Phase 3: Summarize and present]
-    F --> G{User response}
-    G -->|proceed / execute| H[Import + execute]
-    G -->|add tasks only| I[Import only]
-    G -->|thanks / ok| J[Do nothing]
+    A[User: plan request] --> B{Classify mode}
+    B -->|New feature, no existing code| C[GREENFIELDS]
+    B -->|Enhance/extend existing| D[IMPROVEMENT]
+    B -->|Restructure, no behavior change| E[REFACTOR]
+    B -->|Direction changed, feature exists| F[PIVOT/RESCOPE]
+    B -->|Something is broken| G[BUG FIX]
+    B -->|Ambiguous| H[Ask one clarifying question, then re-classify]
+
+    G --> G2[Redirect to /investigate or /debug unless fix is clearly scoped]
+
+    C --> I[Analyst focus: conventions, integration points, testing patterns]
+    D --> J[Analyst focus: current impl, extension points, what is working]
+    E --> K[Analyst focus: current structure, callers/consumers, test coverage, blast radius]
+    F --> L[Analyst focus: current state vs desired, gap analysis]
+
+    E --> M[Optional: dispatch explore for current behavior map]
+    F --> N[Optional: dispatch spec-reviewer if recent tasks exist with diffs]
+
+    I --> O[Write plan]
+    J --> O
+    K --> O
+    L --> O
+    M --> O
+    N --> O
+
+    O --> P[Phase 3: Summarize and present]
 ```
 
-When this skill is invoked, run the full two-phase planning workflow. Do not shortcut or skip the analyst phase.
+### Mode-specific analyst focus (inject into analyst prompt as `{{MODE_FOCUS}}`)
 
-## Phase 1: Dispatch Planner-Analyst
+**Greenfields**: Focus on conventions to follow, integration points in the codebase, testing patterns, and any similar existing features the new one should mirror. Identify what does NOT exist yet that must be built.
+
+**Improvement**: Focus on the current implementation: what already works, what the extension points are, what the pain points are. Map callers and consumers. Identify what would break.
+
+**Refactor**: Focus on current structure, every callsite and consumer of the code being refactored, test coverage (is behavior locked in?), and blast radius. Flag if tests are insufficient to safely refactor.
+
+**Pivot/Rescope**: Focus on "current state vs desired state." Describe what exists and how it behaves today. Identify the gap between current behavior and the desired directive. Note which existing tasks are done that shipped the wrong behavior.
+
+### Phase 1: Dispatch Planner-Analyst
 
 **Mandatory.** Do not write a plan without analyst output.
 
@@ -49,10 +87,26 @@ When this skill is invoked, run the full two-phase planning workflow. Do not sho
 2. Run `pnpm tg status --tasks` to capture current task list (full; not limited to 3).
 3. Build the analyst prompt:
    - `{{REQUEST}}` = the user's feature/change request
+   - `{{MODE}}` = classified mode (Greenfields / Improvement / Refactor / Pivot / etc.)
+   - `{{MODE_FOCUS}}` = mode-specific focus paragraph from the table above
    - Include `tg status --tasks` output so the analyst can reference the full task list
    - Include `{{LEARNINGS}}` from the agent file's `## Learnings` section if non-empty
-4. Dispatch via Task tool (`model="fast"`, `subagent_type="explore"`) with description "Planner analyst: gather context for plan".
-5. Wait for the analyst's structured analysis (relevant files, existing data, patterns, risks, rough breakdown).
+4. Dispatch via Task tool (`subagent_type="explore"`) — do NOT pass `model="fast"`; analyst uses session model.
+5. For **Pivot/Rescope** or **Refactor** modes: optionally dispatch an additional sub-agent in parallel with the analyst:
+   - **Pivot**: If there are recent done tasks in the relevant area, dispatch spec-reviewer (with `readonly=true`) asking "Does the current implementation match [desired directive]?" to surface the gap.
+   - **Refactor**: Dispatch explore with "Map all callers and consumers of [target area]; list files that import or call the modules being refactored."
+6. Wait for the analyst's structured analysis (relevant files, existing data, patterns, risks, rough breakdown).
+
+### Phase 2 additions per mode
+
+**Refactor plans** must:
+- Each task must preserve observable behavior (tests must still pass after each task)
+- Include a "behavior contract" task at the start: add/verify tests that lock in current behavior before any structural changes
+
+**Pivot/Rescope plans** must include in the plan body:
+- **Current state** — What exists and how it behaves today (from analyst + spec-reviewer)
+- **Desired state** — What the user said it should do
+- **Gaps** — The delta between current and desired, task by task
 
 ## Phase 2: Write the Plan
 

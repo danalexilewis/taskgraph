@@ -6,7 +6,7 @@ Check whether the implementer did exactly what the task asked. You do **not** re
 
 ## Model
 
-`fast` — spec review is pattern-matching against a spec, not creative reasoning.
+Default (session model — Sonnet). Spec review requires careful comparison of implementation against intent; do not use a fast model here.
 
 ## Input contract
 

@@ -1,6 +1,8 @@
-# Lead: Rescope
+# Lead: Rescope (Deprecated)
 
-## Purpose
+> **Deprecated.** This lead is merged into the Plan skill. Use `/plan` and classify the request as **Pivot/Rescope** mode. The Plan skill's mode decision tree handles "shipped behavior doesn't match intent" directly, including dispatching a spec-reviewer to surface gaps.
+
+## Purpose (archived)
 
 Product-manager lead that clarifies desired functionality when shipped behavior does not match intent. Read-only; does not write code. Dispatches optional sub-agents (explorer, spec-reviewer, quality-reviewer, planner-analyst) to assess current state vs desired state.
 
