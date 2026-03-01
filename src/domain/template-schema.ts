@@ -1,31 +1,62 @@
-import { z } from "zod";
-import { ChangeTypeSchema, OwnerSchema, RiskSchema } from "./types";
+import { readFileSync } from "node:fs";
+import yaml from "js-yaml";
+import { err, type Result } from "neverthrow";
+import type { ParsedPlan } from "../plan-import/parser";
+import { frontmatterToParsedPlan } from "../plan-import/parser";
+import { type AppError, buildError, ErrorCode } from "./errors";
+
+/** Substitute {{key}} in a string with vars[key]; leaves unknown placeholders as-is. */
+export function substituteVars(
+  s: string,
+  vars: Record<string, string>,
+): string {
+  return s.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? `{{${key}}}`);
+}
+
+/** Recursively substitute {{key}} in strings within objects, arrays, and primitives. */
+export function substituteInValue(
+  value: unknown,
+  vars: Record<string, string>,
+): unknown {
+  if (typeof value === "string") {
+    return substituteVars(value, vars);
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => substituteInValue(item, vars));
+  }
+  if (value != null && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) {
+      out[k] = substituteInValue(v, vars);
+    }
+    return out;
+  }
+  return value;
+}
 
 /**
- * Schema for a task template (formula): reusable structure that can be applied
- * to create one or more tasks. Fields align with Task where applicable.
+ * Load a template YAML file, substitute variables, and convert to ParsedPlan.
+ * Template format matches Cursor plan frontmatter (name, overview, todos, fileTree, risks, tests)
+ * with optional {{varName}} placeholders in any string.
  */
-export const TaskTemplateSchema = z.object({
-  /** Template identifier (slug). */
-  name: z.string().min(1).max(64),
-  /** Optional short description of when to use this template. */
-  description: z.string().max(512).optional(),
-  /** Task title; may contain placeholders for variable substitution. */
-  title: z.string().min(1).max(255),
-  /** Optional intent text. */
-  intent: z.string().max(2048).optional(),
-  /** Optional scope-in. */
-  scope_in: z.string().max(2048).optional(),
-  /** Optional scope-out. */
-  scope_out: z.string().max(2048).optional(),
-  /** Optional acceptance criteria. */
-  acceptance: z.array(z.string().max(512)).optional(),
-  /** Default task owner. */
-  owner: OwnerSchema.default("agent"),
-  /** Default risk. */
-  risk: RiskSchema.default("low"),
-  /** Optional change type. */
-  change_type: ChangeTypeSchema.optional(),
-});
-
-export type TaskTemplate = z.infer<typeof TaskTemplateSchema>;
+export function loadAndSubstituteTemplate(
+  filePath: string,
+  vars: Record<string, string>,
+): Result<ParsedPlan, AppError> {
+  try {
+    const content = readFileSync(filePath, "utf-8");
+    const parsed = yaml.load(content);
+    const substituted = substituteInValue(parsed, vars);
+    return frontmatterToParsedPlan(substituted, filePath);
+  } catch (e) {
+    const causeMessage =
+      e instanceof Error ? e.message : String(e ?? "unknown error");
+    return err(
+      buildError(
+        ErrorCode.FILE_READ_FAILED,
+        `Failed to load or parse template at ${filePath}: ${causeMessage}`,
+        e,
+      ),
+    );
+  }
+}

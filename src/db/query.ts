@@ -1,6 +1,6 @@
 import type { ResultAsync } from "neverthrow";
 import type { AppError } from "../domain/errors";
-import { doltSql } from "./connection";
+import { type DoltSqlOptions, doltSql } from "./connection";
 import { sqlEscape } from "./escape";
 
 export type JsonValue =
@@ -78,7 +78,7 @@ interface SelectOptions {
   having?: string;
 }
 
-export function query(repoPath: string) {
+export function query(repoPath: string, connectionOptions?: DoltSqlOptions) {
   return {
     insert: <T>(
       table: string,
@@ -87,7 +87,7 @@ export function query(repoPath: string) {
       const cols = Object.keys(data).map(backtickWrap).join(", ");
       const vals = Object.values(data).map(formatValue).join(", ");
       const sql = `INSERT INTO ${backtickWrap(table)} (${cols}) VALUES (${vals})`;
-      return doltSql(sql, repoPath).map((res) => res as T[]);
+      return doltSql(sql, repoPath, connectionOptions).map((res) => res as T[]);
     },
 
     update: <T>(
@@ -100,7 +100,7 @@ export function query(repoPath: string) {
         .join(", ");
       const whereClause = buildWhereClause(where);
       const sql = `UPDATE ${backtickWrap(table)} SET ${setParts} WHERE ${whereClause}`;
-      return doltSql(sql, repoPath).map((res) => res as T[]);
+      return doltSql(sql, repoPath, connectionOptions).map((res) => res as T[]);
     },
 
     select: <T>(
@@ -130,7 +130,7 @@ export function query(repoPath: string) {
       if (options?.offset) {
         sql += ` OFFSET ${options.offset}`;
       }
-      return doltSql(sql, repoPath).map((res) => res as T[]);
+      return doltSql(sql, repoPath, connectionOptions).map((res) => res as T[]);
     },
 
     count: (
@@ -141,13 +141,13 @@ export function query(repoPath: string) {
       if (where) {
         sql += ` WHERE ${buildWhereClause(where)}`;
       }
-      return doltSql(sql, repoPath).map(
+      return doltSql(sql, repoPath, connectionOptions).map(
         (res) => (res as { count: number }[])[0]?.count ?? 0,
       );
     },
 
     raw: <T>(sql: string): ResultAsync<T[], AppError> => {
-      return doltSql(sql, repoPath).map((res) => res as T[]);
+      return doltSql(sql, repoPath, connectionOptions).map((res) => res as T[]);
     },
   };
 }

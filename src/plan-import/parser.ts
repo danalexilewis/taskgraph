@@ -192,7 +192,7 @@ interface CursorTodo {
   agent?: string;
 }
 
-interface CursorFrontmatter {
+export interface CursorFrontmatter {
   name?: string;
   overview?: string;
   todos?: CursorTodo[];
@@ -224,6 +224,99 @@ function normalizeRisks(raw: CursorFrontmatter["risks"]): ParsedPlan["risks"] {
     }));
 }
 
+/** Converts Cursor frontmatter object to ParsedPlan. Used by parseCursorPlan and template apply. */
+export function frontmatterToParsedPlan(
+  parsed: unknown,
+  filePath?: string,
+): Result<ParsedPlan, AppError> {
+  const ctx = filePath ?? "template";
+  if (!parsed || typeof parsed !== "object") {
+    return err(
+      buildError(
+        ErrorCode.FILE_READ_FAILED,
+        `Invalid YAML in ${ctx}: expected an object`,
+      ),
+    );
+  }
+  const fm = parsed as CursorFrontmatter;
+  const todos = fm.todos ?? [];
+  if (!Array.isArray(todos)) {
+    return err(
+      buildError(
+        ErrorCode.FILE_READ_FAILED,
+        `Expected 'todos' to be an array in ${ctx}`,
+      ),
+    );
+  }
+
+  const tasks: ParsedTask[] = todos
+    .filter(
+      (t): t is CursorTodo =>
+        t != null &&
+        typeof t === "object" &&
+        typeof t.id === "string" &&
+        typeof t.content === "string",
+    )
+    .map((t) => {
+      const status =
+        t.status === "completed" ? ("done" as const) : ("todo" as const);
+      const changeType =
+        t.changeType != null && isChangeType(t.changeType)
+          ? t.changeType
+          : undefined;
+      const rawDocs = t.docs ?? t.domain;
+      const docs =
+        rawDocs === undefined
+          ? undefined
+          : Array.isArray(rawDocs)
+            ? rawDocs.filter((x): x is string => typeof x === "string")
+            : typeof rawDocs === "string"
+              ? [rawDocs]
+              : undefined;
+      const skills =
+        t.skill === undefined
+          ? undefined
+          : Array.isArray(t.skill)
+            ? t.skill.filter((x): x is string => typeof x === "string")
+            : typeof t.skill === "string"
+              ? [t.skill]
+              : undefined;
+      return {
+        stableKey: t.id,
+        title: t.content,
+        blockedBy: Array.isArray(t.blockedBy) ? t.blockedBy : [],
+        acceptance: [],
+        status,
+        docs: docs?.length ? docs : undefined,
+        skills: skills?.length ? skills : undefined,
+        changeType,
+        intent: typeof t.intent === "string" ? t.intent : undefined,
+        suggestedChanges:
+          typeof t.suggestedChanges === "string"
+            ? t.suggestedChanges
+            : undefined,
+        agent: typeof t.agent === "string" ? t.agent : undefined,
+      };
+    });
+
+  const fileTree = typeof fm.fileTree === "string" ? fm.fileTree : null;
+  const risks = normalizeRisks(fm.risks);
+  const tests =
+    Array.isArray(fm.tests) && fm.tests.every((x) => typeof x === "string")
+      ? fm.tests
+      : null;
+
+  return ok({
+    planTitle: fm.name ?? null,
+    planIntent: fm.overview ?? null,
+    tasks,
+    fileTree: fileTree ?? undefined,
+    risks: risks ?? undefined,
+    tests: tests ?? undefined,
+    body: undefined,
+  });
+}
+
 /** Parses a Cursor Plan file (YAML frontmatter with todos). */
 export function parseCursorPlan(
   filePath: string,
@@ -252,82 +345,12 @@ export function parseCursorPlan(
       );
     }
 
-    const todos = parsed.todos ?? [];
-    if (!Array.isArray(todos)) {
-      return err(
-        buildError(
-          ErrorCode.FILE_READ_FAILED,
-          `Expected 'todos' to be an array in ${filePath}`,
-        ),
-      );
-    }
+    const result = frontmatterToParsedPlan(parsed, filePath);
+    if (result.isErr()) return result;
 
-    const tasks: ParsedTask[] = todos
-      .filter(
-        (t): t is CursorTodo =>
-          t != null &&
-          typeof t === "object" &&
-          typeof t.id === "string" &&
-          typeof t.content === "string",
-      )
-      .map((t) => {
-        const status =
-          t.status === "completed" ? ("done" as const) : ("todo" as const);
-        const changeType =
-          t.changeType != null && isChangeType(t.changeType)
-            ? t.changeType
-            : undefined;
-        const rawDocs = t.docs ?? t.domain;
-        const docs =
-          rawDocs === undefined
-            ? undefined
-            : Array.isArray(rawDocs)
-              ? rawDocs.filter((x): x is string => typeof x === "string")
-              : typeof rawDocs === "string"
-                ? [rawDocs]
-                : undefined;
-        const skills =
-          t.skill === undefined
-            ? undefined
-            : Array.isArray(t.skill)
-              ? t.skill.filter((x): x is string => typeof x === "string")
-              : typeof t.skill === "string"
-                ? [t.skill]
-                : undefined;
-        return {
-          stableKey: t.id,
-          title: t.content,
-          blockedBy: Array.isArray(t.blockedBy) ? t.blockedBy : [],
-          acceptance: [],
-          status,
-          docs: docs?.length ? docs : undefined,
-          skills: skills?.length ? skills : undefined,
-          changeType,
-          intent: typeof t.intent === "string" ? t.intent : undefined,
-          suggestedChanges:
-            typeof t.suggestedChanges === "string"
-              ? t.suggestedChanges
-              : undefined,
-          agent: typeof t.agent === "string" ? t.agent : undefined,
-        };
-      });
-
-    const fileTree =
-      typeof parsed.fileTree === "string" ? parsed.fileTree : null;
-    const risks = normalizeRisks(parsed.risks);
-    const tests =
-      Array.isArray(parsed.tests) &&
-      parsed.tests.every((x) => typeof x === "string")
-        ? parsed.tests
-        : null;
-
+    const plan = result.value;
     return ok({
-      planTitle: parsed.name ?? null,
-      planIntent: parsed.overview ?? null,
-      tasks,
-      fileTree: fileTree ?? undefined,
-      risks: risks ?? undefined,
-      tests: tests ?? undefined,
+      ...plan,
       body: body ?? undefined,
     });
   } catch (e) {

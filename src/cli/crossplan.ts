@@ -162,6 +162,41 @@ export function crossplanCommand(program: Command) {
     });
 
   crossplan
+    .command("plans")
+    .description(
+      "Summary of tasks by plan: task counts per plan (optionally by status)",
+    )
+    .option("--json", "Output as JSON")
+    .action(async (options, cmd) => {
+      const result = readConfig().asyncAndThen((config: Config) =>
+        runPlans(config, rootOpts(cmd).json ?? options.json),
+      );
+      return outputResult(result, cmd, (data) => {
+        if (rootOpts(cmd).json) {
+          console.log(JSON.stringify(data, null, 2));
+        } else {
+          (
+            data as {
+              plan_id: string;
+              title: string;
+              status: string;
+              task_count: number;
+              todo: number;
+              doing: number;
+              blocked: number;
+              done: number;
+              canceled: number;
+            }[]
+          ).forEach((r) => {
+            console.log(
+              `${r.title} (${r.plan_id}): ${r.task_count} tasks [todo: ${r.todo}, doing: ${r.doing}, blocked: ${r.blocked}, done: ${r.done}, canceled: ${r.canceled}]`,
+            );
+          });
+        }
+      });
+    });
+
+  crossplan
     .command("summary")
     .description(
       "All cross-plan analysis in one output: domains, skills, files, proposed edges",
@@ -200,6 +235,54 @@ function outputResult<T>(
       }
       process.exit(1);
     },
+  );
+}
+
+interface PlansRow {
+  plan_id: string;
+  title: string;
+  status: string;
+  task_count: number;
+  todo: number;
+  doing: number;
+  blocked: number;
+  done: number;
+  canceled: number;
+}
+
+function runPlans(
+  config: Config,
+  _json: boolean,
+): ResultAsync<PlansRow[], AppError> {
+  const q = query(config.doltRepoPath);
+  const sql = `
+    SELECT
+      p.plan_id,
+      p.title,
+      p.status,
+      COUNT(t.task_id) AS task_count,
+      SUM(CASE WHEN t.status = 'todo' THEN 1 ELSE 0 END) AS todo,
+      SUM(CASE WHEN t.status = 'doing' THEN 1 ELSE 0 END) AS doing,
+      SUM(CASE WHEN t.status = 'blocked' THEN 1 ELSE 0 END) AS blocked,
+      SUM(CASE WHEN t.status = 'done' THEN 1 ELSE 0 END) AS done,
+      SUM(CASE WHEN t.status = 'canceled' THEN 1 ELSE 0 END) AS canceled
+    FROM \`plan\` p
+    LEFT JOIN \`task\` t ON p.plan_id = t.plan_id
+    GROUP BY p.plan_id, p.title, p.status
+    ORDER BY task_count DESC, p.title ASC
+  `;
+  return q.raw<PlansRow>(sql).map((rows) =>
+    rows.map((r) => ({
+      plan_id: r.plan_id,
+      title: r.title,
+      status: r.status,
+      task_count: Number(r.task_count),
+      todo: Number(r.todo),
+      doing: Number(r.doing),
+      blocked: Number(r.blocked),
+      done: Number(r.done),
+      canceled: Number(r.canceled),
+    })),
   );
 }
 

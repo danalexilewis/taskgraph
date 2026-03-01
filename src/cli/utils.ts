@@ -59,6 +59,83 @@ export function resolveTaskId(
   );
 }
 
+/**
+ * Returns the agent branch name for a task if it was started with --branch (from the latest started event body).
+ */
+export function getStartedEventBranch(
+  taskId: string,
+  repoPath: string,
+): ResultAsync<string | null, AppError> {
+  const sql = `SELECT body FROM \`event\` WHERE task_id = '${sqlEscape(taskId)}' AND kind = 'started' ORDER BY created_at DESC LIMIT 1`;
+  return doltSql(sql, repoPath).map((rows: { body: string | object }[]) => {
+    const row = rows[0];
+    if (!row?.body) return null;
+    const raw = row.body;
+    let parsed: { branch?: string };
+    try {
+      parsed =
+        typeof raw === "string"
+          ? (JSON.parse(raw) as { branch?: string })
+          : (raw as { branch?: string });
+    } catch {
+      return null;
+    }
+    let branch = parsed?.branch ?? null;
+    if (
+      typeof branch === "string" &&
+      branch.startsWith('"') &&
+      branch.endsWith('"')
+    ) {
+      try {
+        branch = JSON.parse(branch) as string;
+      } catch {
+        /* leave as-is */
+      }
+    }
+    return branch ?? null;
+  });
+}
+
+/**
+ * Returns worktree path and branch for a task if it was started with --worktree (from the latest started event body).
+ */
+export function getStartedEventWorktree(
+  taskId: string,
+  doltRepoPath: string,
+): ResultAsync<
+  { worktree_path: string; worktree_branch: string } | null,
+  AppError
+> {
+  const sql = `SELECT body FROM \`event\` WHERE task_id = '${sqlEscape(taskId)}' AND kind = 'started' ORDER BY created_at DESC LIMIT 1`;
+  return doltSql(sql, doltRepoPath).map((rows: { body: string | object }[]) => {
+    const row = rows[0];
+    if (!row?.body) return null;
+    const raw = row.body;
+    let parsed: { worktree_path?: string; worktree_branch?: string };
+    try {
+      parsed =
+        typeof raw === "string"
+          ? (JSON.parse(raw) as {
+              worktree_path?: string;
+              worktree_branch?: string;
+            })
+          : (raw as { worktree_path?: string; worktree_branch?: string });
+    } catch {
+      return null;
+    }
+    if (
+      typeof parsed?.worktree_path === "string" &&
+      typeof parsed?.worktree_branch === "string"
+    ) {
+      return {
+        worktree_path: parsed.worktree_path,
+        worktree_branch: parsed.worktree_branch,
+      };
+    }
+    return null;
+  });
+}
+
 const TASKGRAPH_DIR = ".taskgraph";
 
 /**
@@ -88,6 +165,12 @@ export interface Config {
   learningMode?: boolean;
   /** Optional token budget for `tg context` output. Number or null = unlimited. Typical: 4000–8000. */
   context_token_budget?: number | null;
+  /** Branch to merge agent branches into (default: main). Used when tg done runs after tg start --branch. */
+  mainBranch?: string;
+  /** When true, tg start auto-creates agent branches (same as --branch). Default false. */
+  useDoltBranches?: boolean;
+  /** Optional Dolt remote URL for push/pull (used by tg sync when implemented). */
+  remoteUrl?: string;
 }
 
 export function readConfig(basePath?: string): Result<Config, AppError> {

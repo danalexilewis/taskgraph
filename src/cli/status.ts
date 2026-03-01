@@ -57,6 +57,8 @@ export interface TaskRow {
   plan_title: string;
   status: string;
   owner: string;
+  /** When status is 'blocked', set to the first pending gate name if blocked by a gate. */
+  blocked_by_gate_name?: string | null;
 }
 
 function bt(name: string): string {
@@ -537,7 +539,8 @@ export function fetchTasksTableData(
       : "";
 
   const tasksSql = `
-    SELECT t.task_id, t.hash_id, t.title, p.title AS plan_title, t.status, t.owner
+    SELECT t.task_id, t.hash_id, t.title, p.title AS plan_title, t.status, t.owner,
+      (SELECT g.name FROM ${bt("gate")} g WHERE g.task_id = t.task_id AND g.status = 'pending' ORDER BY g.created_at ASC LIMIT 1) AS blocked_by_gate_name
     FROM ${bt("task")} t
     JOIN ${bt("plan")} p ON t.plan_id = p.plan_id
     WHERE 1=1 ${planFilter} ${dimFilter} ${excludeCanceledAbandoned} ${filterActive}
@@ -701,8 +704,9 @@ export function statusCommand(program: Command) {
           console.error("tg status --dashboard does not support --json");
           process.exit(1);
         }
-        const { runOpenTUILiveInitiatives } =
-          await import("./tui/live-opentui.js");
+        const { runOpenTUILiveInitiatives } = await import(
+          "./tui/live-opentui.js"
+        );
         try {
           await runOpenTUILiveInitiatives(config, statusOptions);
           return;
@@ -831,8 +835,9 @@ export function statusCommand(program: Command) {
         const config = configResult.value;
 
         if (viewMode === "projects") {
-          const { runOpenTUILiveProjects } =
-            await import("./tui/live-opentui.js");
+          const { runOpenTUILiveProjects } = await import(
+            "./tui/live-opentui.js"
+          );
           try {
             await runOpenTUILiveProjects(config, statusOptions);
             return;
@@ -1069,9 +1074,20 @@ function displayId(taskId: string, hashId: string | null): string {
 
 const PLAN_TITLE_MAX_LEN = 18;
 
+/** Status string for display: "blocked (gate: <name>)" when blocked by a gate, else raw status. */
+function displayStatus(
+  status: string,
+  blockedByGateName?: string | null,
+): string {
+  if (status === "blocked" && blockedByGateName) {
+    return `blocked (gate: ${blockedByGateName})`;
+  }
+  return status;
+}
+
 function truncatePlan(s: string): string {
   if (s.length <= PLAN_TITLE_MAX_LEN) return s;
-  return s.slice(0, PLAN_TITLE_MAX_LEN - 1) + "…";
+  return `${s.slice(0, PLAN_TITLE_MAX_LEN - 1)}…`;
 }
 
 /**
@@ -1155,7 +1171,8 @@ export function formatTasksAsString(rows: TaskRow[], width: number): string {
   const innerW = getBoxInnerWidth(w);
   const taskRows = rows.map((r) => {
     const id = r.hash_id ?? r.task_id;
-    return [id, r.title, r.plan_title, r.status, r.owner ?? "—"];
+    const status = displayStatus(r.status, r.blocked_by_gate_name);
+    return [id, r.title, r.plan_title, status, r.owner ?? "—"];
   });
   const table = renderTable({
     headers: ["Id", "Title", "Plan", "Status", "Owner"],
@@ -1185,7 +1202,7 @@ export function formatDashboardTasksView(
           r.hash_id ?? r.task_id,
           r.title,
           r.plan_title,
-          r.status,
+          displayStatus(r.status, r.blocked_by_gate_name),
           r.owner ?? "—",
         ])
       : [["—", "No active tasks", "—", "—", "—"]];

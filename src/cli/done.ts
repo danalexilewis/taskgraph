@@ -1,6 +1,8 @@
+import * as path from "node:path";
 import type { Command } from "commander";
 import { err, ok, ResultAsync } from "neverthrow";
 import { v4 as uuidv4 } from "uuid";
+import { mergeAgentBranchIntoMain } from "../db/branch";
 import { doltCommit } from "../db/commit";
 import { type JsonValue, jsonObj, now, query } from "../db/query";
 import { syncBlockedStatusForTask } from "../domain/blocked-status";
@@ -8,7 +10,14 @@ import { type AppError, buildError, ErrorCode } from "../domain/errors";
 import { checkValidTransition } from "../domain/invariants";
 import { autoCompletePlanIfDone } from "../domain/plan-completion";
 import type { TaskStatus } from "../domain/types";
-import { parseIdList, readConfig, resolveTaskId } from "./utils";
+import {
+  getStartedEventBranch,
+  getStartedEventWorktree,
+  parseIdList,
+  readConfig,
+  resolveTaskId,
+} from "./utils";
+import { mergeWorktreeBranchIntoMain, removeWorktree } from "./worktree";
 
 type DoneResult =
   | { id: string; status: "done"; plan_completed?: boolean }
@@ -27,6 +36,11 @@ export function doneCommand(program: Command) {
     .option(
       "--force",
       "Allow marking as done even if not in 'doing' status",
+      false,
+    )
+    .option(
+      "--merge",
+      "Merge worktree branch into base branch before removing worktree",
       false,
     )
     .action(async (taskIds: string[], options, cmd) => {
@@ -187,6 +201,82 @@ export function doneCommand(program: Command) {
             return 0;
           },
         );
+
+        const lastResult = results[results.length - 1];
+        if (lastResult && !("error" in lastResult)) {
+          const branchResult = await getStartedEventBranch(
+            resolved,
+            config.doltRepoPath,
+          );
+          const branch = branchResult.isOk() ? branchResult.value : null;
+          if (branch) {
+            const mergeResult = await mergeAgentBranchIntoMain(
+              config.doltRepoPath,
+              branch,
+              config.mainBranch ?? "main",
+            );
+            mergeResult.match(
+              () => {},
+              (mergeErr: AppError) => {
+                const idx = results.length - 1;
+                const last = results[idx];
+                if (last) {
+                  results[idx] = { id: last.id, error: mergeErr.message };
+                  anyFailed = true;
+                }
+              },
+            );
+          }
+
+          const worktreeResult = await getStartedEventWorktree(
+            resolved,
+            config.doltRepoPath,
+          );
+          const worktree = worktreeResult.isOk() ? worktreeResult.value : null;
+          if (worktree) {
+            const gitRepoPath = path.dirname(
+              path.dirname(path.dirname(worktree.worktree_path)),
+            );
+            let worktreeMergeFailed = false;
+            if (options.merge) {
+              const mergeWtResult = await mergeWorktreeBranchIntoMain(
+                gitRepoPath,
+                worktree.worktree_branch,
+                config.mainBranch ?? "main",
+              );
+              mergeWtResult.match(
+                () => {},
+                (mergeErr: AppError) => {
+                  worktreeMergeFailed = true;
+                  const idx = results.length - 1;
+                  const last = results[idx];
+                  if (last) {
+                    results[idx] = { id: last.id, error: mergeErr.message };
+                    anyFailed = true;
+                  }
+                },
+              );
+            }
+            if (!worktreeMergeFailed) {
+              const removeResult = await removeWorktree(
+                resolved,
+                gitRepoPath,
+                options.merge,
+              );
+              removeResult.match(
+                () => {},
+                (removeErr: AppError) => {
+                  const idx = results.length - 1;
+                  const last = results[idx];
+                  if (last) {
+                    results[idx] = { id: last.id, error: removeErr.message };
+                    anyFailed = true;
+                  }
+                },
+              );
+            }
+          }
+        }
       }
 
       if (!json) {

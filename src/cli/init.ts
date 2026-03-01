@@ -35,6 +35,11 @@ export function initCommand(program: Command) {
     .command("init")
     .description("Initializes the Dolt repository and applies migrations")
     .option("--no-commit", "Do not commit changes to Dolt", false)
+    .option(
+      "--remote-url <url>",
+      "Dolt remote URL (stored in config for future tg sync)",
+    )
+    .option("--remote <url>", "Alias for --remote-url")
     .action(async (options, cmd) => {
       const repoPath = process.cwd();
       const taskGraphPath = path.join(repoPath, TASKGRAPH_DIR);
@@ -83,9 +88,11 @@ export function initCommand(program: Command) {
           applyNoDeleteTriggersMigration(doltRepoPath, options.noCommit),
         )
         .andThen(() => {
+          const remoteUrl = options.remoteUrl ?? options.remote;
           const config = {
             doltRepoPath: doltRepoPath,
             learningMode: false,
+            ...(remoteUrl != null && remoteUrl !== "" ? { remoteUrl } : {}),
           };
           // Use a valid ErrorCode, e.g., UNKNOWN_ERROR
           return writeConfig(config, repoPath).mapErr(
