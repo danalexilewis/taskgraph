@@ -197,6 +197,8 @@ export interface Config {
   strategicCycle?: { weeks: number };
   /** Query result cache TTL in milliseconds. 0 = disabled (default). Dashboard mode uses 1500ms floor regardless. */
   queryCacheTtlMs?: number;
+  /** Path to agent-context SQLite DB (default: .taskgraph/agent_context.db). */
+  agentContextDbPath?: string;
 }
 
 export function readConfig(basePath?: string): Result<Config, AppError> {
