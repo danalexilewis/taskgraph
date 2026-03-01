@@ -29,6 +29,8 @@ export interface StatusOptions {
   view?: StatusViewMode;
   /** When true (e.g. tg dashboard --tasks), show three sections: Active, Next 7, Last 7. */
   tasksView?: boolean;
+  /** Hours threshold for stale doing-task warning (default: 2). */
+  staleThreshold?: number;
 }
 
 export interface ProjectRow {
@@ -59,6 +61,13 @@ export interface TaskRow {
   owner: string;
   /** When status is 'blocked', set to the first pending gate name if blocked by a gate. */
   blocked_by_gate_name?: string | null;
+}
+
+export interface StaleDoingTaskRow {
+  hash_id: string | null;
+  title: string;
+  owner: string | null;
+  age_hours: number;
 }
 
 function bt(name: string): string {
@@ -119,6 +128,7 @@ export interface StatusData {
     actionable: number;
   }>;
   staleTasks: Array<{ task_id: string; hash_id: string | null; title: string }>;
+  staleDoingTasks: StaleDoingTaskRow[];
   nextTasks: NextTaskRow[];
   /** Next 7 runnable tasks (same condition as nextSql; order matches tg next). */
   next7RunnableTasks: NextTaskRow[];
@@ -401,26 +411,34 @@ export function fetchStatusData(
                                                 .raw<ActiveWorkRow>(
                                                   activeWorkSql,
                                                 )
-                                                .map(
-                                                  (activeWork): StatusData => ({
-                                                    completedPlans,
-                                                    completedTasks,
-                                                    canceledTasks,
-                                                    activePlans,
-                                                    staleTasks: staleRows,
-                                                    nextTasks,
-                                                    next7RunnableTasks,
-                                                    last7CompletedTasks,
-                                                    next7UpcomingPlans,
-                                                    last7CompletedPlans,
-                                                    activeWork,
-                                                    plansCount:
-                                                      plansRes[0]?.count ?? 0,
-                                                    statusCounts,
-                                                    actionableCount:
-                                                      actionableRes[0]?.count ??
-                                                      0,
-                                                  }),
+                                                .andThen((activeWork) =>
+                                                  fetchStaleDoingTasks(
+                                                    config.doltRepoPath,
+                                                    options.staleThreshold ?? 2,
+                                                  ).map(
+                                                    (
+                                                      staleDoingTasks,
+                                                    ): StatusData => ({
+                                                      completedPlans,
+                                                      completedTasks,
+                                                      canceledTasks,
+                                                      activePlans,
+                                                      staleTasks: staleRows,
+                                                      staleDoingTasks,
+                                                      nextTasks,
+                                                      next7RunnableTasks,
+                                                      last7CompletedTasks,
+                                                      next7UpcomingPlans,
+                                                      last7CompletedPlans,
+                                                      activeWork,
+                                                      plansCount:
+                                                        plansRes[0]?.count ?? 0,
+                                                      statusCounts,
+                                                      actionableCount:
+                                                        actionableRes[0]
+                                                          ?.count ?? 0,
+                                                    }),
+                                                  ),
                                                 ),
                                             ),
                                         ),
@@ -436,6 +454,35 @@ export function fetchStatusData(
       });
     });
   });
+}
+
+/**
+ * Fetch doing tasks that have been in-progress longer than thresholdHours.
+ * Joins the most recent 'started' event per task to compute elapsed hours.
+ */
+export function fetchStaleDoingTasks(
+  repoPath: string,
+  thresholdHours = 2,
+): ResultAsync<StaleDoingTaskRow[], AppError> {
+  const q = query(repoPath);
+  const threshold = Math.max(0, Math.floor(thresholdHours));
+  const sql = `
+    SELECT
+      t.hash_id,
+      t.title,
+      t.owner,
+      TIMESTAMPDIFF(HOUR, e.created_at, NOW()) AS age_hours
+    FROM ${bt("task")} t
+    JOIN ${bt("event")} e ON e.task_id = t.task_id AND e.kind = 'started'
+      AND e.created_at = (
+        SELECT MAX(e2.created_at) FROM ${bt("event")} e2
+        WHERE e2.task_id = t.task_id AND e2.kind = 'started'
+      )
+    WHERE t.status = 'doing'
+      AND TIMESTAMPDIFF(HOUR, e.created_at, NOW()) > ${threshold}
+    ORDER BY age_hours DESC
+  `;
+  return q.raw<StaleDoingTaskRow>(sql);
 }
 
 /**
@@ -612,6 +659,11 @@ export function statusCommand(program: Command) {
       "--dashboard",
       "Open status dashboard (live-updating TUI; 2s refresh, q or Ctrl+C to quit)",
     )
+    .option(
+      "--stale-threshold <hours>",
+      "Hours threshold for stale doing-task warning (default: 2)",
+      "2",
+    )
     .action(async (options, cmd) => {
       const useLive = options.dashboard;
       const statusOptions: StatusOptions = {
@@ -624,6 +676,7 @@ export function statusCommand(program: Command) {
         initiatives: options.initiatives,
         tasks: options.tasks,
         filter: options.filter,
+        staleThreshold: Number.parseInt(options.staleThreshold, 10) || 2,
       };
 
       const viewCount = [
@@ -1390,6 +1443,11 @@ export function formatStatusAsString(
   parts.push("Active & next");
   parts.push(getMergedActiveNextContent(d, w));
 
+  if (d.staleDoingTasks.length > 0) {
+    parts.push(chalk.yellow("⚠  Stale Doing Tasks (>2h)"));
+    parts.push(getStaleDoingTasksContent(d.staleDoingTasks, w));
+  }
+
   if (dashboard) {
     parts.push(
       `Completed: Plans: ${d.completedPlans} done, Tasks: ${d.completedTasks} done`,
@@ -1397,6 +1455,32 @@ export function formatStatusAsString(
   }
 
   return parts.join("\n\n");
+}
+
+function formatAgeHours(ageHours: number): string {
+  const h = Math.floor(ageHours);
+  return `${h}h`;
+}
+
+function getStaleDoingTasksContent(
+  tasks: StaleDoingTaskRow[],
+  w: number,
+): string {
+  const innerW = getBoxInnerWidth(w);
+  const rows = tasks.map((t) => [
+    t.hash_id ?? "—",
+    t.title,
+    t.owner ?? "—",
+    formatAgeHours(t.age_hours),
+  ]);
+  return renderTable({
+    headers: ["Id", "Title", "Owner", "Age"],
+    rows,
+    maxWidth: innerW,
+    minWidths: [10, 16, 8, 6],
+    flexColumnIndex: 1,
+    maxWidths: [10],
+  });
 }
 
 function printHumanStatus(
@@ -1421,6 +1505,12 @@ function printHumanStatus(
     `\n${boxedSection("Active & next", getMergedActiveNextContent(d, w), w)}`,
   );
 
+  if (d.staleDoingTasks.length > 0) {
+    const staleTitle = chalk.yellow("⚠  Stale Doing Tasks (>2h)");
+    const staleContent = getStaleDoingTasksContent(d.staleDoingTasks, w);
+    console.log(`\n${boxedSection(staleTitle, staleContent, w)}`);
+  }
+
   if (dashboard) {
     console.log(
       `\n  ${chalk.dim(`Plans: ${chalk.green(d.completedPlans)} done, Tasks: ${chalk.green(d.completedTasks)} done`)}`,
@@ -1442,6 +1532,7 @@ function printJsonStatus(d: StatusData): void {
         canceledTasks: d.canceledTasks,
         activePlans: d.activePlans,
         staleTasks: d.staleTasks,
+        stale_tasks: d.staleDoingTasks,
         plansCount: d.plansCount,
         statusCounts: d.statusCounts,
         actionableCount: d.actionableCount,
