@@ -83,7 +83,7 @@ describe.serial("Invariants (DB Dependent) Integration Tests", () => {
     if (context) {
       await teardownIntegrationTest(context);
     }
-  });
+  }, 60_000);
 
   it("should return error if task is not found", async () => {
     if (!context) throw new Error("Context not initialized");
@@ -126,6 +126,43 @@ describe.serial("Invariants (DB Dependent) Integration Tests", () => {
     )._unsafeUnwrap();
 
     const result = await checkRunnable(taskId1, context.doltRepoPath);
+    expect(result.isOk()).toBe(true);
+  });
+
+  it("with knownStatus not 'todo', returns INVALID_TRANSITION without querying task", async () => {
+    if (!context) throw new Error("Context not initialized");
+    const result = await checkRunnable(
+      taskId2,
+      context.doltRepoPath,
+      "blocked",
+    );
+    expect(result.isErr()).toBe(true);
+    expect(result._unsafeUnwrapErr().code).toBe(ErrorCode.INVALID_TRANSITION);
+    expect(result._unsafeUnwrapErr().message).toContain(
+      "is not in 'todo' status",
+    );
+  });
+
+  it("with knownStatus 'todo', skips task SELECT and still checks blockers", async () => {
+    if (!context) throw new Error("Context not initialized");
+    // Restore taskId3 to 'todo' so taskId1 has 1 unmet blocker (previous test set taskId3 to 'done')
+    (
+      await doltSql(
+        `UPDATE \`task\` SET status = 'todo', updated_at = NOW() WHERE task_id = '${taskId3}';`,
+        context.doltRepoPath,
+      )
+    )._unsafeUnwrap();
+    // taskId1 is blocked by taskId3; pass knownStatus 'todo' so status is not re-fetched
+    const result = await checkRunnable(taskId1, context.doltRepoPath, "todo");
+    expect(result.isErr()).toBe(true);
+    expect(result._unsafeUnwrapErr().code).toBe(ErrorCode.TASK_NOT_RUNNABLE);
+    expect(result._unsafeUnwrapErr().message).toContain("1 unmet blockers");
+  });
+
+  it("with knownStatus 'todo' and no blockers, returns ok", async () => {
+    if (!context) throw new Error("Context not initialized");
+    // taskId3 has no blockers; pass knownStatus 'todo'
+    const result = await checkRunnable(taskId3, context.doltRepoPath, "todo");
     expect(result.isOk()).toBe(true);
   });
 });

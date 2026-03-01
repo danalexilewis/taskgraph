@@ -9,7 +9,11 @@ import { createProgram } from "../../src/cli/index";
 import { writeConfig } from "../../src/cli/utils";
 import { closeServerPool } from "../../src/db/connection";
 import { ensureMigrations } from "../../src/db/migrate";
-import { DOLT_ROOT_PATH_FILE, GOLDEN_TEMPLATE_PATH_FILE } from "./global-setup";
+import {
+  DOLT_ROOT_PATH_FILE,
+  GOLDEN_TEMPLATE_PATH_FILE,
+  TEST_SERVER_PID_REGISTRY,
+} from "./global-setup";
 
 // Load .env.local from project root so single-file integration runs work (bun test does not auto-load it)
 const projectRoot = path.resolve(__dirname, "..", "..");
@@ -39,6 +43,87 @@ export interface IntegrationTestContext {
 let perTestPortCounter = 0;
 const PER_TEST_PORT_BASE = 13310;
 const PER_TEST_PORT_RANGE = 90;
+
+/**
+ * Module-level registry of PIDs for servers that have been started but not yet torn down.
+ * A single process.on("exit") handler kills all remaining entries on unexpected exit.
+ */
+const _activeServerPids = new Set<number>();
+let _exitHandlerRegistered = false;
+
+function registerServerPid(pid: number): void {
+  _activeServerPids.add(pid);
+  // Persist to file for crash-recovery (global-teardown kills survivors)
+  try {
+    const existing: number[] = fs.existsSync(TEST_SERVER_PID_REGISTRY)
+      ? (JSON.parse(
+          fs.readFileSync(TEST_SERVER_PID_REGISTRY, "utf8"),
+        ) as number[])
+      : [];
+    fs.writeFileSync(
+      TEST_SERVER_PID_REGISTRY,
+      JSON.stringify([...new Set([...existing, pid])]),
+      "utf8",
+    );
+  } catch {
+    // best-effort; in-memory registry still protects against normal exit
+  }
+  if (!_exitHandlerRegistered) {
+    _exitHandlerRegistered = true;
+    process.on("exit", () => {
+      for (const p of _activeServerPids) {
+        try {
+          process.kill(-p, "SIGKILL");
+        } catch {
+          // already dead
+        }
+      }
+    });
+  }
+}
+
+function unregisterServerPid(pid: number): void {
+  _activeServerPids.delete(pid);
+  // Remove from persistent registry
+  try {
+    if (fs.existsSync(TEST_SERVER_PID_REGISTRY)) {
+      const existing: number[] = JSON.parse(
+        fs.readFileSync(TEST_SERVER_PID_REGISTRY, "utf8"),
+      );
+      const updated = existing.filter((p) => p !== pid);
+      if (updated.length === 0) {
+        fs.unlinkSync(TEST_SERVER_PID_REGISTRY);
+      } else {
+        fs.writeFileSync(
+          TEST_SERVER_PID_REGISTRY,
+          JSON.stringify(updated),
+          "utf8",
+        );
+      }
+    }
+  } catch {
+    // best-effort
+  }
+}
+
+/**
+ * Kill a server spawned with `detached: true` by targeting the entire process group.
+ * Using `process.kill(pid, "SIGTERM")` only kills the leader; children survive.
+ * Negative PID sends the signal to the whole PGID.
+ */
+export async function killDetachedProcess(pid: number): Promise<void> {
+  try {
+    process.kill(-pid, "SIGTERM");
+  } catch {
+    return; // already dead
+  }
+  await new Promise((r) => setTimeout(r, 200));
+  try {
+    process.kill(-pid, "SIGKILL");
+  } catch {
+    // already dead
+  }
+}
 
 const DOLT_PATH = process.env.DOLT_PATH || "dolt";
 if (!process.env.DOLT_PATH) process.env.DOLT_PATH = DOLT_PATH;
@@ -83,6 +168,7 @@ async function startDoltServer(
   if (pid === undefined) {
     throw new Error("Failed to start dolt sql-server: no PID");
   }
+  registerServerPid(pid);
   const host = "127.0.0.1";
   const maxAttempts = 30;
   for (let i = 0; i < maxAttempts; i++) {
@@ -103,11 +189,7 @@ async function startDoltServer(
     if (ok) return pid;
     await new Promise((r) => setTimeout(r, 200));
   }
-  try {
-    process.kill(pid, "SIGTERM");
-  } catch {
-    // ignore
-  }
+  await killDetachedProcess(pid);
   throw new Error(
     `dolt sql-server did not become ready on ${host}:${port} after ${maxAttempts} attempts`,
   );
@@ -130,9 +212,19 @@ export async function setupIntegrationTest(): Promise<IntegrationTestContext> {
     PER_TEST_PORT_BASE +
     (((process.pid ?? 0) + perTestPortCounter++) % PER_TEST_PORT_RANGE);
   const serverPid = await startDoltServer(doltRepoPath, port);
-  process.env.TG_DOLT_SERVER_PORT = String(port);
-  process.env.TG_DOLT_SERVER_DATABASE = path.basename(doltRepoPath);
-  (await ensureMigrations(doltRepoPath))._unsafeUnwrap();
+  // Guard: if any post-spawn step throws, kill the server immediately so it
+  // does not become an orphan (afterAll's `if (context)` guard would skip teardown).
+  let setupComplete = false;
+  try {
+    process.env.TG_DOLT_SERVER_PORT = String(port);
+    process.env.TG_DOLT_SERVER_DATABASE = "dolt";
+    (await ensureMigrations(doltRepoPath))._unsafeUnwrap();
+    setupComplete = true;
+  } finally {
+    if (!setupComplete) {
+      await killDetachedProcess(serverPid);
+    }
+  }
 
   return {
     tempDir,
@@ -152,17 +244,18 @@ export async function teardownIntegrationTest(
       : contextOrTempDir;
   if (context.serverPort) {
     try {
-      await closeServerPool(context.serverPort);
+      await closeServerPool(
+        context.serverPort,
+        "127.0.0.1",
+        process.env.TG_DOLT_SERVER_DATABASE ?? "dolt",
+      );
     } catch {
       // Pool may already be closed
     }
   }
   if (context.serverPid !== undefined) {
-    try {
-      process.kill(context.serverPid, "SIGTERM");
-    } catch {
-      // Process may already be dead
-    }
+    await killDetachedProcess(context.serverPid);
+    unregisterServerPid(context.serverPid);
   }
   if (fs.existsSync(context.tempDir)) {
     fs.rmSync(context.tempDir, { recursive: true, force: true });

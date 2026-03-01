@@ -1,3 +1,5 @@
+/// <reference path="../ansi-diff.d.ts" />
+import ansiDiff from "ansi-diff";
 import type { Command } from "commander";
 import { ResultAsync } from "neverthrow";
 import type { AppError } from "../domain/errors";
@@ -7,6 +9,7 @@ import {
   formatDashboardProjectsView,
   formatDashboardTasksView,
   formatStatusAsString,
+  getDashboardFooterLine,
   type StatusOptions,
   type StatusViewMode,
 } from "./status";
@@ -15,6 +18,27 @@ import type { Config } from "./utils";
 import { readConfig } from "./utils";
 
 const REFRESH_MS = 2000;
+
+/** Write content to stdout via ansi-diff so only changed pixels are updated (no full-screen clear). */
+function createDiffWriter(): (content: string) => void {
+  const diff = ansiDiff({
+    width: getTerminalWidth(),
+    height:
+      typeof process.stdout.rows === "number" ? process.stdout.rows : undefined,
+  });
+  process.stdout.on("resize", () => {
+    diff.resize({
+      width: getTerminalWidth(),
+      height:
+        typeof process.stdout.rows === "number"
+          ? process.stdout.rows
+          : undefined,
+    });
+  });
+  return (content: string) => {
+    process.stdout.write(diff.update(`\n${content}\n`));
+  };
+}
 
 async function runLiveFallbackDashboard(
   config: Config,
@@ -33,34 +57,39 @@ async function runLiveFallbackDashboard(
     stdin.setRawMode(true);
     stdin.resume();
     stdin.on("data", (ch) => {
-      if (ch.toString().toLowerCase() === "q") cleanup();
+      const s = ch.toString();
+      if (s.toLowerCase() === "q" || s === "\x03") cleanup();
     });
   }
-  const result = await fetchStatusData(config, statusOptions);
-  result.match(
-    (d) => {
-      const w = getTerminalWidth();
-      console.log(`\n${formatStatusAsString(d, w, { dashboard: true })}\n`);
-      timer = setInterval(async () => {
-        const r = await readConfig().asyncAndThen((c: Config) =>
-          fetchStatusData(c, statusOptions),
+  const write = createDiffWriter();
+  write("Loading...");
+  timer = setInterval(async () => {
+    const r = await readConfig().asyncAndThen((c: Config) =>
+      fetchStatusData(c, statusOptions),
+    );
+    r.match(
+      (data) => {
+        write(
+          formatStatusAsString(data, getTerminalWidth(), {
+            dashboard: true,
+          }),
         );
-        r.match(
-          (data) => {
-            process.stdout.write("\x1b[2J\x1b[H");
-            console.log(
-              `\n${formatStatusAsString(data, getTerminalWidth(), { dashboard: true })}\n`,
-            );
-          },
-          () => {},
-        );
-      }, REFRESH_MS);
-    },
-    (e: AppError) => {
-      console.error(e.message);
-      process.exit(1);
-    },
-  );
+      },
+      () => {},
+    );
+  }, REFRESH_MS);
+  fetchStatusData(config, statusOptions).then((result) => {
+    result.match(
+      (d) => {
+        write(formatStatusAsString(d, getTerminalWidth(), { dashboard: true }));
+      },
+      (e: AppError) => {
+        if (timer) clearInterval(timer);
+        console.error(e.message);
+        process.exit(1);
+      },
+    );
+  });
 }
 
 /** Live fallback for tg dashboard --tasks: Active + Next 7 + Last 7 sections, 2s refresh. */
@@ -81,7 +110,8 @@ async function runLiveFallbackDashboardTasks(
     stdin.setRawMode(true);
     stdin.resume();
     stdin.on("data", (ch) => {
-      if (ch.toString().toLowerCase() === "q") cleanup();
+      const s = ch.toString();
+      if (s.toLowerCase() === "q" || s === "\x03") cleanup();
     });
   }
   const activeOptions = { ...statusOptions, filter: "active" as const };
@@ -89,12 +119,17 @@ async function runLiveFallbackDashboardTasks(
     fetchStatusData(config, statusOptions),
     fetchTasksTableData(config, activeOptions),
   ]);
+  const write = createDiffWriter();
   statusResult.match(
     (d) => {
       activeResult.match(
         (activeRows) => {
           const w = getTerminalWidth();
-          console.log(`\n${formatDashboardTasksView(d, activeRows, w)}\n`);
+          write(
+            formatDashboardTasksView(d, activeRows, w) +
+              "\n\n" +
+              getDashboardFooterLine(d),
+          );
           timer = setInterval(async () => {
             const r = await readConfig().asyncAndThen((c: Config) =>
               ResultAsync.combine([
@@ -104,9 +139,10 @@ async function runLiveFallbackDashboardTasks(
             );
             r.match(
               ([data, active]) => {
-                process.stdout.write("\x1b[2J\x1b[H");
-                console.log(
-                  `\n${formatDashboardTasksView(data, active, getTerminalWidth())}\n`,
+                write(
+                  formatDashboardTasksView(data, active, getTerminalWidth()) +
+                    "\n\n" +
+                    getDashboardFooterLine(data),
                 );
               },
               () => {},
@@ -144,23 +180,28 @@ async function runLiveFallbackDashboardProjects(
     stdin.setRawMode(true);
     stdin.resume();
     stdin.on("data", (ch) => {
-      if (ch.toString().toLowerCase() === "q") cleanup();
+      const s = ch.toString();
+      if (s.toLowerCase() === "q" || s === "\x03") cleanup();
     });
   }
+  const write = createDiffWriter();
   const result = await fetchStatusData(config, statusOptions);
   result.match(
     (d) => {
       const w = getTerminalWidth();
-      console.log(`\n${formatDashboardProjectsView(d, w)}\n`);
+      write(
+        `${formatDashboardProjectsView(d, w)}\n\n${getDashboardFooterLine(d)}`,
+      );
       timer = setInterval(async () => {
         const r = await readConfig().asyncAndThen((c: Config) =>
           fetchStatusData(c, statusOptions),
         );
         r.match(
           (data) => {
-            process.stdout.write("\x1b[2J\x1b[H");
-            console.log(
-              `\n${formatDashboardProjectsView(data, getTerminalWidth())}\n`,
+            write(
+              formatDashboardProjectsView(data, getTerminalWidth()) +
+                "\n\n" +
+                getDashboardFooterLine(data),
             );
           },
           () => {},

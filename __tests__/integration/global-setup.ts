@@ -47,7 +47,43 @@ export const GOLDEN_SERVER_PID_FILE = path.resolve(
   "../../.taskgraph/tg-golden-server-pid.txt",
 );
 
+/** JSON file tracking PIDs of all per-test dolt servers spawned by test-utils.
+ *  Written on spawn, cleaned on teardown. global-teardown kills any survivors.
+ *  global-setup kills stale entries from a previous crashed run on startup. */
+export const TEST_SERVER_PID_REGISTRY = path.resolve(
+  __dirname,
+  "../../.taskgraph/tg-test-server-pids.json",
+);
+
+/** Kill stale per-test server PIDs left by a previously crashed test run. */
+function killStalePidRegistry(): void {
+  if (!fs.existsSync(TEST_SERVER_PID_REGISTRY)) return;
+  try {
+    const pids: number[] = JSON.parse(
+      fs.readFileSync(TEST_SERVER_PID_REGISTRY, "utf8"),
+    );
+    for (const pid of pids) {
+      try {
+        process.kill(-pid, "SIGKILL");
+      } catch {
+        // already dead
+      }
+    }
+    fs.unlinkSync(TEST_SERVER_PID_REGISTRY);
+  } catch {
+    // corrupt or missing — remove and continue
+    try {
+      fs.unlinkSync(TEST_SERVER_PID_REGISTRY);
+    } catch {
+      // ignore
+    }
+  }
+}
+
 export default async function globalSetup(): Promise<void> {
+  // Kill any stale per-test dolt servers from a previous crashed run
+  killStalePidRegistry();
+
   // Clean default eventsData directory to avoid polluting user data
   const defaultDoltRoot =
     process.env.DOLT_ROOT_PATH || path.join(os.homedir(), ".dolt");
@@ -123,7 +159,7 @@ export default async function globalSetup(): Promise<void> {
   fs.writeFileSync(DOLT_SERVER_PORT_FILE, String(GOLDEN_SERVER_PORT), "utf8");
   fs.writeFileSync(GOLDEN_SERVER_PID_FILE, String(pid), "utf8");
   process.env.TG_DOLT_SERVER_PORT = String(GOLDEN_SERVER_PORT);
-  process.env.TG_DOLT_SERVER_DATABASE = path.basename(doltRepoPath);
+  process.env.TG_DOLT_SERVER_DATABASE = "dolt";
 
   // Wait for server to accept TCP connections
   const maxAttempts = 30;

@@ -15,19 +15,22 @@ const SERVER_HOST_ENV = "TG_DOLT_SERVER_HOST";
 
 const poolCache = new Map<string, Pool>();
 
-function getPoolKey(host: string, port: string): string {
-  return `${host}:${port}`;
+function getPoolKey(host: string, port: string, database: string): string {
+  return `${host}:${port}:${database}`;
 }
 
 /**
  * Returns a mysql2 pool for the Dolt SQL server when TG_DOLT_SERVER_PORT is set.
- * Pool is created once per (host, port) and cached. Returns null when server mode is not enabled.
+ * Pool is created once per (host, port, database) and cached. Returns null when server mode is not enabled
+ * or when TG_DOLT_SERVER_DATABASE is missing/empty (so caller falls back to execa path).
  */
 export function getServerPool(): Pool | null {
   const port = process.env[SERVER_PORT_ENV];
   if (!port) return null;
+  const database = process.env.TG_DOLT_SERVER_DATABASE ?? "";
+  if (database === "") return null;
   const host = process.env[SERVER_HOST_ENV] ?? "127.0.0.1";
-  const key = getPoolKey(host, port);
+  const key = getPoolKey(host, port, database);
   let pool = poolCache.get(key);
   if (!pool) {
     pool = createPool({
@@ -35,7 +38,7 @@ export function getServerPool(): Pool | null {
       port: Number.parseInt(port, 10),
       user: process.env.TG_DOLT_SERVER_USER ?? "root",
       password: process.env.TG_DOLT_SERVER_PASSWORD ?? undefined,
-      database: process.env.TG_DOLT_SERVER_DATABASE ?? "",
+      database,
       waitForConnections: true,
       connectionLimit: 10,
     });
@@ -45,14 +48,15 @@ export function getServerPool(): Pool | null {
 }
 
 /**
- * Close the server pool for the given host/port and remove from cache.
+ * Close the server pool for the given host/port/database and remove from cache.
  * Used by integration test teardown to release connections before killing the dolt sql-server process.
  */
 export async function closeServerPool(
   port: string,
   host: string = "127.0.0.1",
+  database: string = "",
 ): Promise<void> {
-  const key = getPoolKey(host, port);
+  const key = getPoolKey(host, port, database);
   const pool = poolCache.get(key);
   if (pool) {
     poolCache.delete(key);
@@ -116,23 +120,18 @@ export function doltSql(
   const port = process.env[SERVER_PORT_ENV];
   if (port) {
     const pool = getServerPool();
-    if (!pool)
-      return errAsync(
-        buildError(
-          ErrorCode.DB_QUERY_FAILED,
-          "Dolt server pool not available",
-          undefined,
-        ),
-      );
-    const runServer = (): ResultAsync<any[], AppError> => {
-      if (options?.branch) {
-        return doltSqlServer("CALL DOLT_CHECKOUT(?)", pool, [
-          options.branch,
-        ]).andThen(() => doltSqlServer(query, pool));
-      }
-      return doltSqlServer(query, pool);
-    };
-    return runServer();
+    if (pool) {
+      const runServer = (): ResultAsync<unknown[], AppError> => {
+        if (options?.branch) {
+          return doltSqlServer("CALL DOLT_CHECKOUT(?)", pool, [
+            options.branch,
+          ]).andThen(() => doltSqlServer(query, pool));
+        }
+        return doltSqlServer(query, pool);
+      };
+      return runServer();
+    }
+    // Port set but pool null (e.g. TG_DOLT_SERVER_DATABASE empty) -> fall back to execa path
   }
 
   // biome-ignore lint/suspicious/noExplicitAny: dolt rows same

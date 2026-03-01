@@ -1,4 +1,4 @@
-import { errAsync, okAsync, type ResultAsync } from "neverthrow";
+import { errAsync, okAsync, ResultAsync } from "neverthrow";
 import { v4 as uuidv4 } from "uuid";
 import { sqlEscape } from "../db/escape";
 import { jsonObj, now, query } from "../db/query";
@@ -124,4 +124,109 @@ export function syncBlockedStatusForTask(
             });
         });
     });
+}
+
+/**
+ * Bulk-sync blocked/todo status for a set of plan tasks after import.
+ * Replaces the per-task loop in the importer with two queries:
+ *   1. One SELECT to find tasks with unmet blockers
+ *   2. One UPDATE + event batch to set them blocked
+ *
+ * Tasks with zero unmet blockers that are currently 'blocked' are also unblocked.
+ */
+export function syncBlockedStatusForPlanTasks(
+  repoPath: string,
+  taskIds: string[],
+): ResultAsync<void, AppError> {
+  if (taskIds.length === 0) return okAsync(undefined);
+  const q = query(repoPath);
+  const idList = taskIds.map((id) => `'${sqlEscape(id)}'`).join(",");
+  const currentTimestamp = now();
+
+  // Single query: unmet blocker count per task
+  const unmetSql = `
+    SELECT e.to_task_id, COUNT(*) AS unmet_count
+    FROM \`edge\` e
+    JOIN \`task\` bt ON e.from_task_id = bt.task_id
+    WHERE e.to_task_id IN (${idList})
+      AND e.type = 'blocks'
+      AND bt.status NOT IN ('done','canceled')
+    GROUP BY e.to_task_id
+  `;
+
+  // Also get current statuses in one query
+  const statusSql = `SELECT task_id, status FROM \`task\` WHERE task_id IN (${idList})`;
+
+  return ResultAsync.combine([
+    q.raw<{ to_task_id: string; unmet_count: number }>(unmetSql),
+    q.raw<{ task_id: string; status: string }>(statusSql),
+  ] as const).andThen(([unmetRows, statusRows]) => {
+    const unmetMap = new Map(
+      unmetRows.map((r) => [r.to_task_id, r.unmet_count]),
+    );
+    const statusMap = new Map(
+      statusRows.map((r) => [r.task_id, r.status as TaskStatus]),
+    );
+
+    const toBlock: string[] = [];
+    const toUnblock: string[] = [];
+
+    for (const taskId of taskIds) {
+      const currentStatus = statusMap.get(taskId) ?? "todo";
+      const unmet = unmetMap.get(taskId) ?? 0;
+      const desired = computeDesiredBlockedStatus(currentStatus, unmet);
+      if (desired === null) continue;
+      if (desired.transition === "to_blocked") toBlock.push(taskId);
+      else if (desired.transition === "to_todo") toUnblock.push(taskId);
+    }
+
+    const ops: Array<ResultAsync<unknown, AppError>> = [];
+
+    if (toBlock.length > 0) {
+      const blockIds = toBlock.map((id) => `'${sqlEscape(id)}'`).join(",");
+      ops.push(
+        q.raw(
+          `UPDATE \`task\` SET status = 'blocked', updated_at = '${currentTimestamp}' WHERE task_id IN (${blockIds}) AND status IN ('todo','doing')`,
+        ),
+      );
+      for (const taskId of toBlock) {
+        ops.push(
+          q.insert("event", {
+            event_id: uuidv4(),
+            task_id: taskId,
+            kind: "blocked",
+            body: jsonObj({
+              blockerTaskIds: [],
+              reason: "materialized",
+              timestamp: currentTimestamp,
+            }),
+            created_at: currentTimestamp,
+          }),
+        );
+      }
+    }
+
+    if (toUnblock.length > 0) {
+      const unblockIds = toUnblock.map((id) => `'${sqlEscape(id)}'`).join(",");
+      ops.push(
+        q.raw(
+          `UPDATE \`task\` SET status = 'todo', updated_at = '${currentTimestamp}' WHERE task_id IN (${unblockIds}) AND status = 'blocked'`,
+        ),
+      );
+      for (const taskId of toUnblock) {
+        ops.push(
+          q.insert("event", {
+            event_id: uuidv4(),
+            task_id: taskId,
+            kind: "unblocked",
+            body: jsonObj({ timestamp: currentTimestamp }),
+            created_at: currentTimestamp,
+          }),
+        );
+      }
+    }
+
+    if (ops.length === 0) return okAsync(undefined);
+    return ResultAsync.combine(ops).map(() => undefined);
+  });
 }

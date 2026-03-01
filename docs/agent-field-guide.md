@@ -47,6 +47,17 @@ Use this when adding or extending any `tg` subcommand. Every step matters.
 
 □  Both output modes: human table + --json (no exceptions)
 
+□  For multi-ID commands: parseIdList + explicit config unwrap + accumulate results
+   const ids = parseIdList(rawIds);
+   const configResult = await readConfig();
+   if (configResult.isErr()) { console.error(configResult.error.message); process.exit(1); }
+   const config = configResult.value;
+   const results: ({ id: string; status: string } | { id: string; error: string })[] = [];
+   for (const id of ids) { const r = await doOne(config, id); r.match(ok => results.push({id, status:'ok'}), e => results.push({id, error: e.message})); }
+   const anyFailed = results.some(r => "error" in r);
+   // output results, then if (anyFailed) process.exit(1);
+   // Do NOT nest this loop inside asyncAndThen — partial-failure accumulation is impossible inside a monadic chain
+
 □  Register in src/cli/index.ts
 
 □  pnpm build  — always after source changes, before testing
@@ -83,7 +94,7 @@ await q.insert("event", {
 // Update
 await q.update("task", { status: "done", updated_at: now() }, { task_id });
 
-// Complex joins / aggregates — drop to raw
+// Complex joins / aggregates — drop to raw (q.raw, NOT doltSql directly in CLI)
 const result = await q.raw<TimelineRow>(complexSql);
 result.match(
   (rows) => {
@@ -94,6 +105,15 @@ result.match(
     process.exit(1);
   },
 );
+
+// Multiple independent queries — use ResultAsync.combine, NOT nested andThen
+// (nested andThen runs queries serially; combine runs them in parallel)
+const [r1, r2, r3] = await ResultAsync.combine([
+  q.raw<Row1>(sql1),
+  q.raw<Row2>(sql2),
+  q.select<Row3>("task", { where: { plan_id: planId } }),
+]);
+// r1, r2, r3 are typed correctly
 ```
 
 ### JSON column write: always `jsonObj()`
@@ -265,12 +285,29 @@ Or just always coerce at use-site: `String(r.started_at)`, `Number(r.task_count)
 
 Grep for any SQL that references `project` or `plan` without a guard. If it doesn't have `tableExists`, it's wrong in at least one environment.
 
+### 8. `(e) => e as AppError` in `ResultAsync.fromPromise` error mapper
+
+Runtime exceptions (TypeError, RangeError, null dereferences) are **not** `AppError`. Writing `(e) => e as AppError` silently miscasts them — the caller receives a malformed object with none of the expected fields.
+
+```typescript
+// Wrong — silent miscast
+ResultAsync.fromPromise(asyncOp(), (e) => e as AppError)
+
+// Correct — always use buildError in the mapper
+ResultAsync.fromPromise(
+  asyncOp(),
+  (e) => buildError(ErrorCode.UNKNOWN_ERROR, e instanceof Error ? e.message : String(e), e)
+)
+```
+
+Prefer `.andThen()` chains over async IIFEs wrapped in `ResultAsync.fromPromise` — chains keep all error paths in the Result type system and the error mapper is rarely needed.
+
 ### 7. SQL / Type Anti-Patterns (always avoid)
 
 These are checked by the `quality-reviewer` and will cause a FAIL verdict:
 
 1. **Raw SQL template literals for single-table INSERT/UPDATE** — e.g. ``doltSql(`INSERT INTO t VALUES ('${sqlEscape(x)}')`)`` where `query(repoPath).insert(table, data)` or `.update(table, data, where)` would suffice. Reserve `doltSql()` / `query.raw()` for complex multi-join queries and migrations.
-2. **Direct `doltSql()` in `src/cli/` files** — route through `query(repoPath)` from `src/db/query.ts`. Direct `doltSql()` is acceptable only in `src/db/`.
+2. **Direct `doltSql()` in `src/cli/` files** — route through `query(repoPath)` from `src/db/query.ts`. Use `q.insert()`, `.update()`, `.select()` for simple operations. Use `q.raw(sql)` for complex queries the builder cannot express (joins, upserts, `ON DUPLICATE KEY UPDATE`). Direct `doltSql()` is acceptable only in `src/db/` — it bypasses the layering if called in CLI.
 3. **Non-null assertions (`!` postfix)** on values that could be null at runtime without a preceding guard. Use optional chaining (`?.`) or an explicit null-check.
 4. **`as any` / `as unknown as T` type coercions** that bypass type safety. Use type guards or Zod validation instead.
 5. **Empty catch blocks** — always log or rethrow with context; never swallow errors silently.

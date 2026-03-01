@@ -18,7 +18,6 @@ import {
 import { autoCompletePlanIfDone } from "../domain/plan-completion.js";
 import {
   type ContextOutput,
-  compactContext,
   estimateJsonTokens,
 } from "../domain/token-estimate.js";
 import type { Edge, Event, Task } from "../domain/types.js";

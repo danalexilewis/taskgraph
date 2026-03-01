@@ -74,8 +74,7 @@ todos:
       expect(plan).toBeDefined();
       planId = plan?.plan_id ?? "";
 
-      const planHashId =
-        "p-" + planId.replace(/-/g, "").toLowerCase().slice(0, 6);
+      const planHashId = `p-${planId.replace(/-/g, "").toLowerCase().slice(0, 6)}`;
       const q = query(context.doltRepoPath);
       const backfillResult = await q.update(
         "project",
@@ -107,7 +106,7 @@ todos:
       if (context) {
         await teardownIntegrationTest(context);
       }
-    });
+    }, 60_000);
 
     function worktreeListJson(
       cwd: string,
@@ -138,7 +137,7 @@ todos:
     async function getPlanHashId(pId: string): Promise<string | null> {
       const result = await doltSql(
         `SELECT hash_id FROM \`project\` WHERE plan_id = '${pId}'`,
-        context!.doltRepoPath,
+        context?.doltRepoPath,
       );
       if (result.isErr() || result.value.length === 0) return null;
       const row = result.value[0] as { hash_id: string | null };
@@ -151,7 +150,7 @@ todos:
     } | null> {
       const result = await doltSql(
         `SELECT worktree_path, worktree_branch FROM \`plan_worktree\` WHERE plan_id = '${pId}'`,
-        context!.doltRepoPath,
+        context?.doltRepoPath,
       );
       if (result.isErr() || result.value.length === 0) return null;
       const row = result.value[0] as {
@@ -166,7 +165,7 @@ todos:
     ): Promise<{ plan_branch?: string } | null> {
       const result = await doltSql(
         `SELECT body FROM \`event\` WHERE task_id = '${tId}' AND kind = 'started' ORDER BY created_at DESC LIMIT 1`,
-        context!.doltRepoPath,
+        context?.doltRepoPath,
       );
       if (result.isErr() || result.value.length === 0) return null;
       const row = result.value[0] as { body: string | object };
@@ -210,7 +209,7 @@ todos:
       expect(pw).toBeDefined();
       expect(pw?.worktree_branch).toBe(planBranchName);
       expect(pw?.worktree_path).toBeTruthy();
-      expect(fs.existsSync(pw!.worktree_path)).toBe(true);
+      expect(fs.existsSync(pw?.worktree_path)).toBe(true);
 
       const branches = gitBranches(tempDir);
       expect(branches).toContain(planBranchName);
@@ -297,9 +296,9 @@ todos:
           e.path.includes(".taskgraph/worktrees") && e.path.includes(taskId2),
       );
       expect(task2Entry).toBeDefined();
-      const worktreePath = task2Entry!.path.startsWith("/")
-        ? task2Entry!.path
-        : path.join(tempDir, task2Entry!.path);
+      const worktreePath = task2Entry?.path.startsWith("/")
+        ? task2Entry?.path
+        : path.join(tempDir, task2Entry?.path);
       if (!fs.existsSync(worktreePath)) {
         throw new Error(`Worktree path not found: ${worktreePath}`);
       }
@@ -317,7 +316,6 @@ todos:
         tempDir,
       ).catch((e) => ({ exitCode: 1, stdout: "", stderr: String(e) }));
       if (doneResult.exitCode !== 0) {
-        // biome-ignore lint/suspicious/noConsole: debug
         console.error("TEST4 done --merge failed:", doneResult.stderr);
         await execa(
           "git",
@@ -332,7 +330,7 @@ todos:
       // by worktree"). Read the log directly from the plan worktree path.
       const pw4 = await getPlanWorktreeRow(planId);
       expect(pw4).toBeDefined();
-      const planWtPath4 = pw4!.worktree_path;
+      const planWtPath4 = pw4?.worktree_path;
       const logOut = await execa("git", ["log", "--oneline", "-5"], {
         cwd: planWtPath4,
       });
@@ -359,9 +357,9 @@ todos:
           e.path.includes(".taskgraph/worktrees") && e.path.includes(taskId3),
       );
       expect(task3Entry).toBeDefined();
-      const worktreePath = task3Entry!.path.startsWith("/")
-        ? task3Entry!.path
-        : path.join(tempDir, task3Entry!.path);
+      const worktreePath = task3Entry?.path.startsWith("/")
+        ? task3Entry?.path
+        : path.join(tempDir, task3Entry?.path);
       if (!fs.existsSync(worktreePath)) {
         throw new Error(`Worktree path not found: ${worktreePath}`);
       }
@@ -379,7 +377,6 @@ todos:
         tempDir,
       ).catch((e) => ({ exitCode: 1, stdout: "", stderr: String(e) }));
       if (doneResult.exitCode !== 0) {
-        // biome-ignore lint/suspicious/noConsole: debug
         console.error("TEST5 done --merge failed:", doneResult.stderr);
         await execa(
           "git",
@@ -392,7 +389,7 @@ todos:
       // Read from the plan worktree directly (plan branch is locked there).
       const pw5 = await getPlanWorktreeRow(planId);
       expect(pw5).toBeDefined();
-      const planWtPath5 = pw5!.worktree_path;
+      const planWtPath5 = pw5?.worktree_path;
       const logOut = await execa("git", ["log", "--oneline", "-5"], {
         cwd: planWtPath5,
       });
@@ -441,8 +438,7 @@ todos:
       expect(racePlan).toBeDefined();
       const racePlanId = racePlan?.plan_id ?? "";
 
-      const raceHashId =
-        "p-" + racePlanId.replace(/-/g, "").toLowerCase().slice(0, 6);
+      const raceHashId = `p-${racePlanId.replace(/-/g, "").toLowerCase().slice(0, 6)}`;
       const q = query(context.doltRepoPath);
       const backfillRace = await q.update(
         "project",

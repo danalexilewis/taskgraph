@@ -69,8 +69,8 @@ describe("tg dashboard", () => {
     if (stdout.length > 0) {
       const hasSection =
         stdout.includes("Completed") ||
-        stdout.includes("Active Plans") ||
-        stdout.includes("Active & next");
+        stdout.includes("Active Projects") ||
+        stdout.includes("Active tasks and upcoming");
       expect(hasSection).toBe(true);
     }
   }, 10000);

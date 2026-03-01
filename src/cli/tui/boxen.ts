@@ -17,17 +17,19 @@ export function getBoxInnerWidth(outerWidth: number): number {
 /**
  * Wrap a section title and content in a boxen box for terminal output.
  * Uses getTerminalWidth() when width is not provided so box width respects terminal.
+ * When fullWidth is true, the box uses the full width (no 200-char cap); use for dashboard --projects.
  */
 export function boxedSection(
   title: string,
   content: string,
   width: number,
-  options?: { borderColor?: string },
+  options?: { borderColor?: string; fullWidth?: boolean },
 ): string {
   const inner = title.trim() ? `${title}\n${content}` : content;
+  const boxWidth = options?.fullWidth ? width : Math.min(width, 200);
   return boxen(inner, {
     padding: 1,
-    width: Math.min(width, 200),
+    width: boxWidth,
     borderStyle: "round",
     borderColor: options?.borderColor ?? "blue",
   });

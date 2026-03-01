@@ -180,6 +180,36 @@ Setting TTL to `0` disables the cache entirely; all queries pass through directl
 
 Dolt has no built-in query result cache. MySQL 8 removed the query cache (deprecated in MySQL 5.7). Application-layer caching — as implemented here — is the only option for amortising repeated identical reads.
 
+## Dolt sql-server Mode (Performance)
+
+Running a persistent `dolt sql-server` eliminates the ~150 ms process-spawn overhead of the default `dolt --data-dir ... sql -q` execa path. This is the single biggest performance lever for high-frequency workloads (dashboard mode, parallel agents, CI).
+
+### When it matters
+
+| Workload | Default (execa) | sql-server pool |
+|---|---|---|
+| Single CLI command | ~150 ms/query | ~5 ms/query |
+| Dashboard (`tg status` polling) | ~450 ms per refresh | ~15 ms per refresh |
+| Parallel agents (N concurrent) | N × 150 ms | ~5 ms, shared pool |
+| Integration tests | ~150 ms/query | ~5 ms/query |
+
+### Setup
+
+```bash
+# Start a persistent Dolt sql-server (defaults: port 3306, no auth)
+dolt sql-server --port 3306 --data-dir .taskgraph/dolt
+
+# Activate pool mode in the CLI
+export TG_DOLT_SERVER_PORT=3306
+export TG_DOLT_SERVER_DATABASE=dolt
+```
+
+For full environment variable reference see [docs/infra.md → Environment variables](infra.md#environment-variables).
+
+### Integration test infrastructure
+
+`__tests__/integration/global-setup.ts` starts a Dolt sql-server on a dynamic port for each test run and sets `TG_DOLT_SERVER_PORT` / `TG_DOLT_SERVER_DATABASE` so all integration test queries use the pool. Teardown calls `closeServerPool` before killing the server. See [docs/testing.md](testing.md) for per-test isolation patterns.
+
 ## External Observability Options
 
 For deeper token-level analytics beyond what `tg stats` provides:

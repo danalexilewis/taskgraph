@@ -29,6 +29,7 @@ function mockStatusData() {
     canceledTasks: 0,
     activePlans: [],
     staleTasks: [],
+    staleDoingTasks: [],
     plansCount: 0,
     statusCounts: { todo: 1, doing: 0, done: 0, blocked: 0, canceled: 0 },
     actionableCount: 1,
@@ -38,6 +39,9 @@ function mockStatusData() {
     next7UpcomingPlans: [],
     last7CompletedPlans: [],
     activeWork: [],
+    agentCount: 0,
+    subAgentRuns: 0,
+    totalAgentHours: 0,
   };
 }
 

@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 import { okAsync } from "neverthrow";
 
+// Prevent leftover integration env from causing real pool use when mock does not apply
+delete process.env.TG_DOLT_SERVER_PORT;
+delete process.env.TG_DOLT_SERVER_DATABASE;
+
 /**
  * Mock doltSql before importing the modules under test so that Bun's module
  * registry resolves the mock for all subsequent imports in this file.
@@ -80,8 +84,9 @@ describe.serial("cachedQuery — cache deduplication and invalidation", () => {
     await cq.select("project");
 
     expect(mockDoltSql).toHaveBeenCalledTimes(3);
-    expect(cache.get(`select:project:${JSON.stringify({})}`)).toBeDefined();
-    expect(cache.get(`select:task:${JSON.stringify({})}`)).toBeDefined();
+    const selectKey = (t: string) => `select:${t}:{}::::[]::[]`;
+    expect(cache.get(selectKey("project"))).toBeDefined();
+    expect(cache.get(selectKey("task"))).toBeDefined();
   });
 });
 

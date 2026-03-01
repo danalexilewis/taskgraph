@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
 import { okAsync } from "neverthrow";
 
+// Prevent leftover integration env from causing real pool use when mock does not apply
+delete process.env.TG_DOLT_SERVER_PORT;
+delete process.env.TG_DOLT_SERVER_DATABASE;
+
 const mockDoltSql = mock((sql: string, _repoPath: string) => {
   if (sql.startsWith("SELECT COUNT(*)")) {
     return okAsync([{ "COUNT(*)": 0 }]);

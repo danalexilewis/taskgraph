@@ -94,7 +94,7 @@ todos:
     if (context) {
       await teardownIntegrationTest(context);
     }
-  });
+  }, 60_000);
 
   function worktreeListJson(
     cwd: string,
@@ -279,7 +279,7 @@ todos:
     if (context) {
       await teardownIntegrationTest(context);
     }
-  });
+  }, 60_000);
 
   function wtListJson(cwd: string): Array<{ path: string; branch?: string }> {
     const result = execaSync("wt", ["list", "--format", "json", "-C", cwd], {

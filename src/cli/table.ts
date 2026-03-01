@@ -67,6 +67,16 @@ export function renderTable(opts: TableOptions): string {
     contentWidths = natural.map((w, i) =>
       Math.min(w, maxWidths[i] ?? Number.POSITIVE_INFINITY),
     );
+    // Give leftover space to the flex column (e.g. Plan name) so table fills width
+    const totalSoFar = contentWidths.reduce((s, x) => s + x, 0);
+    const leftover = contentBudget - totalSoFar;
+    if (leftover > 0) {
+      const flexMax = maxWidths[flexColumnIndex] ?? Number.POSITIVE_INFINITY;
+      contentWidths[flexColumnIndex] = Math.min(
+        flexMax,
+        contentWidths[flexColumnIndex] + leftover,
+      );
+    }
   } else {
     // Fixed columns (all but flex) get natural capped by fixedMax and maxWidths
     contentWidths = natural.map((w, i) => {

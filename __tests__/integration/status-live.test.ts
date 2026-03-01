@@ -20,7 +20,7 @@ describe("status-live integration tests", () => {
     if (context) {
       await teardownIntegrationTest(context);
     }
-  });
+  }, 60_000);
 
   describe("tg status --dashboard", () => {
     it("exits 0 on SIGINT (live mode runs fallback under Node; stdout may be buffered when piped)", async () => {
@@ -114,8 +114,8 @@ describe("status-live integration tests", () => {
       if (stdout.length > 0) {
         const hasSection =
           stdout.includes("Completed") ||
-          stdout.includes("Active Plans") ||
-          stdout.includes("Active & next");
+          stdout.includes("Active Projects") ||
+          stdout.includes("Active tasks and upcoming");
         expect(hasSection).toBe(true);
       }
     }, 10000);

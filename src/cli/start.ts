@@ -158,6 +158,7 @@ export function startOne(
         plan_id,
       } = currentStatusResult[0];
 
+      // biome-ignore lint/suspicious/noConfusingVoidType: checkRunnable returns void on success
       let statusCheck: ResultAsync<void | undefined, AppError>;
       if (currentStatus === "doing" && !force) {
         const sql = `SELECT body FROM \`event\` WHERE task_id = '${sqlEscape(taskId)}' AND kind = 'started' ORDER BY created_at DESC LIMIT 1`;
@@ -179,7 +180,7 @@ export function startOne(
           );
         });
       } else if (currentStatus === "todo") {
-        statusCheck = checkRunnable(taskId, config.doltRepoPath);
+        statusCheck = checkRunnable(taskId, config.doltRepoPath, currentStatus);
       } else if (currentStatus === "doing" && force) {
         statusCheck = okAsync(undefined);
       } else {

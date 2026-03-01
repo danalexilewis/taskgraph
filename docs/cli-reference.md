@@ -667,11 +667,11 @@ tg dashboard [--tasks] [--projects]
 
 **Options:**
 
-- **Default (no options):** Full dashboard with sections: Completed, Active Plans, Active & next (same content as one-shot `tg status`, refreshed every 2s).
+- **Default (no options):** Simplified dashboard with two stacked tables (refreshed every 2s): **Active Projects** (top) and **Active tasks and upcoming** (bottom). Row counts are capped from terminal height so the screen does not scroll. One-line completed summary at the end; stale doing count shown there if any. The footer line shows **Types of Agents** (distinct agent names from `started` events in `event`), **Total Agent Invocations** (count of `done` events), and **Total Agent hours** (elapsed time from matching `started` to `done` per task, summed and converted to hours).
 - `--tasks`: Live tasks view with three boxed sections — Active tasks, Next 7 runnable, Last 7 completed. Only one of `--tasks` or `--projects` is allowed.
 - `--projects`: Live projects view with three boxed sections — Active plans, Next 7 upcoming, Last 7 completed.
 
-**Output:** Live-updating terminal UI. When OpenTUI is available (e.g. Bun), the dashboard uses it; otherwise a Node fallback (setInterval + ANSI clear + boxen sections) is used. Polling interval is 2 seconds.
+**Output:** Live-updating terminal UI. When OpenTUI is available (e.g. Bun), the dashboard uses it and updates the existing Text node in place so only changed pixels are redrawn (no full-screen clear). Otherwise a Node fallback uses **ansi-diff**: each refresh writes only the minimal ANSI diff to the previous frame, so the screen does not fully glitch. Polling interval is 2 seconds.
 
 **Deprecation:** Use `tg dashboard` instead of `tg status --dashboard`. The latter prints a deprecation warning to stderr and then runs the same dashboard; it will be removed in a future version.
 
@@ -679,7 +679,7 @@ tg dashboard [--tasks] [--projects]
 
 Quick overview: plans count, task counts by status, next runnable tasks.
 
-**Dashboard and focused views:** By default, `tg status` shows the **dashboard** (Completed, Active Plans, Active & next). When a **current cycle** exists (today between a cycle's start and end date), the default view may show a **cycle banner** (e.g. current cycle name and dates). Focused views: `--tasks` (single-table tasks: Id, Title, Plan, Status, Owner), `--projects` (single-table plans: Project, Status, Todo, Doing, Blocked, Done), `--initiatives` (initiatives table when the `initiative` table exists). Use `--filter active` with `--tasks` or `--projects` to restrict to active items (tasks: todo/doing/blocked; plans: not done/abandoned). Use `--filter upcoming` with `--initiatives` for draft or future cycles. Only one of `--tasks`, `--projects`, or `--initiatives` may be used at a time. Add `--dashboard` for a live-updating TUI (2s refresh) for any of these views.
+**Dashboard and focused views:** By default, `tg status` shows the **dashboard** (Completed, Active Plans, Active & next). When a **current cycle** exists (today between a cycle's start and end date), the default view may show a **cycle banner** (e.g. current cycle name and dates). Focused views: `--tasks` (single-table tasks: Id, Title, Project, Status, Owner), `--projects` (single-table plans: Project name, Status, Todo, Doing, Blocked, Done), `--initiatives` (initiatives table when the `initiative` table exists). Use `--filter active` with `--tasks` or `--projects` to restrict to active items (tasks: todo/doing/blocked; plans: not done/abandoned). Use `--filter upcoming` with `--initiatives` for draft or future cycles. Only one of `--tasks`, `--projects`, or `--initiatives` may be used at a time. Add `--dashboard` for a live-updating TUI (2s refresh) for any of these views.
 
 ```bash
 tg status [--plan <planId>] [--domain <domain>] [--skill <skill>] [--change-type <type>] [--tasks] [--projects] [--initiatives] [--filter active|upcoming] [--stale-threshold <hours>] [--dashboard]
@@ -692,8 +692,8 @@ tg status [--plan <planId>] [--domain <domain>] [--skill <skill>] [--change-type
 - `--skill <skill>`: Filter by task skill.
 - `--change-type <type>`: Filter by change type.
 - `--all`: Include canceled tasks and abandoned plans.
-- `--tasks`: Show a single table of tasks: columns Id (hash or task_id), Title, Plan, Status, Owner. Reuses `--plan`, `--domain`, `--skill`, `--change-type`, `--all`. With `--filter active`, restrict to task status in (todo, doing, blocked). One-shot or with `--dashboard` (refreshes every 2s).
-- `--projects`: Show a single table of projects (plans): columns Project, Status, Todo, Doing, Blocked, Done. Uses the `plan` table; filters `--plan`, `--domain`, `--skill`, `--all` apply.
+- `--tasks`: Show a single table of tasks: columns Id (hash or task_id), Title, Project, Status, Owner. Reuses `--plan`, `--domain`, `--skill`, `--change-type`, `--all`. With `--filter active`, restrict to task status in (todo, doing, blocked). One-shot or with `--dashboard` (refreshes every 2s).
+- `--projects`: Show a single table of projects (plans): columns Project name, Status, Todo, Doing, Blocked, Done. Uses the `plan` table; filters `--plan`, `--domain`, `--skill`, `--all` apply.
 - `--initiatives`: Show initiatives table (Initiative, Status, Cycle Start, Cycle End, Projects). Requires the `initiative` table; if it does not exist, prints a stub message and exits 0. One-shot or with `--dashboard`.
 - `--filter <filter>`: For `--projects`, use `active` to show only plans whose status is not `done` or `abandoned`. For `--tasks`, use `active` to show only tasks with status todo, doing, or blocked. For `--initiatives`, use `upcoming` to show initiatives with status `draft` or `cycle_start` &gt; today.
 - `--stale-threshold <hours>`: Hours threshold for the stale doing-task warning (default: 2). When any task has been in `doing` status for longer than this threshold, a yellow "⚠ Stale Doing Tasks" warning section appears in the dashboard. With `--json`, stale tasks are included as `stale_tasks` array.
@@ -701,19 +701,21 @@ tg status [--plan <planId>] [--domain <domain>] [--skill <skill>] [--change-type
 - `--json`: Output as JSON object (one-shot only; not supported with `--dashboard`).
 
 **Stale doing-task warning:** When any task has been in `doing` status for more than `--stale-threshold` hours (default 2), the dashboard renders a yellow warning section:
+
 ```
 ⚠  Stale Doing Tasks (>2h)
 ┌──────────┬──────────────────────────┬────────┬─────────┐
 │ Id       │ Title                    │ Owner  │ Age     │
 └──────────┴──────────────────────────┴────────┴─────────┘
 ```
+
 Use `tg done <taskId> --evidence "completed previously" --force` to clear stale tasks if the work is done.
 
 **Output (human):**
 
-- **Dashboard (default):** Section boxes (via boxen): each logical section (Completed, Active Plans, Active & next) is wrapped in a rounded box. Inner text uses chalk for colors.
-- **Tasks view (`--tasks`):** A single boxen-wrapped table with columns Id, Title, Plan, Status, Owner. One-shot or with `--dashboard` (refreshes every 2s).
-- **Projects view (`--projects`):** A single boxen-wrapped table with columns Project, Status, Todo, Doing, Blocked, Done. One-shot or with `--dashboard` (refreshes every 2s).
+- **Dashboard (default):** Two section boxes (via boxen): **Active Projects** (top) and **Active tasks and upcoming** (bottom). Each is wrapped in a rounded box; row counts are limited by terminal height. One-line completed summary (and stale count if any) at the end. Inner text uses chalk for colors.
+- **Tasks view (`--tasks`):** A single boxen-wrapped table with columns Id, Title, Project, Status, Owner. One-shot or with `--dashboard` (refreshes every 2s).
+- **Projects view (`--projects`):** A single boxen-wrapped table with columns Project name, Status, Todo, Doing, Blocked, Done. One-shot or with `--dashboard` (refreshes every 2s).
 - **Initiatives view (`--initiatives`):** If the `initiative` table does not exist, prints a stub message (e.g. "Initiatives view requires the Initiative-Project hierarchy...") and exits 0. If it exists, a single boxen-wrapped table with columns Initiative, Status, Cycle Start, Cycle End, Projects; one-shot or with `--dashboard` (refreshes every 2s).
 - Plans: count
 - Tasks: summary line with counts **not done**, **in progress**, **blocked**, **actionable** (e.g. `Tasks: 12 not done (3 in progress, 2 blocked, 4 actionable)`)
@@ -725,7 +727,7 @@ With `--json` (one-shot only; not with `--dashboard`): default view outputs an o
 **Live mode behavior** (`--dashboard`):
 
 - **Deprecation.** Using `tg status --dashboard` prints a deprecation warning to stderr and then runs the same dashboard as `tg dashboard`. Prefer `tg dashboard`; `tg status --dashboard` will be removed in a future version.
-- **Same sections as one-shot.** The same sections are shown (in boxen boxes): Completed, Active Plans, Active & next. Terminal resize is reflected on the next refresh.
+- **Two stacked tables.** Active Projects then Active tasks and upcoming (in boxen boxes), with height-based row limits. Terminal resize is reflected on the next refresh.
 - **OpenTUI when available.** When the runtime supports it (e.g. Bun), the live view may use OpenTUI (`@opentui/core`, `createCliRenderer`) for rendering. When OpenTUI is not available or init fails (e.g. Node), the implementation falls back to Node only: `setInterval`, ANSI clear (e.g. `\x1b[2J\x1b[H`), and the existing human status printer (with boxen section boxes).
 - **Polling.** The status query chain is re-run every 2 seconds. Dolt is invoked via execa per call. File watching is out of scope.
 - **Raw mode and exit.** On entering live mode, `process.stdin.setRawMode(true)` is set so that the "q" key can quit. On **SIGINT**, **SIGTERM**, or key **"q"**: clear the refresh interval, call `setRawMode(false)`, then `process.exit(0)`. **Ctrl+C** and **"q"** both quit live mode.

@@ -3,9 +3,9 @@ import { ResultAsync } from "neverthrow";
 import { v4 as uuidv4 } from "uuid";
 import { doltCommit } from "../db/commit";
 import { sqlEscape } from "../db/escape";
-import { allocateHashId } from "../db/hash-id";
+import { allocateHashIdFromSet, fetchUsedHashIds } from "../db/hash-id";
 import { jsonObj, now, query } from "../db/query";
-import { syncBlockedStatusForTask } from "../domain/blocked-status";
+import { syncBlockedStatusForPlanTasks } from "../domain/blocked-status";
 import {
   loadRegistry,
   matchDocsForTask,
@@ -223,6 +223,11 @@ export function upsertTasksAndEdges(
 
           let importedTasksCount = 0;
 
+          // Pre-fetch all existing hash_ids once to avoid N separate queries
+          const usedHashIdsRes = await fetchUsedHashIds(repoPath);
+          if (usedHashIdsRes.isErr()) throw usedHashIdsRes.error;
+          const usedHashIds = usedHashIdsRes.value;
+
           for (const parsedTask of parsedTasks) {
             let taskId = externalKeyToTaskId.get(parsedTask.stableKey);
 
@@ -262,9 +267,7 @@ export function upsertTasksAndEdges(
               // Insert new task
               taskId = uuidv4();
               importedTasksCount++;
-              const hashIdRes = await allocateHashId(repoPath, taskId);
-              if (hashIdRes.isErr()) throw hashIdRes.error;
-              const hashId = hashIdRes.value;
+              const hashId = allocateHashIdFromSet(taskId, usedHashIds);
               const taskStatus = parsedTask.status ?? "todo";
               const baseKey = externalKeyPrefix
                 ? `${externalKeyPrefix}-${parsedTask.stableKey}`
@@ -379,12 +382,13 @@ export function upsertTasksAndEdges(
             }
           }
 
-          // Sync blocked status for all plan tasks after edges are in place
+          // Bulk-sync blocked status for all plan tasks after edges are in place
           const planTaskIds = Array.from(externalKeyToTaskId.values());
-          for (const taskId of planTaskIds) {
-            const syncResult = await syncBlockedStatusForTask(repoPath, taskId);
-            if (syncResult.isErr()) throw syncResult.error;
-          }
+          const syncResult = await syncBlockedStatusForPlanTasks(
+            repoPath,
+            planTaskIds,
+          );
+          if (syncResult.isErr()) throw syncResult.error;
 
           const commitResult = await doltCommit(
             "plan-import: upsert tasks and edges",

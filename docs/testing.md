@@ -111,6 +111,11 @@ pnpm test:e2e
 
 OpenTUI is **Bun-only** and must stay out of type scope for the Node-based gate. Our tsconfig keeps it isolated: `include: ["src/**/*.ts"]`, `exclude: ["node_modules"]`, `types: ["node"]`. See [Research: Cheap-Gate Typecheck/Lint Failures](research/cheap-gate-typecheck-lint-failures.md) for the full rationale.
 
+## Test patterns / gotchas
+
+- **cachedQuery cache keys**: Tests that assert `cache.get(key)` must use the full key shape. For `select(table, options)` the key is `select:${table}:${where}:${orderBy}:${limit}:${offset}:${groupBy}:${having}:${columns}`; with no options that is `select:${table}:{}::::[]::[]`. Using a shortened key (e.g. `select:project:{}`) will miss and the assertion will see `undefined`.
+- **Integration tests and shared state**: When tests in the same file share seeded DB state and a later test depends on that state (e.g. "task has 1 unmet blocker"), ensure an earlier test has not mutated it. If a prior test changes the state (e.g. marks the blocker task `done`), reset the state at the start of the dependent test (e.g. `UPDATE task SET status = 'todo' WHERE ...`) so the assertion sees the expected data.
+
 ## Environment / gotchas
 
 - **`.env.local` for integration tests**: `DOLT_ROOT_PATH` and `TG_GOLDEN_TEMPLATE` must be **empty** in `.env.local` (or set to the actual temp directory path, not to the `.taskgraph/tg-*.txt` path files). Bun auto-loads `.env.local`; if these point to the path files instead of the directories they contain, `getGoldenTemplatePath()` can return a file path and copy operations may fail (EISDIR). See `.env.local.example` for correct empty values.

@@ -1,6 +1,6 @@
 import chalk from "chalk";
 import type { Command } from "commander";
-import { okAsync, type ResultAsync } from "neverthrow";
+import { okAsync, ResultAsync } from "neverthrow";
 import { sqlEscape } from "../db/escape";
 import { tableExists } from "../db/migrate";
 import { query } from "../db/query";
@@ -64,6 +64,7 @@ export interface TaskRow {
 }
 
 export interface StaleDoingTaskRow {
+  task_id: string;
   hash_id: string | null;
   title: string;
   owner: string | null;
@@ -86,6 +87,8 @@ interface NextTaskRow {
   hash_id: string | null;
   title: string;
   plan_title: string;
+  /** Present when fetched for dashboard Next 7 (used for stale indicator). */
+  updated_at?: string | null;
 }
 
 /** Row for last N completed tasks (dashboard); includes updated_at for recency display. */
@@ -149,6 +152,12 @@ export interface StatusData {
     end_date: string;
     initiative_count: number;
   } | null;
+  /** Distinct agent names (from started event body.agent). */
+  agentCount: number;
+  /** Number of task completions (done events). */
+  subAgentRuns: number;
+  /** Sum of started→done elapsed time in hours. */
+  totalAgentHours: number;
 }
 
 export function fetchStatusData(
@@ -199,6 +208,18 @@ export function fetchStatusData(
   const completedPlansSql = `SELECT COUNT(*) AS count FROM ${bt("project")} WHERE status = 'done'`;
   const completedTasksSql = `SELECT COUNT(*) AS count FROM ${bt("task")} WHERE status = 'done'`;
   const canceledTasksSql = `SELECT COUNT(*) AS count FROM ${bt("task")} WHERE status = 'canceled'`;
+  const agentMetricsSql = `
+    SELECT
+      (SELECT COUNT(DISTINCT JSON_UNQUOTE(JSON_EXTRACT(body, '$.agent'))) FROM ${bt("event")} WHERE kind = 'started' AND JSON_EXTRACT(body, '$.agent') IS NOT NULL) AS agent_count,
+      (SELECT COUNT(*) FROM ${bt("event")} WHERE kind = 'done') AS sub_agent_runs,
+      (SELECT COALESCE(SUM(sec), 0) / 3600 FROM (
+        SELECT TIMESTAMPDIFF(SECOND,
+          (SELECT created_at FROM ${bt("event")} e2 WHERE e2.task_id = d.task_id AND e2.kind = 'started' ORDER BY e2.created_at DESC LIMIT 1),
+          d.created_at
+        ) AS sec
+        FROM ${bt("event")} d WHERE d.kind = 'done'
+      ) x) AS total_agent_minutes
+  `;
 
   const activePlansSql = `
     SELECT p.plan_id, p.title, t.status, COUNT(*) AS count
@@ -250,7 +271,7 @@ export function fetchStatusData(
     ${excludeCanceledAbandoned}
   `;
   const nextSql = `
-    SELECT t.task_id, t.hash_id, t.title, p.title as plan_title
+    SELECT t.task_id, t.hash_id, t.title, p.title as plan_title, t.updated_at
     FROM ${bt("task")} t
     JOIN ${bt("project")} p ON t.plan_id = p.plan_id
     WHERE t.status = 'todo'
@@ -265,7 +286,7 @@ export function fetchStatusData(
     LIMIT 3
   `;
   const next7Sql = `
-    SELECT t.task_id, t.hash_id, t.title, p.title as plan_title
+    SELECT t.task_id, t.hash_id, t.title, p.title as plan_title, t.updated_at
     FROM ${bt("task")} t
     JOIN ${bt("project")} p ON t.plan_id = p.plan_id
     WHERE t.status = 'todo'
@@ -322,177 +343,147 @@ export function fetchStatusData(
     ORDER BY e.created_at DESC, t.task_id
   `;
 
-  return q.raw<{ count: number }>(completedPlansSql).andThen((cpRes) => {
-    const completedPlans = cpRes[0]?.count ?? 0;
-    return q.raw<{ count: number }>(completedTasksSql).andThen((ctRes) => {
-      const completedTasks = ctRes[0]?.count ?? 0;
-      return q.raw<{ count: number }>(canceledTasksSql).andThen((canRes) => {
+  interface AgentMetricsRow {
+    agent_count: number;
+    sub_agent_runs: number;
+    total_agent_minutes: number;
+  }
+  // All queries are independent reads — run them all in parallel.
+  return ResultAsync.combine([
+    q.raw<{ count: number }>(completedPlansSql),
+    q.raw<{ count: number }>(completedTasksSql),
+    q.raw<{ count: number }>(canceledTasksSql),
+    q.raw<AgentMetricsRow>(agentMetricsSql),
+    q.raw<ActivePlanRow>(activePlansSql),
+    q.raw<{ plan_id: string; count: number }>(actionablePerPlanSql),
+    q.raw<{ task_id: string; hash_id: string | null; title: string }>(staleSql),
+    q.raw<{ count: number }>(plansCountSql),
+    q.raw<{ status: string; count: number }>(statusCountsSql),
+    q.raw<{ count: number }>(actionableCountSql),
+    q.raw<NextTaskRow>(nextSql),
+    q.raw<NextTaskRow>(next7Sql),
+    q.raw<LastCompletedTaskRow>(last7CompletedSql),
+    q.raw<PlanSummaryRow>(next7UpcomingPlansSql),
+    q.raw<PlanSummaryRow>(last7CompletedPlansSql),
+    q.raw<ActiveWorkRow>(activeWorkSql),
+    fetchStaleDoingTasks(config.doltRepoPath, options.staleThreshold ?? 2),
+  ] as const).andThen(
+    ([
+      cpRes,
+      ctRes,
+      canRes,
+      amRes,
+      apRows,
+      actionableRows,
+      staleRows,
+      plansRes,
+      statusRows,
+      actionableRes,
+      nextTasks,
+      next7RunnableTasks,
+      last7CompletedTasks,
+      next7UpcomingPlans,
+      last7CompletedPlans,
+      activeWork,
+      staleDoingTasks,
+    ]) => {
+      {
+        const completedPlans = cpRes[0]?.count ?? 0;
+        const completedTasks = ctRes[0]?.count ?? 0;
         const canceledTasks = canRes[0]?.count ?? 0;
-        return q.raw<ActivePlanRow>(activePlansSql).andThen((apRows) =>
-          q
-            .raw<{
-              plan_id: string;
-              count: number;
-            }>(actionablePerPlanSql)
-            .andThen((actionableRows) => {
-              const actionableMap = new Map(
-                actionableRows.map((r) => [r.plan_id, r.count]),
-              );
-              const planMap = new Map<
-                string,
-                {
-                  plan_id: string;
-                  title: string;
-                  todo: number;
-                  doing: number;
-                  blocked: number;
-                  done: number;
-                  actionable: number;
-                }
-              >();
-              for (const row of apRows) {
-                if (!planMap.has(row.plan_id)) {
-                  planMap.set(row.plan_id, {
-                    plan_id: row.plan_id,
-                    title: row.title,
-                    todo: 0,
-                    doing: 0,
-                    blocked: 0,
-                    done: 0,
-                    actionable: actionableMap.get(row.plan_id) ?? 0,
-                  });
-                }
-                const entry = planMap.get(row.plan_id);
-                if (entry) {
-                  if (row.status === "todo") entry.todo = row.count;
-                  else if (row.status === "doing") entry.doing = row.count;
-                  else if (row.status === "blocked") entry.blocked = row.count;
-                  else if (row.status === "done") entry.done = row.count;
-                }
-              }
-              const activePlans = Array.from(planMap.values());
-
-              return q
-                .raw<{
-                  task_id: string;
-                  hash_id: string | null;
-                  title: string;
-                }>(staleSql)
-                .andThen((staleRows) =>
-                  q.raw<{ count: number }>(plansCountSql).andThen((plansRes) =>
-                    q
-                      .raw<{
-                        status: string;
-                        count: number;
-                      }>(statusCountsSql)
-                      .andThen((statusRows) => {
-                        const statusCounts: Record<string, number> = {};
-                        statusRows.forEach((r) => {
-                          statusCounts[r.status] = r.count;
-                        });
-                        return q
-                          .raw<{
-                            count: number;
-                          }>(actionableCountSql)
-                          .andThen((actionableRes) =>
-                            q.raw<NextTaskRow>(nextSql).andThen((nextTasks) =>
-                              q
-                                .raw<NextTaskRow>(next7Sql)
-                                .andThen((next7RunnableTasks) =>
-                                  q
-                                    .raw<LastCompletedTaskRow>(
-                                      last7CompletedSql,
-                                    )
-                                    .andThen((last7CompletedTasks) =>
-                                      q
-                                        .raw<PlanSummaryRow>(
-                                          next7UpcomingPlansSql,
-                                        )
-                                        .andThen((next7UpcomingPlans) =>
-                                          q
-                                            .raw<PlanSummaryRow>(
-                                              last7CompletedPlansSql,
-                                            )
-                                            .andThen((last7CompletedPlans) =>
-                                              q
-                                                .raw<ActiveWorkRow>(
-                                                  activeWorkSql,
-                                                )
-                                                .andThen((activeWork) =>
-                                                  fetchStaleDoingTasks(
-                                                    config.doltRepoPath,
-                                                    options.staleThreshold ?? 2,
-                                                  ).andThen(
-                                                    (staleDoingTasks) => {
-                                                      const base: StatusData = {
-                                                        completedPlans,
-                                                        completedTasks,
-                                                        canceledTasks,
-                                                        activePlans,
-                                                        staleTasks: staleRows,
-                                                        staleDoingTasks,
-                                                        nextTasks,
-                                                        next7RunnableTasks,
-                                                        last7CompletedTasks,
-                                                        next7UpcomingPlans,
-                                                        last7CompletedPlans,
-                                                        activeWork,
-                                                        plansCount:
-                                                          plansRes[0]?.count ??
-                                                          0,
-                                                        statusCounts,
-                                                        actionableCount:
-                                                          actionableRes[0]
-                                                            ?.count ?? 0,
-                                                      };
-                                                      return tableExists(
-                                                        config.doltRepoPath,
-                                                        "cycle",
-                                                      ).andThen(
-                                                        (cycleExists) => {
-                                                          if (!cycleExists)
-                                                            return okAsync(
-                                                              base,
-                                                            );
-                                                          const currentCycleSql = `
-                                                      SELECT c.name, c.start_date, c.end_date,
-                                                             COUNT(DISTINCT i.initiative_id) AS initiative_count
-                                                      FROM ${bt("cycle")} c
-                                                      LEFT JOIN ${bt("initiative")} i ON i.cycle_id = c.cycle_id
-                                                      WHERE CURDATE() BETWEEN c.start_date AND c.end_date
-                                                      GROUP BY c.cycle_id, c.name, c.start_date, c.end_date
-                                                      LIMIT 1`;
-                                                          return q
-                                                            .raw<{
-                                                              name: string;
-                                                              start_date: string;
-                                                              end_date: string;
-                                                              initiative_count: number;
-                                                            }>(currentCycleSql)
-                                                            .map((rows) => ({
-                                                              ...base,
-                                                              currentCycle:
-                                                                rows[0] ?? null,
-                                                            }));
-                                                        },
-                                                      );
-                                                    },
-                                                  ),
-                                                ),
-                                            ),
-                                        ),
-                                    ),
-                                ),
-                            ),
-                          );
-                      }),
-                  ),
-                );
-            }),
+        const agentCount = Number(amRes[0]?.agent_count ?? 0);
+        const subAgentRuns = Number(amRes[0]?.sub_agent_runs ?? 0);
+        const totalAgentHours = Math.round(
+          Number(amRes[0]?.total_agent_minutes ?? 0),
         );
-      });
-    });
-  });
+
+        const actionableMap = new Map(
+          actionableRows.map((r) => [r.plan_id, r.count]),
+        );
+        const planMap = new Map<
+          string,
+          {
+            plan_id: string;
+            title: string;
+            todo: number;
+            doing: number;
+            blocked: number;
+            done: number;
+            actionable: number;
+          }
+        >();
+        for (const row of apRows) {
+          if (!planMap.has(row.plan_id)) {
+            planMap.set(row.plan_id, {
+              plan_id: row.plan_id,
+              title: row.title,
+              todo: 0,
+              doing: 0,
+              blocked: 0,
+              done: 0,
+              actionable: actionableMap.get(row.plan_id) ?? 0,
+            });
+          }
+          const entry = planMap.get(row.plan_id);
+          if (entry) {
+            if (row.status === "todo") entry.todo = row.count;
+            else if (row.status === "doing") entry.doing = row.count;
+            else if (row.status === "blocked") entry.blocked = row.count;
+            else if (row.status === "done") entry.done = row.count;
+          }
+        }
+        const activePlans = Array.from(planMap.values());
+
+        const statusCounts: Record<string, number> = {};
+        statusRows.forEach((r) => {
+          statusCounts[r.status] = r.count;
+        });
+
+        const base: StatusData = {
+          completedPlans,
+          completedTasks,
+          canceledTasks,
+          activePlans,
+          staleTasks: staleRows,
+          staleDoingTasks,
+          nextTasks,
+          next7RunnableTasks,
+          last7CompletedTasks,
+          next7UpcomingPlans,
+          last7CompletedPlans,
+          activeWork,
+          plansCount: plansRes[0]?.count ?? 0,
+          statusCounts,
+          actionableCount: actionableRes[0]?.count ?? 0,
+          agentCount,
+          subAgentRuns,
+          totalAgentHours,
+        };
+
+        return tableExists(config.doltRepoPath, "cycle").andThen(
+          (cycleExists) => {
+            if (!cycleExists) return okAsync(base);
+            const currentCycleSql = `
+          SELECT c.name, c.start_date, c.end_date,
+                 COUNT(DISTINCT i.initiative_id) AS initiative_count
+          FROM ${bt("cycle")} c
+          LEFT JOIN ${bt("initiative")} i ON i.cycle_id = c.cycle_id
+          WHERE CURDATE() BETWEEN c.start_date AND c.end_date
+          GROUP BY c.cycle_id, c.name, c.start_date, c.end_date
+          LIMIT 1`;
+            return q
+              .raw<{
+                name: string;
+                start_date: string;
+                end_date: string;
+                initiative_count: number;
+              }>(currentCycleSql)
+              .map((rows) => ({ ...base, currentCycle: rows[0] ?? null }));
+          },
+        );
+      }
+    },
+  );
 }
 
 /**
@@ -507,6 +498,7 @@ export function fetchStaleDoingTasks(
   const threshold = Math.max(0, Math.floor(thresholdHours));
   const sql = `
     SELECT
+      t.task_id,
       t.hash_id,
       t.title,
       t.owner,
@@ -686,7 +678,7 @@ export function statusCommand(program: Command) {
     )
     .option(
       "--tasks",
-      "Show tasks table: Id, Title, Plan, Status, Owner (reuses --plan, --domain, --skill, --filter active)",
+      "Show tasks table: Id, Title, Project, Status, Owner (reuses --plan, --domain, --skill, --filter active)",
     )
     .option(
       "--initiatives",
@@ -801,8 +793,9 @@ export function statusCommand(program: Command) {
           console.error("tg status --dashboard does not support --json");
           process.exit(1);
         }
-        const { runOpenTUILiveInitiatives } =
-          await import("./tui/live-opentui.js");
+        const { runOpenTUILiveInitiatives } = await import(
+          "./tui/live-opentui.js"
+        );
         try {
           await runOpenTUILiveInitiatives(config, statusOptions);
           return;
@@ -858,13 +851,21 @@ export function statusCommand(program: Command) {
 
       if (viewMode === "tasks" && !useLive) {
         const result = await readConfig().asyncAndThen((config: Config) =>
-          fetchTasksTableData(config, statusOptions),
+          fetchTasksTableData(config, statusOptions).andThen((rows) =>
+            fetchStaleDoingTasks(
+              config.doltRepoPath,
+              statusOptions.staleThreshold ?? 2,
+            ).map((staleDoingTasks) => [rows, staleDoingTasks] as const),
+          ),
         );
         result.match(
-          (rows: TaskRow[]) => {
+          ([rows, staleDoingTasks]) => {
             if (!rootOpts(cmd).json) {
               const w = getTerminalWidth();
-              console.log(`\n${formatTasksAsString(rows, w)}\n`);
+              const staleIds = new Set(staleDoingTasks.map((t) => t.task_id));
+              console.log(
+                `\n${formatTasksAsString(rows, w, { staleTaskIds: staleIds })}\n`,
+              );
             } else {
               console.log(JSON.stringify(rows, null, 2));
             }
@@ -931,8 +932,9 @@ export function statusCommand(program: Command) {
         const config = configResult.value;
 
         if (viewMode === "projects") {
-          const { runOpenTUILiveProjects } =
-            await import("./tui/live-opentui.js");
+          const { runOpenTUILiveProjects } = await import(
+            "./tui/live-opentui.js"
+          );
           try {
             await runOpenTUILiveProjects(config, statusOptions);
             return;
@@ -1010,20 +1012,36 @@ export function statusCommand(program: Command) {
               if (ch.toString().toLowerCase() === "q") cleanup();
             });
           }
-          const firstResult = await fetchTasksTableData(config, statusOptions);
+          const firstResult = await readConfig().asyncAndThen((c: Config) =>
+            fetchTasksTableData(c, statusOptions).andThen((rows) =>
+              fetchStaleDoingTasks(
+                c.doltRepoPath,
+                statusOptions.staleThreshold ?? 2,
+              ).map((staleDoingTasks) => [rows, staleDoingTasks] as const),
+            ),
+          );
           firstResult.match(
-            (rows: TaskRow[]) => {
+            ([rows, staleDoingTasks]) => {
               const w = getTerminalWidth();
-              console.log(`\n${formatTasksAsString(rows, w)}\n`);
+              const staleIds = new Set(staleDoingTasks.map((t) => t.task_id));
+              console.log(
+                `\n${formatTasksAsString(rows, w, { staleTaskIds: staleIds })}\n`,
+              );
               timer = setInterval(async () => {
                 const r = await readConfig().asyncAndThen((c: Config) =>
-                  fetchTasksTableData(c, statusOptions),
+                  fetchTasksTableData(c, statusOptions).andThen((data) =>
+                    fetchStaleDoingTasks(
+                      c.doltRepoPath,
+                      statusOptions.staleThreshold ?? 2,
+                    ).map((stale) => [data, stale] as const),
+                  ),
                 );
                 r.match(
-                  (data) => {
+                  ([data, stale]) => {
                     process.stdout.write("\x1b[2J\x1b[H");
+                    const ids = new Set(stale.map((t) => t.task_id));
                     console.log(
-                      `\n${formatTasksAsString(data, getTerminalWidth())}\n`,
+                      `\n${formatTasksAsString(data, getTerminalWidth(), { staleTaskIds: ids })}\n`,
                     );
                   },
                   () => {},
@@ -1130,6 +1148,11 @@ function getCompletedSectionContent(d: StatusData): string {
   );
 }
 
+/** One-line footer for dashboard: agent count, sub-agent runs, total agent minutes. */
+export function getDashboardFooterLine(d: StatusData): string {
+  return `Types of Agents: ${d.agentCount}  Total Agent Invocations: ${d.subAgentRuns}  Total Agent hours: ${d.totalAgentHours}`;
+}
+
 const NARROW_PLAN_WIDTH = 50;
 
 /** Reserve lines for box borders, section titles, completed summary. */
@@ -1150,11 +1173,6 @@ export function getDashboardRowLimits(terminalRows: number): {
   };
 }
 
-function truncatePlanTitle(title: string, maxLen: number): string {
-  if (title.length <= maxLen) return title;
-  return `${title.slice(0, maxLen - 1)}…`;
-}
-
 function getActivePlansSectionContent(
   d: StatusData,
   w: number,
@@ -1163,43 +1181,51 @@ function getActivePlansSectionContent(
   if (d.activePlans.length === 0) return "";
   const innerW = getBoxInnerWidth(w);
   const narrow = innerW < NARROW_PLAN_WIDTH;
-  const planMaxLen = narrow ? 8 : 24;
   let plans = d.activePlans;
   if (maxRows != null && maxRows > 0) {
     plans = plans.slice(0, maxRows - 1);
   }
   const planRows = plans.map((p) => [
-    truncatePlanTitle(p.title, planMaxLen),
+    p.title,
     String(p.todo),
+    p.actionable > 0 ? chalk.greenBright(String(p.actionable)) : "0",
     p.doing > 0 ? chalk.cyan(String(p.doing)) : "0",
     p.blocked > 0 ? chalk.red(String(p.blocked)) : "0",
     p.done > 0 ? chalk.green(String(p.done)) : "0",
-    p.actionable > 0 ? chalk.greenBright(String(p.actionable)) : "0",
   ]);
-  const sumTodo = d.activePlans.reduce((s, p) => s + p.todo, 0);
-  const sumDoing = d.activePlans.reduce((s, p) => s + p.doing, 0);
-  const sumBlocked = d.activePlans.reduce((s, p) => s + p.blocked, 0);
-  const sumDone = d.activePlans.reduce((s, p) => s + p.done, 0);
-  const sumReady = d.activePlans.reduce((s, p) => s + p.actionable, 0);
+  const sumTodo = d.activePlans.reduce((s, p) => s + Number(p.todo), 0);
+  const sumDoing = d.activePlans.reduce((s, p) => s + Number(p.doing), 0);
+  const sumBlocked = d.activePlans.reduce((s, p) => s + Number(p.blocked), 0);
+  const sumDone = d.activePlans.reduce((s, p) => s + Number(p.done), 0);
+  const sumReady = d.activePlans.reduce((s, p) => s + Number(p.actionable), 0);
   const aggRow = [
     chalk.dim("Total"),
     String(sumTodo),
+    sumReady > 0 ? chalk.greenBright(String(sumReady)) : "0",
     sumDoing > 0 ? chalk.cyan(String(sumDoing)) : "0",
     sumBlocked > 0 ? chalk.red(String(sumBlocked)) : "0",
     sumDone > 0 ? chalk.green(String(sumDone)) : "0",
-    sumReady > 0 ? chalk.greenBright(String(sumReady)) : "0",
   ];
   const headers = narrow
-    ? ["Plan", "To", "Do", "Blk", "Done", "Rdy"]
-    : ["Plan", "Todo", "Doing", "Blocked", "Done", "Ready"];
+    ? ["Project name", "To", "Rdy", "Do", "Blk", "Done"]
+    : ["Project name", "Todo", "Ready", "Doing", "Blocked", "Done"];
+  const numericHeaders = headers.slice(1);
+  const numericColW = Math.max(...numericHeaders.map((h) => h.length));
   return renderTable({
     headers,
     rows: [...planRows, aggRow],
     maxWidth: innerW,
-    minWidths: narrow ? [8, 2, 2, 3, 3, 3] : [12, 4, 3, 5, 3, 5],
-    maxWidths: narrow
-      ? [undefined, 2, 2, 3, 4, 3]
-      : [undefined, undefined, 4, 6, 4, undefined],
+    minWidths: narrow
+      ? [8, numericColW, numericColW, numericColW, numericColW, numericColW]
+      : [12, numericColW, numericColW, numericColW, numericColW, numericColW],
+    maxWidths: [
+      undefined,
+      numericColW,
+      numericColW,
+      numericColW,
+      numericColW,
+      numericColW,
+    ],
   });
 }
 
@@ -1221,6 +1247,13 @@ function displayStatus(
   return status;
 }
 
+/** Status-only icon (no stale): used when Stale has its own column. */
+function statusIconOnly(status: string, isRecentlyDone: boolean): string {
+  if (isRecentlyDone || status === "done") return chalk.green("✓");
+  if (status === "blocked") return chalk.red("●");
+  return chalk.green("●");
+}
+
 function truncatePlan(s: string): string {
   if (s.length <= PLAN_TITLE_MAX_LEN) return s;
   return `${s.slice(0, PLAN_TITLE_MAX_LEN - 1)}…`;
@@ -1228,7 +1261,8 @@ function truncatePlan(s: string): string {
 
 /**
  * Single merged section: active work (doing) first, then next runnable (todo).
- * Table headers: Id, Task, Plan, Status, Agent. Id is thin (max 10); Task is flex; Plan truncated.
+ * Table headers: Id, Task, Project, Stale, Status, Agent. Id is thin (max 10); Task is flex; Project truncated.
+ * Stale column: yellow ▲ for doing tasks started >2h ago; yellow ▲ for todo tasks unchanged >2h.
  * When maxRows is set (dashboard), slice to that many rows so the screen does not scroll.
  */
 function getMergedActiveNextContent(
@@ -1237,6 +1271,8 @@ function getMergedActiveNextContent(
   maxRows?: number,
 ): string {
   const innerW = getBoxInnerWidth(w);
+  const staleDoingSet = new Set(d.staleDoingTasks.map((t) => t.task_id));
+  const now = Date.now();
   const doingRows = d.activeWork.map((work) => {
     const body =
       work.body == null
@@ -1245,34 +1281,42 @@ function getMergedActiveNextContent(
           ? (JSON.parse(work.body) as { agent?: string })
           : (work.body as { agent?: string });
     const agent = body?.agent ?? "—";
+    const isStale = staleDoingSet.has(work.task_id);
     return [
       displayId(work.task_id, work.hash_id),
       work.title,
       truncatePlan(work.plan_title),
+      isStale ? chalk.yellow("▲") : "—",
       "doing",
       agent,
     ];
   });
-  const todoRows = d.nextTasks.map((t) => [
-    displayId(t.task_id, t.hash_id),
-    t.title,
-    truncatePlan(t.plan_title),
-    "todo",
-    "—",
-  ]);
+  const todoRows = d.nextTasks.map((t) => {
+    const staleRunnable =
+      t.updated_at != null &&
+      now - new Date(t.updated_at).getTime() >= STALE_HOURS_MS;
+    return [
+      displayId(t.task_id, t.hash_id),
+      t.title,
+      truncatePlan(t.plan_title),
+      staleRunnable ? chalk.yellow("▲") : "—",
+      "todo",
+      "—",
+    ];
+  });
   let rows = [...doingRows, ...todoRows];
   if (maxRows != null && maxRows > 0) rows = rows.slice(0, maxRows);
   const tableRows =
     rows.length > 0
       ? rows
-      : [["—", "No active or runnable tasks", "—", "—", "—"]];
+      : [["—", "No active or runnable tasks", "—", "—", "—", "—"]];
   return renderTable({
-    headers: ["Id", "Task", "Plan", "Status", "Agent"],
+    headers: ["Id", "Task", "Project", "Stale", "Status", "Agent"],
     rows: tableRows,
     maxWidth: innerW,
-    minWidths: [10, 16, 10, 6, 8],
+    minWidths: [10, 16, 10, 1, 6, 8],
     flexColumnIndex: 1,
-    maxWidths: [10],
+    maxWidths: [10, undefined, undefined, 1],
   });
 }
 
@@ -1294,7 +1338,7 @@ export function formatProjectsAsString(
     p.done > 0 ? chalk.green(String(p.done)) : "0",
   ]);
   const table = renderTable({
-    headers: ["Project", "Status", "Todo", "Doing", "Blocked", "Done"],
+    headers: ["Project name", "Status", "Todo", "Doing", "Blocked", "Done"],
     rows:
       projectRows.length > 0
         ? projectRows
@@ -1308,29 +1352,61 @@ export function formatProjectsAsString(
 
 /**
  * Format tasks table as a single string (boxed). Used for one-shot and live tasks view.
+ * When staleTaskIds is provided, adds Stale column (⚠ or —) and Status as icon (last column).
  */
-export function formatTasksAsString(rows: TaskRow[], width: number): string {
+export function formatTasksAsString(
+  rows: TaskRow[],
+  width: number,
+  options?: { staleTaskIds?: Set<string> },
+): string {
   const w = width;
   const innerW = getBoxInnerWidth(w);
-  const taskRows = rows.map((r) => {
-    const id = r.hash_id ?? r.task_id;
-    const status = displayStatus(r.status, r.blocked_by_gate_name);
-    return [id, r.title, r.plan_title, status, r.owner ?? "—"];
-  });
+  const staleSet = options?.staleTaskIds;
+  const withStale = staleSet !== undefined;
+  const taskRows = withStale
+    ? rows.map((r) => {
+        const isStale = staleSet?.has(r.task_id);
+        return [
+          displayId(r.task_id, r.hash_id),
+          r.title,
+          r.plan_title,
+          isStale ? chalk.yellow("⚠") : "—",
+          r.owner ?? "—",
+          statusIconOnly(r.status, false),
+        ];
+      })
+    : rows.map((r) => {
+        const id = r.hash_id ?? r.task_id;
+        const status = displayStatus(r.status, r.blocked_by_gate_name);
+        return [id, r.title, r.plan_title, status, r.owner ?? "—"];
+      });
+
+  const headers = withStale
+    ? ["Id", "Title", "Project", "Stale", "Owner", "Status"]
+    : ["Id", "Title", "Project", "Status", "Owner"];
+  const emptyRow = withStale
+    ? [["—", "No tasks", "—", "—", "—", "—"]]
+    : [["—", "No tasks", "—", "—", "—"]];
   const table = renderTable({
-    headers: ["Id", "Title", "Plan", "Status", "Owner"],
-    rows: taskRows.length > 0 ? taskRows : [["—", "No tasks", "—", "—", "—"]],
+    headers,
+    rows: taskRows.length > 0 ? taskRows : emptyRow,
     maxWidth: innerW,
-    minWidths: [10, 12, 10, 8, 6],
+    minWidths: withStale ? [10, 12, 10, 1, 6, 1] : [10, 12, 10, 8, 6],
     flexColumnIndex: 1,
-    maxWidths: [10],
+    maxWidths: withStale ? [10, undefined, 10, 1, 6, 1] : [10],
   });
   return boxedSection("Tasks", table, w);
 }
 
+const RECENTLY_DONE_TASK_MS = 15 * 1000;
+const STALE_HOURS_MS = 2 * 60 * 60 * 1000;
+
 /**
  * Format dashboard tasks view: three boxed sections — Active tasks, Next 7 runnable, Last 7 completed.
  * Used by tg dashboard --tasks (live and fallback).
+ * Active and Next 7 tables include a Stale column: yellow ▲ when task has been in that section ≥2h.
+ * Active also shows status (red ● blocked, green ● ok, green ✓ done).
+ * Tasks that just became done appear in Active for 15s with a green tick before moving to Last 7.
  */
 export function formatDashboardTasksView(
   d: StatusData,
@@ -1340,61 +1416,89 @@ export function formatDashboardTasksView(
   const w = width;
   const innerW = getBoxInnerWidth(w);
   const parts: string[] = [];
+  const staleSet = new Set(d.staleDoingTasks.map((t) => t.task_id));
+  const now = Date.now();
+  const recentlyDone = d.last7CompletedTasks.filter((t) => {
+    if (t.updated_at == null) return false;
+    const ago = now - new Date(t.updated_at).getTime();
+    return ago >= 0 && ago <= RECENTLY_DONE_TASK_MS;
+  });
 
+  const activeRowsFromActive = activeTaskRows.map((r) => {
+    const isStale = staleSet.has(r.task_id);
+    return [
+      displayId(r.task_id, r.hash_id),
+      r.title,
+      r.plan_title,
+      isStale ? chalk.yellow("▲") : "—",
+      r.owner ?? "—",
+      statusIconOnly(r.status, false),
+    ];
+  });
+  const recentlyDoneRows = recentlyDone.map((t) => [
+    displayId(t.task_id, t.hash_id),
+    t.title,
+    t.plan_title,
+    "—",
+    "—",
+    chalk.green("✓"),
+  ]);
   const activeRows =
-    activeTaskRows.length > 0
-      ? activeTaskRows.map((r) => [
-          r.hash_id ?? r.task_id,
-          r.title,
-          r.plan_title,
-          displayStatus(r.status, r.blocked_by_gate_name),
-          r.owner ?? "—",
-        ])
-      : [["—", "No active tasks", "—", "—", "—"]];
+    activeRowsFromActive.length > 0 || recentlyDoneRows.length > 0
+      ? [...activeRowsFromActive, ...recentlyDoneRows]
+      : [["—", "No active tasks", "—", "—", "—", "—"]];
   const activeTable = renderTable({
-    headers: ["Id", "Title", "Plan", "Status", "Owner"],
+    headers: ["Id", "Title", "Project", "Stale", "Owner", "Status"],
     rows: activeRows,
     maxWidth: innerW,
-    minWidths: [10, 12, 10, 8, 6],
+    minWidths: [10, 12, 10, 1, 6, 1],
     flexColumnIndex: 1,
-    maxWidths: [10],
+    maxWidths: [10, undefined, 10, 1, 6, 1],
   });
-  parts.push(boxedSection("Active tasks", activeTable, w));
+  parts.push(boxedSection("Active tasks", activeTable, w, { fullWidth: true }));
 
   const next7Rows =
     d.next7RunnableTasks.length > 0
-      ? d.next7RunnableTasks.map((t) => [
-          t.hash_id ?? t.task_id,
-          t.title,
-          t.plan_title,
-        ])
-      : [["—", "No runnable tasks", "—"]];
+      ? d.next7RunnableTasks.map((t) => {
+          const staleRunnable =
+            t.updated_at != null &&
+            now - new Date(t.updated_at).getTime() >= STALE_HOURS_MS;
+          return [
+            chalk.green("●"),
+            t.hash_id ?? t.task_id,
+            t.title,
+            t.plan_title,
+            staleRunnable ? chalk.yellow("▲") : "—",
+          ];
+        })
+      : [["—", "No runnable tasks", "—", "—", "—"]];
   const next7Table = renderTable({
-    headers: ["Id", "Task", "Plan"],
+    headers: ["", "Id", "Task", "Project", "Stale"],
     rows: next7Rows,
     maxWidth: innerW,
-    minWidths: [10, 12, 10],
-    flexColumnIndex: 1,
-    maxWidths: [10],
+    minWidths: [1, 10, 12, 10, 1],
+    flexColumnIndex: 2,
+    maxWidths: [1, 10, undefined, undefined, 1],
   });
   parts.push(boxedSection("Next 7 runnable", next7Table, w));
 
   const last7Rows =
     d.last7CompletedTasks.length > 0
       ? d.last7CompletedTasks.map((t) => [
+          chalk.green("✓"),
           t.hash_id ?? t.task_id,
           t.title,
           t.plan_title,
           t.updated_at ?? "—",
         ])
-      : [["—", "No completed tasks", "—", "—"]];
+      : [["—", "No completed tasks", "—", "—", "—"]];
   const last7Table = renderTable({
-    headers: ["Id", "Task", "Plan", "Updated"],
+    headers: ["", "Id", "Task", "Project", "Updated"],
     rows: last7Rows,
     maxWidth: innerW,
-    minWidths: [10, 12, 10, 16],
-    flexColumnIndex: 1,
-    maxWidths: [10],
+    minWidths: [1, 10, 12, 10, 16],
+    flexColumnIndex: 2,
+    maxWidths: [1, 10],
   });
   parts.push(boxedSection("Last 7 completed", last7Table, w));
 
@@ -1413,25 +1517,63 @@ export function formatDashboardProjectsView(
   const innerW = getBoxInnerWidth(w);
   const parts: string[] = [];
 
-  const activeRows =
+  const activePlanRows =
     d.activePlans.length > 0
       ? d.activePlans.map((p) => [
           p.title,
           String(p.todo),
+          p.actionable > 0 ? chalk.greenBright(String(p.actionable)) : "0",
           p.doing > 0 ? chalk.cyan(String(p.doing)) : "0",
           p.blocked > 0 ? chalk.red(String(p.blocked)) : "0",
           p.done > 0 ? chalk.green(String(p.done)) : "0",
-          p.actionable > 0 ? chalk.greenBright(String(p.actionable)) : "0",
         ])
       : [["No active plans", "0", "0", "0", "0", "0"]];
+  const sumTodo = d.activePlans.reduce((s, p) => s + Number(p.todo), 0);
+  const sumDoing = d.activePlans.reduce((s, p) => s + Number(p.doing), 0);
+  const sumBlocked = d.activePlans.reduce((s, p) => s + Number(p.blocked), 0);
+  const sumDone = d.activePlans.reduce((s, p) => s + Number(p.done), 0);
+  const sumReady = d.activePlans.reduce((s, p) => s + Number(p.actionable), 0);
+  const totalRow = [
+    chalk.dim("Total"),
+    String(sumTodo),
+    sumReady > 0 ? chalk.greenBright(String(sumReady)) : "0",
+    sumDoing > 0 ? chalk.cyan(String(sumDoing)) : "0",
+    sumBlocked > 0 ? chalk.red(String(sumBlocked)) : "0",
+    sumDone > 0 ? chalk.green(String(sumDone)) : "0",
+  ];
+  const activeRows =
+    d.activePlans.length > 0 ? [...activePlanRows, totalRow] : activePlanRows;
+  const planHeaders = [
+    "Project name",
+    "Todo",
+    "Ready",
+    "Doing",
+    "Blocked",
+    "Done",
+  ];
+  const numericColW = Math.max(...planHeaders.slice(1).map((h) => h.length));
   const activeTable = renderTable({
-    headers: ["Plan", "Todo", "Doing", "Blocked", "Done", "Ready"],
+    headers: planHeaders,
     rows: activeRows,
     maxWidth: innerW,
-    minWidths: [12, 4, 3, 5, 3, 5],
-    maxWidths: [undefined, undefined, 4, 6, 4, undefined],
+    minWidths: [
+      12,
+      numericColW,
+      numericColW,
+      numericColW,
+      numericColW,
+      numericColW,
+    ],
+    maxWidths: [
+      undefined,
+      numericColW,
+      numericColW,
+      numericColW,
+      numericColW,
+      numericColW,
+    ],
   });
-  parts.push(boxedSection("Active plans", activeTable, w));
+  parts.push(boxedSection("Active plans", activeTable, w, { fullWidth: true }));
 
   const next7Rows =
     d.next7UpcomingPlans.length > 0
@@ -1442,28 +1584,43 @@ export function formatDashboardProjectsView(
         ])
       : [["No upcoming plans", "—", "—"]];
   const next7Table = renderTable({
-    headers: ["Plan", "Status", "Updated"],
+    headers: ["Project name", "Status", "Updated"],
     rows: next7Rows,
     maxWidth: innerW,
     minWidths: [12, 8, 16],
   });
-  parts.push(boxedSection("Next 7 upcoming", next7Table, w));
+  parts.push(
+    boxedSection("Next 7 upcoming", next7Table, w, { fullWidth: true }),
+  );
 
+  const DONE_VISIBLE_MS = 2 * 60 * 1000;
+  const now = Date.now();
   const last7Rows =
     d.last7CompletedPlans.length > 0
-      ? d.last7CompletedPlans.map((p) => [
-          p.title,
-          p.status,
-          p.updated_at ?? "—",
-        ])
-      : [["No completed plans", "—", "—"]];
+      ? d.last7CompletedPlans.map((p) => {
+          const completedAgo =
+            p.updated_at != null
+              ? now - new Date(p.updated_at).getTime()
+              : Infinity;
+          const justDone = completedAgo >= 0 && completedAgo <= DONE_VISIBLE_MS;
+          return [
+            justDone ? chalk.green("✓") : "—",
+            p.title,
+            p.status,
+            p.updated_at ?? "—",
+          ];
+        })
+      : [["—", "No completed plans", "—", "—"]];
   const last7Table = renderTable({
-    headers: ["Plan", "Status", "Updated"],
+    headers: ["", "Project name", "Status", "Updated"],
     rows: last7Rows,
     maxWidth: innerW,
-    minWidths: [12, 8, 16],
+    minWidths: [1, 12, 8, 16],
+    maxWidths: [1],
   });
-  parts.push(boxedSection("Last 7 completed", last7Table, w));
+  parts.push(
+    boxedSection("Last 7 completed", last7Table, w, { fullWidth: true }),
+  );
 
   return parts.join("\n\n");
 }
@@ -1536,7 +1693,7 @@ export function formatStatusAsString(
       d.staleDoingTasks.length > 0
         ? `Completed: Plans: ${d.completedPlans} done, Tasks: ${d.completedTasks} done  │  ${chalk.yellow(`⚠ ${d.staleDoingTasks.length} stale doing (>2h)`)}`
         : `Completed: Plans: ${d.completedPlans} done, Tasks: ${d.completedTasks} done`;
-    parts.push(summary);
+    parts.push(`${summary}  │  ${getDashboardFooterLine(d)}`);
     return parts.join("\n\n");
   }
 
@@ -1587,7 +1744,7 @@ const SIDE_BY_SIDE_GAP = 2;
  * Render two boxed sections side by side to reduce vertical height.
  * Each box is given half of the terminal width (minus gap). Lines are merged with left padded to max left width.
  */
-function renderSideBySideBoxes(
+function _renderSideBySideBoxes(
   leftTitle: string,
   leftContent: string,
   rightTitle: string,
@@ -1648,7 +1805,8 @@ function printHumanStatus(
         : chalk.dim(
             `Plans: ${chalk.green(d.completedPlans)} done, Tasks: ${chalk.green(d.completedTasks)} done`,
           );
-    console.log(`\n  ${summary}\n`);
+    const footer = chalk.dim(getDashboardFooterLine(d));
+    console.log(`\n  ${summary}  │  ${footer}\n`);
     return;
   }
 
@@ -1695,6 +1853,9 @@ function printJsonStatus(d: StatusData): void {
         next7UpcomingPlans: d.next7UpcomingPlans,
         last7CompletedPlans: d.last7CompletedPlans,
         activeWork: d.activeWork,
+        agentCount: d.agentCount,
+        subAgentRuns: d.subAgentRuns,
+        totalAgentHours: d.totalAgentHours,
         summary: {
           not_done: todo + doing + blocked,
           in_progress: doing,

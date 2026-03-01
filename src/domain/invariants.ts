@@ -87,7 +87,7 @@ export function checkRunnable(
 
   const runUnmetBlockersCheck = (): ResultAsync<void, AppError> => {
     const unmetBlockersQuery = `
-      SELECT COUNT(*)
+      SELECT COUNT(*) AS cnt
       FROM \`edge\` e
       JOIN \`task\` bt ON e.from_task_id = bt.task_id
       WHERE e.to_task_id = '${sqlEscape(taskId)}'
@@ -95,9 +95,9 @@ export function checkRunnable(
         AND bt.status NOT IN ('done','canceled');
     `;
     return q
-      .raw<{ "COUNT(*)": number }>(unmetBlockersQuery)
-      .andThen((blockerCountResult: Array<{ "COUNT(*)": number }>) => {
-        const unmetBlockers = blockerCountResult[0]["COUNT(*)"];
+      .raw<{ cnt: number }>(unmetBlockersQuery)
+      .andThen((blockerCountResult: Array<{ cnt: number }>) => {
+        const unmetBlockers = Number(blockerCountResult[0]?.cnt ?? 0);
         if (unmetBlockers > 0) {
           return errAsync(
             buildError(

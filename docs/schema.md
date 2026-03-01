@@ -17,21 +17,21 @@ All UUIDs (e.g., `plan_id`, `task_id`) are stored as `CHAR(36)`. Enumerated type
 
 Represents a high-level plan, which can contain multiple tasks. Corresponds to a Cursor Plan document.
 
-| Column          | Type           | Constraints       | Description                                                                      |
-| --------------- | -------------- | ----------------- | -------------------------------------------------------------------------------- |
-| `plan_id`       | `CHAR(36)`     | `PRIMARY KEY`     | Unique identifier for the plan                                                   |
-| `title`         | `VARCHAR(255)` | `NOT NULL`        | Title of the plan                                                                |
-| `intent`        | `TEXT`         | `NOT NULL`        | Detailed intent or goal of the plan                                              |
+| Column          | Type           | Constraints       | Description                                                                                                                                                                                                                                                                                                                                           |
+| --------------- | -------------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `plan_id`       | `CHAR(36)`     | `PRIMARY KEY`     | Unique identifier for the plan                                                                                                                                                                                                                                                                                                                        |
+| `title`         | `VARCHAR(255)` | `NOT NULL`        | Title of the plan                                                                                                                                                                                                                                                                                                                                     |
+| `intent`        | `TEXT`         | `NOT NULL`        | Detailed intent or goal of the plan                                                                                                                                                                                                                                                                                                                   |
 | `status`        | `ENUM`         | `DEFAULT 'draft'` | Current status of the plan (values: see [ENUM reference](#enum-reference) below). **Semantics:** When any task in the plan is `doing` or `done`, the project should be `active`, not `draft`. The CLI transitions `draft` → `active` on the first `tg start` for a task in that plan, and on import when the plan has any task already in doing/done. |
-| `priority`      | `INT`          | `DEFAULT 0`       | Priority level of the plan                                                       |
-| `source_path`   | `VARCHAR(512)` | `NULL`            | Path to the source Cursor Plan document (e.g., `plans/feature-x.md`)             |
-| `source_commit` | `VARCHAR(64)`  | `NULL`            | Git commit hash of the source document                                           |
-| `created_at`    | `DATETIME`     | `NOT NULL`        | Timestamp when the plan was created                                              |
-| `updated_at`    | `DATETIME`     | `NOT NULL`        | Timestamp when the plan was last updated                                         |
-| `file_tree`     | `TEXT`         | `NULL`            | Tree of files affected (rich planning)                                           |
-| `risks`         | `JSON`         | `NULL`            | Array of `{description, severity, mitigation}` (rich planning)                   |
-| `tests`         | `JSON`         | `NULL`            | Array of test descriptions to create (rich planning)                             |
-| `hash_id`       | `VARCHAR(20)`  | `NULL`            | Short identifier for the plan; basis for the plan branch name (`plan-<hash_id>`). Format: `p-XXXXXX` (6 hex chars). Added by `applyPlanHashIdMigration`. |
+| `priority`      | `INT`          | `DEFAULT 0`       | Priority level of the plan                                                                                                                                                                                                                                                                                                                            |
+| `source_path`   | `VARCHAR(512)` | `NULL`            | Path to the source Cursor Plan document (e.g., `plans/feature-x.md`)                                                                                                                                                                                                                                                                                  |
+| `source_commit` | `VARCHAR(64)`  | `NULL`            | Git commit hash of the source document                                                                                                                                                                                                                                                                                                                |
+| `created_at`    | `DATETIME`     | `NOT NULL`        | Timestamp when the plan was created                                                                                                                                                                                                                                                                                                                   |
+| `updated_at`    | `DATETIME`     | `NOT NULL`        | Timestamp when the plan was last updated                                                                                                                                                                                                                                                                                                              |
+| `file_tree`     | `TEXT`         | `NULL`            | Tree of files affected (rich planning)                                                                                                                                                                                                                                                                                                                |
+| `risks`         | `JSON`         | `NULL`            | Array of `{description, severity, mitigation}` (rich planning)                                                                                                                                                                                                                                                                                        |
+| `tests`         | `JSON`         | `NULL`            | Array of test descriptions to create (rich planning)                                                                                                                                                                                                                                                                                                  |
+| `hash_id`       | `VARCHAR(20)`  | `NULL`            | Short identifier for the plan; basis for the plan branch name (`plan-<hash_id>`). Format: `p-XXXXXX` (6 hex chars). Added by `applyPlanHashIdMigration`.                                                                                                                                                                                              |
 
 ## Table: `task`
 
@@ -143,14 +143,14 @@ Represents external gates that block a task until an external condition is satis
 
 A time-bounded planning period (e.g. a sprint or quarter) that groups one or more initiatives. Created with `tg cycle new`.
 
-| Column       | Type           | Constraints   | Description                                |
-| ------------ | -------------- | ------------- | ------------------------------------------ |
-| `cycle_id`   | `CHAR(36)`     | `PRIMARY KEY` | Unique identifier for the cycle            |
-| `name`       | `VARCHAR(255)` | `NOT NULL`    | Display name (e.g. "Sprint 1")              |
-| `start_date` | `DATE`         | `NOT NULL`    | Start of the cycle                          |
-| `end_date`   | `DATE`         | `NOT NULL`    | End of the cycle                            |
-| `created_at` | `DATETIME`     | `NOT NULL`    | Timestamp when the cycle was created       |
-| `updated_at` | `DATETIME`     | `NOT NULL`    | Timestamp when the cycle was last updated  |
+| Column       | Type           | Constraints   | Description                               |
+| ------------ | -------------- | ------------- | ----------------------------------------- |
+| `cycle_id`   | `CHAR(36)`     | `PRIMARY KEY` | Unique identifier for the cycle           |
+| `name`       | `VARCHAR(255)` | `NOT NULL`    | Display name (e.g. "Sprint 1")            |
+| `start_date` | `DATE`         | `NOT NULL`    | Start of the cycle                        |
+| `end_date`   | `DATE`         | `NOT NULL`    | End of the cycle                          |
+| `created_at` | `DATETIME`     | `NOT NULL`    | Timestamp when the cycle was created      |
+| `updated_at` | `DATETIME`     | `NOT NULL`    | Timestamp when the cycle was last updated |
 
 **Migration order:** Create `cycle` first (e.g. `applyCycleMigration`), then add `initiative.cycle_id` (e.g. `applyInitiativeCycleIdMigration`).
 
@@ -158,28 +158,28 @@ A time-bounded planning period (e.g. a sprint or quarter) that groups one or mor
 
 A strategic goal or theme bounded by a cycle, grouping one or more projects. Optional; created and managed via `tg initiative`.
 
-| Column         | Type           | Constraints                    | Description                                      |
-| -------------- | -------------- | ------------------------------ | ------------------------------------------------ |
-| `initiative_id`| `CHAR(36)`     | `PRIMARY KEY`                  | Unique identifier for the initiative             |
-| `title`       | `VARCHAR(255)` | `NOT NULL`                     | Title of the initiative                          |
-| `description`  | `TEXT`         | `NOT NULL`                     | Description                                      |
-| `status`       | `ENUM`         | `DEFAULT 'draft'`              | Status (draft, active, paused, done, abandoned)  |
-| `cycle_start`  | `DATE`         | `NULL`                         | Inline start (or from cycle)                     |
-| `cycle_end`    | `DATE`         | `NULL`                         | Inline end (or from cycle)                       |
-| `cycle_id`     | `CHAR(36)`     | `NULL`, `FK -> cycle.cycle_id` | Optional link to a cycle (prefer over inline dates) |
-| `created_at`   | `DATETIME`     | `NOT NULL`                     | Timestamp when created                           |
-| `updated_at`   | `DATETIME`     | `NOT NULL`                     | Timestamp when last updated                      |
+| Column          | Type           | Constraints                    | Description                                         |
+| --------------- | -------------- | ------------------------------ | --------------------------------------------------- |
+| `initiative_id` | `CHAR(36)`     | `PRIMARY KEY`                  | Unique identifier for the initiative                |
+| `title`         | `VARCHAR(255)` | `NOT NULL`                     | Title of the initiative                             |
+| `description`   | `TEXT`         | `NOT NULL`                     | Description                                         |
+| `status`        | `ENUM`         | `DEFAULT 'draft'`              | Status (draft, active, paused, done, abandoned)     |
+| `cycle_start`   | `DATE`         | `NULL`                         | Inline start (or from cycle)                        |
+| `cycle_end`     | `DATE`         | `NULL`                         | Inline end (or from cycle)                          |
+| `cycle_id`      | `CHAR(36)`     | `NULL`, `FK -> cycle.cycle_id` | Optional link to a cycle (prefer over inline dates) |
+| `created_at`    | `DATETIME`     | `NOT NULL`                     | Timestamp when created                              |
+| `updated_at`    | `DATETIME`     | `NOT NULL`                     | Timestamp when last updated                         |
 
 ## Table: `plan_worktree`
 
 Tracks the per-plan git worktree created by `tg start --worktree` when the plan has a `hash_id`. One row per plan. The plan branch (`plan-<hash_id>`) is the merge target for all task worktrees belonging to that plan. The plan worktree is never removed by `tg done`; it accumulates merged task work until the plan is complete.
 
-| Column            | Type           | Constraints                       | Description                                                          |
-| ----------------- | -------------- | --------------------------------- | -------------------------------------------------------------------- |
-| `plan_id`         | `CHAR(36)`     | `PRIMARY KEY`, `FK -> plan.plan_id` | Plan this worktree belongs to                                      |
-| `worktree_path`   | `VARCHAR(512)` | `NOT NULL`                        | Absolute path to the plan worktree directory                         |
-| `worktree_branch` | `VARCHAR(128)` | `NOT NULL`                        | Git branch name for the plan worktree (e.g. `plan-p-a1b2c3`)        |
-| `created_at`      | `DATETIME`     | `NOT NULL`                        | Timestamp when the plan worktree was created                         |
+| Column            | Type           | Constraints                         | Description                                                  |
+| ----------------- | -------------- | ----------------------------------- | ------------------------------------------------------------ |
+| `plan_id`         | `CHAR(36)`     | `PRIMARY KEY`, `FK -> plan.plan_id` | Plan this worktree belongs to                                |
+| `worktree_path`   | `VARCHAR(512)` | `NOT NULL`                          | Absolute path to the plan worktree directory                 |
+| `worktree_branch` | `VARCHAR(128)` | `NOT NULL`                          | Git branch name for the plan worktree (e.g. `plan-p-a1b2c3`) |
+| `created_at`      | `DATETIME`     | `NOT NULL`                          | Timestamp when the plan worktree was created                 |
 
 ## Invariants
 
@@ -192,6 +192,8 @@ The following business logic invariants are enforced by the application to maint
 
 ## Decisions / gotchas
 
+- **cachedQuery raw writes**: For cache invalidation, `extractWriteTable` must recognize not only `INSERT INTO table` but also `UPDATE table` and `DELETE FROM table`; otherwise raw DELETE/UPDATE do not invalidate the affected table cache.
+- **SELECT COUNT(\*) with mysql2**: When using the server pool (mysql2), result column names can differ from the execa/JSON path. Use an alias (e.g. `SELECT COUNT(*) AS cnt`) and read `Number(row.cnt)` so the same code works for both paths.
 - **Dolt JSON columns**: `event.body` may be returned as object or string by doltSql depending on driver. Handle both: `typeof raw === 'string' ? JSON.parse(raw) : raw`.
 - **DAL writable**: All Dolt invocations use `--data-dir <repoPath>` and `DOLT_READ_ONLY=false` in env so Dolt treats the session as writable when the repo allows it.
 - **Plan → project table**: After the schema migration renames `plan` to `project`, all application code must query/insert/update the `project` table (not `plan`). The view `plan` exists for backward compatibility. PROTECTED_TABLES includes both `plan` (view) and `project`.

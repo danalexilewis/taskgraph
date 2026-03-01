@@ -20,13 +20,18 @@ interface SelectOptions {
 const READ_SQL_RE = /^\s*(SELECT|WITH|EXPLAIN)\b/i;
 const TABLE_FROM_RE = /\bFROM\s+`?(\w+)`?/i;
 const TABLE_INTO_RE = /\bINTO\s+`?(\w+)`?/i;
+const TABLE_UPDATE_RE = /\bUPDATE\s+`?(\w+)`?/i;
 
 function extractReadTable(sql: string): string | undefined {
   return sql.match(TABLE_FROM_RE)?.[1];
 }
 
 function extractWriteTable(sql: string): string | undefined {
-  return sql.match(TABLE_INTO_RE)?.[1];
+  return (
+    sql.match(TABLE_INTO_RE)?.[1] ??
+    sql.match(TABLE_UPDATE_RE)?.[1] ??
+    sql.match(TABLE_FROM_RE)?.[1]
+  );
 }
 
 export function cachedQuery(

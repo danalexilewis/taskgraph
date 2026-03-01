@@ -4,7 +4,7 @@
  * should fall back to the minimal TUI (setInterval + ANSI clear + printHumanStatus).
  */
 
-import type { ResultAsync } from "neverthrow";
+import { ResultAsync } from "neverthrow";
 import type {
   InitiativeRow,
   ProjectRow,
@@ -15,6 +15,7 @@ import type {
 import {
   fetchInitiativesTableData,
   fetchProjectsTableData,
+  fetchStaleDoingTasks,
   fetchStatusData,
   fetchTasksTableData,
   formatDashboardProjectsView,
@@ -23,6 +24,7 @@ import {
   formatProjectsAsString,
   formatStatusAsString,
   formatTasksAsString,
+  getDashboardFooterLine,
 } from "../status.js";
 import { getTerminalWidth } from "../terminal.js";
 import type { Config } from "../utils.js";
@@ -39,22 +41,79 @@ export type FetchStatusFn = (
  * Run the live status view using OpenTUI. Resolves when the user exits (q or Ctrl+C).
  * Throws if OpenTUI is not available (e.g. Node runtime) so the caller can fall back.
  */
+type OpenTUIRenderer = {
+  root: {
+    add: (node: unknown) => number;
+    remove: (id: string) => void;
+    getRenderable: (id: string) => OpenTUIRenderable | undefined;
+    requestRender?: () => void;
+  };
+  prependInputHandler: (fn: (seq: string) => boolean) => void;
+  on: (ev: string, fn: () => void) => void;
+  setupTerminal: () => Promise<void>;
+  destroy: () => void;
+  isDestroyed: boolean;
+};
+
+type OpenTUIRenderable = {
+  destroy: () => void;
+  getChildren?: () => OpenTUIRenderable[];
+} & ({ content?: string } | object);
+
 type OpenTUIMod = {
-  createCliRenderer: (config?: object) => Promise<{
-    root: {
-      add: (node: unknown) => number;
-      remove: (id: string) => void;
-      getRenderable: (id: string) => { destroy: () => void } | undefined;
-    };
-    prependInputHandler: (fn: (seq: string) => boolean) => void;
-    on: (ev: string, fn: () => void) => void;
-    setupTerminal: () => Promise<void>;
-    destroy: () => void;
-    isDestroyed: boolean;
-  }>;
+  createCliRenderer: (config?: object) => Promise<OpenTUIRenderer>;
   Box: (props: object, ...children: unknown[]) => unknown;
   Text: (props: { content: string }) => unknown;
 };
+
+/**
+ * Update the Text child of the root Box in place so OpenTUI can diff and only redraw changed pixels.
+ * Returns true if the update was applied, false if we need to replace the node (e.g. first run or wrong shape).
+ */
+function updateRootTextContent(
+  renderer: OpenTUIRenderer,
+  rootId: string,
+  newContent: string,
+): boolean {
+  const box = renderer.root.getRenderable(rootId);
+  if (!box?.getChildren) return false;
+  const children = box.getChildren();
+  const textNode = children[0];
+  if (
+    !textNode ||
+    typeof (textNode as { content?: string }).content === "undefined"
+  )
+    return false;
+  (textNode as { content: string }).content = newContent;
+  renderer.root.requestRender?.();
+  return true;
+}
+
+function replaceRootWithNewBox(
+  renderer: OpenTUIRenderer,
+  Box: OpenTUIMod["Box"],
+  Text: OpenTUIMod["Text"],
+  rootId: string,
+  newContent: string,
+  width: number,
+): void {
+  const child = renderer.root.getRenderable(rootId);
+  if (child) {
+    child.destroy();
+    renderer.root.remove(rootId);
+  }
+  const newBox = Box(
+    {
+      id: rootId,
+      borderStyle: "round",
+      border: true,
+      width,
+      height: "auto",
+    },
+    Text({ content: newContent }),
+  );
+  renderer.root.add(newBox);
+}
 
 export async function runOpenTUILive(
   config: Config,
@@ -86,20 +145,6 @@ export async function runOpenTUILive(
   const renderer = await Promise.race([rendererPromise, timeoutPromise]);
 
   const w = getTerminalWidth();
-  let initialData: StatusData | null = null;
-
-  const firstResult = await fetchStatus(config, statusOptions);
-  firstResult.match(
-    (d) => {
-      initialData = d;
-    },
-    () => {},
-  );
-
-  const content = initialData
-    ? formatStatusAsString(initialData, w, { dashboard: true })
-    : "Loading...";
-
   const { Box, Text } = mod;
   const rootBox = Box(
     {
@@ -109,12 +154,16 @@ export async function runOpenTUILive(
       width: w,
       height: "auto",
     },
-    Text({ content }),
+    Text({ content: "Loading..." }),
   );
   renderer.root.add(rootBox);
 
+  process.on("SIGINT", () => {
+    renderer.destroy();
+    process.exit(0);
+  });
   renderer.prependInputHandler((sequence: string) => {
-    if (sequence.toLowerCase() === "q") {
+    if (sequence.toLowerCase() === "q" || sequence === "\x03") {
       renderer.destroy();
       process.exit(0);
       return true;
@@ -122,40 +171,33 @@ export async function runOpenTUILive(
     return false;
   });
 
+  const refreshContent = (data: StatusData) => {
+    try {
+      const newContent = formatStatusAsString(data, getTerminalWidth(), {
+        dashboard: true,
+      });
+      if (!updateRootTextContent(renderer, STATUS_ROOT_ID, newContent)) {
+        replaceRootWithNewBox(
+          renderer,
+          Box,
+          Text,
+          STATUS_ROOT_ID,
+          newContent,
+          getTerminalWidth(),
+        );
+      }
+    } catch {
+      // ignore
+    }
+  };
+
   const timer = setInterval(async () => {
     if (renderer.isDestroyed) {
       clearInterval(timer);
       return;
     }
     const result = await fetchStatus(config, statusOptions);
-    result.match(
-      (data) => {
-        try {
-          const child = renderer.root.getRenderable(STATUS_ROOT_ID);
-          if (child) {
-            child.destroy();
-            renderer.root.remove(STATUS_ROOT_ID);
-          }
-          const newContent = formatStatusAsString(data, getTerminalWidth(), {
-            dashboard: true,
-          });
-          const newBox = Box(
-            {
-              id: STATUS_ROOT_ID,
-              borderStyle: "round",
-              border: true,
-              width: getTerminalWidth(),
-              height: "auto",
-            },
-            Text({ content: newContent }),
-          );
-          renderer.root.add(newBox);
-        } catch {
-          // ignore update errors
-        }
-      },
-      () => {},
-    );
+    result.match(refreshContent, () => {});
   }, REFRESH_MS);
 
   renderer.on("destroy", () => {
@@ -163,6 +205,11 @@ export async function runOpenTUILive(
   });
 
   await renderer.setupTerminal();
+
+  fetchStatus(config, statusOptions).then((result) => {
+    result.match(refreshContent, () => {});
+  });
+
   return new Promise<void>((resolve) => {
     renderer.on("destroy", () => resolve());
   });
@@ -202,31 +249,6 @@ export async function runOpenTUILiveDashboardTasks(
 
   const w = getTerminalWidth();
   const activeOptions = { ...statusOptions, filter: "active" as const };
-  let initialStatus: StatusData | null = null;
-  let initialActive: TaskRow[] = [];
-
-  const [statusResult, activeResult] = await Promise.all([
-    fetchStatusData(config, statusOptions),
-    fetchTasksTableData(config, activeOptions),
-  ]);
-  statusResult.match(
-    (d) => {
-      initialStatus = d;
-    },
-    () => {},
-  );
-  activeResult.match(
-    (rows) => {
-      initialActive = rows;
-    },
-    () => {},
-  );
-
-  const content =
-    initialStatus != null
-      ? formatDashboardTasksView(initialStatus, initialActive, w)
-      : "Loading...";
-
   const { Box, Text } = mod;
   const rootBox = Box(
     {
@@ -236,18 +258,44 @@ export async function runOpenTUILiveDashboardTasks(
       width: w,
       height: "auto",
     },
-    Text({ content }),
+    Text({ content: "Loading..." }),
   );
   renderer.root.add(rootBox);
 
+  process.on("SIGINT", () => {
+    renderer.destroy();
+    process.exit(0);
+  });
   renderer.prependInputHandler((sequence: string) => {
-    if (sequence.toLowerCase() === "q") {
+    if (sequence.toLowerCase() === "q" || sequence === "\x03") {
       renderer.destroy();
       process.exit(0);
       return true;
     }
     return false;
   });
+
+  const refreshContent = (data: StatusData, activeRows: TaskRow[]) => {
+    try {
+      const width = getTerminalWidth();
+      const newContent =
+        formatDashboardTasksView(data, activeRows, width) +
+        "\n\n" +
+        getDashboardFooterLine(data);
+      if (!updateRootTextContent(renderer, STATUS_ROOT_ID, newContent)) {
+        replaceRootWithNewBox(
+          renderer,
+          Box,
+          Text,
+          STATUS_ROOT_ID,
+          newContent,
+          width,
+        );
+      }
+    } catch {
+      // ignore
+    }
+  };
 
   const timer = setInterval(async () => {
     if (renderer.isDestroyed) {
@@ -272,33 +320,7 @@ export async function runOpenTUILiveDashboardTasks(
       },
       () => {},
     );
-    if (data != null) {
-      try {
-        const child = renderer.root.getRenderable(STATUS_ROOT_ID);
-        if (child) {
-          child.destroy();
-          renderer.root.remove(STATUS_ROOT_ID);
-        }
-        const newContent = formatDashboardTasksView(
-          data,
-          activeRows,
-          getTerminalWidth(),
-        );
-        const newBox = Box(
-          {
-            id: STATUS_ROOT_ID,
-            borderStyle: "round",
-            border: true,
-            width: getTerminalWidth(),
-            height: "auto",
-          },
-          Text({ content: newContent }),
-        );
-        renderer.root.add(newBox);
-      } catch {
-        // ignore update errors
-      }
-    }
+    if (data != null) refreshContent(data, activeRows);
   }, REFRESH_MS);
 
   renderer.on("destroy", () => {
@@ -306,6 +328,28 @@ export async function runOpenTUILiveDashboardTasks(
   });
 
   await renderer.setupTerminal();
+
+  Promise.all([
+    fetchStatusData(config, statusOptions),
+    fetchTasksTableData(config, activeOptions),
+  ]).then(([statusResult, activeResult]) => {
+    let data: StatusData | null = null;
+    let activeRows: TaskRow[] = [];
+    statusResult.match(
+      (d) => {
+        data = d;
+      },
+      () => {},
+    );
+    activeResult.match(
+      (rows) => {
+        activeRows = rows;
+      },
+      () => {},
+    );
+    if (data != null) refreshContent(data, activeRows);
+  });
+
   return new Promise<void>((resolve) => {
     renderer.on("destroy", () => resolve());
   });
@@ -344,21 +388,6 @@ export async function runOpenTUILiveDashboardProjects(
   const renderer = await Promise.race([rendererPromise, timeoutPromise]);
 
   const w = getTerminalWidth();
-  let initialData: StatusData | null = null;
-
-  const firstResult = await fetchStatusData(config, statusOptions);
-  firstResult.match(
-    (d) => {
-      initialData = d;
-    },
-    () => {},
-  );
-
-  const content =
-    initialData != null
-      ? formatDashboardProjectsView(initialData, w)
-      : "Loading...";
-
   const { Box, Text } = mod;
   const rootBox = Box(
     {
@@ -368,12 +397,16 @@ export async function runOpenTUILiveDashboardProjects(
       width: w,
       height: "auto",
     },
-    Text({ content }),
+    Text({ content: "Loading..." }),
   );
   renderer.root.add(rootBox);
 
+  process.on("SIGINT", () => {
+    renderer.destroy();
+    process.exit(0);
+  });
   renderer.prependInputHandler((sequence: string) => {
-    if (sequence.toLowerCase() === "q") {
+    if (sequence.toLowerCase() === "q" || sequence === "\x03") {
       renderer.destroy();
       process.exit(0);
       return true;
@@ -381,41 +414,35 @@ export async function runOpenTUILiveDashboardProjects(
     return false;
   });
 
+  const refreshContent = (data: StatusData) => {
+    try {
+      const width = getTerminalWidth();
+      const newContent =
+        formatDashboardProjectsView(data, width) +
+        "\n\n" +
+        getDashboardFooterLine(data);
+      if (!updateRootTextContent(renderer, STATUS_ROOT_ID, newContent)) {
+        replaceRootWithNewBox(
+          renderer,
+          Box,
+          Text,
+          STATUS_ROOT_ID,
+          newContent,
+          width,
+        );
+      }
+    } catch {
+      // ignore
+    }
+  };
+
   const timer = setInterval(async () => {
     if (renderer.isDestroyed) {
       clearInterval(timer);
       return;
     }
     const result = await fetchStatusData(config, statusOptions);
-    result.match(
-      (data) => {
-        try {
-          const child = renderer.root.getRenderable(STATUS_ROOT_ID);
-          if (child) {
-            child.destroy();
-            renderer.root.remove(STATUS_ROOT_ID);
-          }
-          const newContent = formatDashboardProjectsView(
-            data,
-            getTerminalWidth(),
-          );
-          const newBox = Box(
-            {
-              id: STATUS_ROOT_ID,
-              borderStyle: "round",
-              border: true,
-              width: getTerminalWidth(),
-              height: "auto",
-            },
-            Text({ content: newContent }),
-          );
-          renderer.root.add(newBox);
-        } catch {
-          // ignore update errors
-        }
-      },
-      () => {},
-    );
+    result.match(refreshContent, () => {});
   }, REFRESH_MS);
 
   renderer.on("destroy", () => {
@@ -423,6 +450,11 @@ export async function runOpenTUILiveDashboardProjects(
   });
 
   await renderer.setupTerminal();
+
+  fetchStatusData(config, statusOptions).then((result) => {
+    result.match(refreshContent, () => {});
+  });
+
   return new Promise<void>((resolve) => {
     renderer.on("destroy", () => resolve());
   });
@@ -494,8 +526,12 @@ export async function runOpenTUILiveProjects(
   );
   renderer.root.add(rootBox);
 
+  process.on("SIGINT", () => {
+    renderer.destroy();
+    process.exit(0);
+  });
   renderer.prependInputHandler((sequence: string) => {
-    if (sequence.toLowerCase() === "q") {
+    if (sequence.toLowerCase() === "q" || sequence === "\x03") {
       renderer.destroy();
       process.exit(0);
       return true;
@@ -512,23 +548,18 @@ export async function runOpenTUILiveProjects(
     result.match(
       (data) => {
         try {
-          const child = renderer.root.getRenderable(STATUS_ROOT_ID);
-          if (child) {
-            child.destroy();
-            renderer.root.remove(STATUS_ROOT_ID);
+          const w = getTerminalWidth();
+          const newContent = formatProjectsAsString(data, w);
+          if (!updateRootTextContent(renderer, STATUS_ROOT_ID, newContent)) {
+            replaceRootWithNewBox(
+              renderer,
+              Box,
+              Text,
+              STATUS_ROOT_ID,
+              newContent,
+              w,
+            );
           }
-          const newContent = formatProjectsAsString(data, getTerminalWidth());
-          const newBox = Box(
-            {
-              id: STATUS_ROOT_ID,
-              borderStyle: "round",
-              border: true,
-              width: getTerminalWidth(),
-              height: "auto",
-            },
-            Text({ content: newContent }),
-          );
-          renderer.root.add(newBox);
         } catch {
           // ignore update errors
         }
@@ -587,17 +618,27 @@ export async function runOpenTUILiveTasks(
 
   const w = getTerminalWidth();
   let initialRows: TaskRow[] = [];
+  let initialStaleIds = new Set<string>();
 
-  const firstResult = await fetchTasks(config, statusOptions);
+  const firstResult = await ResultAsync.combine([
+    fetchTasks(config, statusOptions),
+    fetchStaleDoingTasks(
+      config.doltRepoPath,
+      statusOptions.staleThreshold ?? 2,
+    ),
+  ]);
   firstResult.match(
-    (rows) => {
+    ([rows, staleDoingTasks]) => {
       initialRows = rows;
+      initialStaleIds = new Set(staleDoingTasks.map((t) => t.task_id));
     },
     () => {},
   );
 
   const content = initialRows.length
-    ? formatTasksAsString(initialRows, w)
+    ? formatTasksAsString(initialRows, w, {
+        staleTaskIds: initialStaleIds,
+      })
     : "Loading...";
 
   const { Box, Text } = mod;
@@ -613,8 +654,12 @@ export async function runOpenTUILiveTasks(
   );
   renderer.root.add(rootBox);
 
+  process.on("SIGINT", () => {
+    renderer.destroy();
+    process.exit(0);
+  });
   renderer.prependInputHandler((sequence: string) => {
-    if (sequence.toLowerCase() === "q") {
+    if (sequence.toLowerCase() === "q" || sequence === "\x03") {
       renderer.destroy();
       process.exit(0);
       return true;
@@ -627,27 +672,31 @@ export async function runOpenTUILiveTasks(
       clearInterval(timer);
       return;
     }
-    const result = await fetchTasks(config, statusOptions);
+    const result = await ResultAsync.combine([
+      fetchTasks(config, statusOptions),
+      fetchStaleDoingTasks(
+        config.doltRepoPath,
+        statusOptions.staleThreshold ?? 2,
+      ),
+    ]);
     result.match(
-      (data) => {
+      ([data, staleDoingTasks]) => {
         try {
-          const child = renderer.root.getRenderable(STATUS_ROOT_ID);
-          if (child) {
-            child.destroy();
-            renderer.root.remove(STATUS_ROOT_ID);
+          const w = getTerminalWidth();
+          const staleIds = new Set(staleDoingTasks.map((t) => t.task_id));
+          const newContent = formatTasksAsString(data, w, {
+            staleTaskIds: staleIds,
+          });
+          if (!updateRootTextContent(renderer, STATUS_ROOT_ID, newContent)) {
+            replaceRootWithNewBox(
+              renderer,
+              Box,
+              Text,
+              STATUS_ROOT_ID,
+              newContent,
+              w,
+            );
           }
-          const newContent = formatTasksAsString(data, getTerminalWidth());
-          const newBox = Box(
-            {
-              id: STATUS_ROOT_ID,
-              borderStyle: "round",
-              border: true,
-              width: getTerminalWidth(),
-              height: "auto",
-            },
-            Text({ content: newContent }),
-          );
-          renderer.root.add(newBox);
         } catch {
           // ignore update errors
         }
@@ -732,8 +781,12 @@ export async function runOpenTUILiveInitiatives(
   );
   renderer.root.add(rootBox);
 
+  process.on("SIGINT", () => {
+    renderer.destroy();
+    process.exit(0);
+  });
   renderer.prependInputHandler((sequence: string) => {
-    if (sequence.toLowerCase() === "q") {
+    if (sequence.toLowerCase() === "q" || sequence === "\x03") {
       renderer.destroy();
       process.exit(0);
       return true;
@@ -750,26 +803,18 @@ export async function runOpenTUILiveInitiatives(
     result.match(
       (data) => {
         try {
-          const child = renderer.root.getRenderable(STATUS_ROOT_ID);
-          if (child) {
-            child.destroy();
-            renderer.root.remove(STATUS_ROOT_ID);
+          const w = getTerminalWidth();
+          const newContent = formatInitiativesAsString(data, w);
+          if (!updateRootTextContent(renderer, STATUS_ROOT_ID, newContent)) {
+            replaceRootWithNewBox(
+              renderer,
+              Box,
+              Text,
+              STATUS_ROOT_ID,
+              newContent,
+              w,
+            );
           }
-          const newContent = formatInitiativesAsString(
-            data,
-            getTerminalWidth(),
-          );
-          const newBox = Box(
-            {
-              id: STATUS_ROOT_ID,
-              borderStyle: "round",
-              border: true,
-              width: getTerminalWidth(),
-              height: "auto",
-            },
-            Text({ content: newContent }),
-          );
-          renderer.root.add(newBox);
         } catch {
           // ignore update errors
         }

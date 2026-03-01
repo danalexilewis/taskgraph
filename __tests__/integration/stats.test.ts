@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { v4 as uuidv4 } from "uuid";
-import { jsonObj, now, query } from "../../src/db/query";
+import { jsonObj, query } from "../../src/db/query";
 import {
   runTgCli,
   setupIntegrationTest,
@@ -149,7 +149,7 @@ describe.serial(
 
     afterAll(async () => {
       if (context) await teardownIntegrationTest(context);
-    });
+    }, 60_000);
 
     it("human output contains plan title, duration info, and task rows", async () => {
       if (!context) throw new Error("Context not initialized");
@@ -278,7 +278,7 @@ describe.serial(
 
     afterAll(async () => {
       if (context) await teardownIntegrationTest(context);
-    });
+    }, 60_000);
 
     it("human output shows a Plan Timeline header with plan titles", async () => {
       if (!context) throw new Error("Context not initialized");
@@ -368,7 +368,7 @@ describe.serial(
 
     afterAll(async () => {
       if (context) await teardownIntegrationTest(context);
-    });
+    }, 60_000);
 
     it("human output contains Token Usage section", async () => {
       if (!context) throw new Error("Context not initialized");
@@ -456,7 +456,7 @@ describe.serial(
 
     afterAll(async () => {
       if (context) await teardownIntegrationTest(context);
-    });
+    }, 60_000);
 
     it("human output does NOT contain Token Usage section", async () => {
       if (!context) throw new Error("Context not initialized");

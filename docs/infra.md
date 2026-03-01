@@ -37,6 +37,20 @@ Domain guide for build tooling, CI validation, package publishing, and Dolt data
 - **Auto-migrate**: Every CLI command (except `init` and `setup`) runs idempotent migrations at startup. See [schema.md](schema.md).
 - **Writable sessions**: All Dolt invocations use `--data-dir <repoPath>` and `DOLT_READ_ONLY=false` in env when the repo allows writes.
 
+### Dolt sql-server mode
+
+TaskGraph supports an optional **sql-server mode** that replaces the default `dolt --data-dir ... sql -q` execa calls with a persistent mysql2 connection pool. This eliminates per-query process spawn overhead (~150 ms/query) and is recommended for integration tests and production use.
+
+**Activation**: Set both `TG_DOLT_SERVER_PORT` and `TG_DOLT_SERVER_DATABASE`. When both are set, the CLI uses the pool instead of execa for all queries.
+
+**Commit behavior**: `doltCommit` uses `CALL DOLT_ADD('-A')` + `CALL DOLT_COMMIT(...)` via the pool when it is active; otherwise falls back to `dolt add` + `dolt commit` subprocess calls.
+
+**Pool key**: The pool is keyed by `host:port:database`. Each unique combination gets its own pool instance. Call `closeServerPool(port, host, database)` during teardown to release connections.
+
+**When pool is null**: `getServerPool()` returns `null` if `TG_DOLT_SERVER_DATABASE` is empty, even when `TG_DOLT_SERVER_PORT` is set. In that case `doltSql()` falls back to the execa path automatically.
+
+**Integration tests**: `global-setup.ts` starts a Dolt sql-server per test suite and sets `TG_DOLT_SERVER_PORT` + `TG_DOLT_SERVER_DATABASE` so all test queries use the pool. `teardownIntegrationTest` calls `closeServerPool(port, host, database)` to release the pool before killing the server process.
+
 ## Publishing
 
 - **Package**: `@danalexilewis/taskgraph` on npm. Publish from a clean build and version bump.
@@ -46,6 +60,12 @@ Domain guide for build tooling, CI validation, package publishing, and Dolt data
 | Variable | Type | Default | Description |
 |---|---|---|---|
 | `TG_QUERY_CACHE_TTL_MS` | number (optional) | `0` | Query result cache TTL in milliseconds. `0` = disabled (default). Dashboard mode uses a `1500 ms` floor regardless of this setting. |
+| `TG_DOLT_SERVER_PORT` | number (optional) | unset | Port of a running `dolt sql-server`. When set with `TG_DOLT_SERVER_DATABASE`, activates mysql2 pool mode for all queries. |
+| `TG_DOLT_SERVER_DATABASE` | string (optional) | unset | Database name to use with the mysql2 pool. Must be non-empty to enable pool mode. |
+| `TG_DOLT_SERVER_HOST` | string (optional) | `127.0.0.1` | Host for the Dolt SQL server (pool mode). |
+| `TG_DOLT_SERVER_USER` | string (optional) | `root` | MySQL user for the Dolt SQL server (pool mode). |
+| `TG_DOLT_SERVER_PASSWORD` | string (optional) | unset | MySQL password for the Dolt SQL server (pool mode). |
+| `TG_SKIP_MIGRATE` | flag (optional) | unset | When set, skips `ensureMigrations` in the CLI preAction hook. Intended for test environments where migrations have already been applied. CLI prints a warning when this flag is active. |
 
 ## Decisions / gotchas
 
