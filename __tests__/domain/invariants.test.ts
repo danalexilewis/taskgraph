@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { ErrorCode } from "../../src/domain/errors";
 import {
   checkNoBlockerCycle,
+  checkRunnable,
   checkValidTransition,
 } from "../../src/domain/invariants";
 import { type Edge, TaskStatusSchema } from "../../src/domain/types";
@@ -220,6 +221,53 @@ describe("invariants", () => {
       const result = checkNoBlockerCycle("task1", "task1", edges);
       expect(result.isErr()).toBe(true);
       expect(result._unsafeUnwrapErr().code).toBe(ErrorCode.CYCLE_DETECTED);
+    });
+  });
+
+  describe("checkRunnable (knownStatus early-return)", () => {
+    const fakeRepoPath = "/fake/repo/path";
+
+    it("returns INVALID_TRANSITION when knownStatus is 'doing'", async () => {
+      const result = await checkRunnable(
+        "task-1",
+        fakeRepoPath,
+        TaskStatusSchema.enum.doing,
+      );
+      expect(result.isErr()).toBe(true);
+      expect(result._unsafeUnwrapErr().code).toBe(ErrorCode.INVALID_TRANSITION);
+      expect(result._unsafeUnwrapErr().message).toContain(
+        "is not in 'todo' status",
+      );
+    });
+
+    it("returns INVALID_TRANSITION when knownStatus is 'blocked'", async () => {
+      const result = await checkRunnable(
+        "task-1",
+        fakeRepoPath,
+        TaskStatusSchema.enum.blocked,
+      );
+      expect(result.isErr()).toBe(true);
+      expect(result._unsafeUnwrapErr().code).toBe(ErrorCode.INVALID_TRANSITION);
+    });
+
+    it("returns INVALID_TRANSITION when knownStatus is 'done'", async () => {
+      const result = await checkRunnable(
+        "task-1",
+        fakeRepoPath,
+        TaskStatusSchema.enum.done,
+      );
+      expect(result.isErr()).toBe(true);
+      expect(result._unsafeUnwrapErr().code).toBe(ErrorCode.INVALID_TRANSITION);
+    });
+
+    it("returns INVALID_TRANSITION when knownStatus is 'canceled'", async () => {
+      const result = await checkRunnable(
+        "task-1",
+        fakeRepoPath,
+        TaskStatusSchema.enum.canceled,
+      );
+      expect(result.isErr()).toBe(true);
+      expect(result._unsafeUnwrapErr().code).toBe(ErrorCode.INVALID_TRANSITION);
     });
   });
 });

@@ -81,8 +81,47 @@ export function checkNoBlockerCycle(
 export function checkRunnable(
   taskId: string,
   repoPath: string,
+  knownStatus?: TaskStatus,
 ): ResultAsync<void, AppError> {
   const q = query(repoPath);
+
+  const runUnmetBlockersCheck = (): ResultAsync<void, AppError> => {
+    const unmetBlockersQuery = `
+      SELECT COUNT(*)
+      FROM \`edge\` e
+      JOIN \`task\` bt ON e.from_task_id = bt.task_id
+      WHERE e.to_task_id = '${sqlEscape(taskId)}'
+        AND e.type = 'blocks'
+        AND bt.status NOT IN ('done','canceled');
+    `;
+    return q
+      .raw<{ "COUNT(*)": number }>(unmetBlockersQuery)
+      .andThen((blockerCountResult: Array<{ "COUNT(*)": number }>) => {
+        const unmetBlockers = blockerCountResult[0]["COUNT(*)"];
+        if (unmetBlockers > 0) {
+          return errAsync(
+            buildError(
+              ErrorCode.TASK_NOT_RUNNABLE,
+              `Task ${taskId} has ${unmetBlockers} unmet blockers and is not runnable.`,
+            ),
+          );
+        }
+        return okAsync(undefined);
+      });
+  };
+
+  if (knownStatus !== undefined && knownStatus !== null) {
+    if (knownStatus !== "todo") {
+      return errAsync(
+        buildError(
+          ErrorCode.INVALID_TRANSITION,
+          `Task ${taskId} is not in 'todo' status. Current status: ${knownStatus}.`,
+        ),
+      );
+    }
+    return runUnmetBlockersCheck();
+  }
+
   return q
     .select<{ status: TaskStatus }>("task", {
       columns: ["status"],
@@ -107,28 +146,7 @@ export function checkRunnable(
           ),
         );
       }
-
-      const unmetBlockersQuery = `
-        SELECT COUNT(*)
-        FROM \`edge\` e
-        JOIN \`task\` bt ON e.from_task_id = bt.task_id
-        WHERE e.to_task_id = '${sqlEscape(taskId)}'
-          AND e.type = 'blocks'
-          AND bt.status NOT IN ('done','canceled');
-      `;
-      return q.raw<{ "COUNT(*)": number }>(unmetBlockersQuery);
-    })
-    .andThen((blockerCountResult: Array<{ "COUNT(*)": number }>) => {
-      const unmetBlockers = blockerCountResult[0]["COUNT(*)"];
-      if (unmetBlockers > 0) {
-        return errAsync(
-          buildError(
-            ErrorCode.TASK_NOT_RUNNABLE,
-            `Task ${taskId} has ${unmetBlockers} unmet blockers and is not runnable.`,
-          ),
-        );
-      }
-      return okAsync(undefined);
+      return runUnmetBlockersCheck();
     });
 }
 
