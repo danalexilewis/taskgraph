@@ -1314,7 +1314,7 @@ function getMergedActiveNextContent(
     headers: ["Id", "Task", "Project", "Stale", "Status", "Agent"],
     rows: tableRows,
     maxWidth: innerW,
-    minWidths: [10, 16, 10, 1, 6, 8],
+    minWidths: [10, 15, 9, 1, 6, 12],
     flexColumnIndex: 1,
     maxWidths: [10, undefined, undefined, 1],
   });
@@ -1345,7 +1345,7 @@ export function formatProjectsAsString(
         : [["No projects", "—", "0", "0", "0", "0"]],
     maxWidth: innerW,
     minWidths: [12, 8, 4, 3, 5, 3],
-    maxWidths: [undefined, undefined, undefined, 4, 6, 4],
+    maxWidths: [undefined, undefined, undefined, 5, 7, 4],
   });
   return boxedSection("Projects", table, w);
 }
@@ -1391,9 +1391,9 @@ export function formatTasksAsString(
     headers,
     rows: taskRows.length > 0 ? taskRows : emptyRow,
     maxWidth: innerW,
-    minWidths: withStale ? [10, 12, 10, 1, 6, 1] : [10, 12, 10, 8, 6],
+    minWidths: withStale ? [10, 12, 12, 1, 6, 1] : [10, 12, 12, 8, 6],
     flexColumnIndex: 1,
-    maxWidths: withStale ? [10, undefined, 10, 1, 6, 1] : [10],
+    maxWidths: withStale ? [10, undefined, 12, 1, 6, 1] : [10],
   });
   return boxedSection("Tasks", table, w);
 }

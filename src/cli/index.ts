@@ -1,7 +1,9 @@
 import { Command } from "commander";
+import { closeAllServerPools } from "../db/connection";
 import { ensureMigrations } from "../db/migrate";
 import { ErrorCode } from "../domain/errors";
 import { blockCommand } from "./block";
+import { detectAndApplyServerPort, serverCommand } from "./server";
 import { cancelCommand } from "./cancel";
 import { contextCommand } from "./context";
 import { crossplanCommand } from "./crossplan";
@@ -31,7 +33,7 @@ import { readConfig, rootOpts } from "./utils";
 import { worktreeCommand } from "./worktree";
 
 /** Commands that create or scaffold; skip auto-migrate (no config or own migration path). */
-const SKIP_MIGRATE_COMMANDS = new Set(["init", "setup"]);
+const SKIP_MIGRATE_COMMANDS = new Set(["init", "setup", "server"]);
 
 function topLevelCommand(cmd: Command): Command {
   let c: Command = cmd;
@@ -61,6 +63,7 @@ export function createProgram(): Command {
       }
       return;
     }
+    detectAndApplyServerPort(configResult.value);
     const opts = rootOpts(actionCommand);
     const noCommit = opts.noCommit ?? false;
     const runResult = await ensureMigrations(
@@ -111,6 +114,7 @@ export function createProgram(): Command {
   templateCommand(program);
   worktreeCommand(program);
   syncCommand(program);
+  serverCommand(program);
 
   return program;
 }
@@ -120,5 +124,9 @@ const isMainEntrypoint =
   process.argv[1]?.endsWith("cli/index.ts");
 
 if (isMainEntrypoint) {
-  createProgram().parse(process.argv);
+  createProgram()
+    .parseAsync(process.argv)
+    .then(() => closeAllServerPools())
+    .then(() => process.exit(0))
+    .catch(() => process.exit(1));
 }

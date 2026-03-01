@@ -24,7 +24,7 @@ describe("Health-check detection functions", () => {
     // Create plan for all tests
     (
       await doltSql(
-        `INSERT INTO \`plan\` (plan_id, title, intent, created_at, updated_at) VALUES (
+        `INSERT INTO \`project\` (plan_id, title, intent, created_at, updated_at) VALUES (
           '${planId}', 'Health Check Test Plan', 'Intent', NOW(), NOW()
         );`,
         context.doltRepoPath,

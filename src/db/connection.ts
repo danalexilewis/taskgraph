@@ -65,6 +65,16 @@ export async function closeServerPool(
 }
 
 /**
+ * Close all cached server pools. Called by the CLI after a command completes so
+ * the process can exit cleanly instead of hanging on open mysql2 connections.
+ */
+export async function closeAllServerPools(): Promise<void> {
+  const pools = [...poolCache.values()];
+  poolCache.clear();
+  await Promise.all(pools.map((p) => p.end().catch(() => {})));
+}
+
+/**
  * Run a SQL query against the Dolt SQL server via a mysql2 pool.
  * Applies the same protected-tables check as doltSql. Returns rows in the same shape as doltSql (array of row objects).
  */

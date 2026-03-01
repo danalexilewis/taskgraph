@@ -1,3 +1,6 @@
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { join as pathJoin } from "node:path";
 import { execa } from "execa";
 import { ok, ResultAsync } from "neverthrow";
 import { type AppError, buildError, ErrorCode } from "../domain/errors";
@@ -8,6 +11,59 @@ import { doltSql } from "./connection";
 import { sqlEscape } from "./escape";
 
 const CACHE_TTL_MS = 60_000;
+
+/**
+ * Ordered list of migration function names. SHA1 of this list is the
+ * MIGRATION_VERSION written to .tg-migration-version after a full run.
+ * Adding any migration here (or reordering) increments the version and
+ * forces a fresh probe on the next `tg` invocation.
+ */
+const MIGRATION_CHAIN = [
+  "applyPlanRichFieldsMigration",
+  "applyTaskDimensionsMigration",
+  "applyTaskSuggestedChangesMigration",
+  "applyTaskDomainSkillJunctionMigration",
+  "applyDomainToDocRenameMigration",
+  "applyTaskAgentMigration",
+  "applyHashIdMigration",
+  "applyNoDeleteTriggersMigration",
+  "applyGateTableMigration",
+  "applyInitiativeMigration",
+  "applyPlanToProjectRenameMigration",
+  "applyPlanViewMigration",
+  "applyPlanHashIdMigration",
+  "applyDefaultInitiativeMigration",
+  "applyCycleMigration",
+  "applyInitiativeCycleIdMigration",
+  "applyPlanWorktreeMigration",
+  "applyIndexMigration",
+] as const;
+
+const MIGRATION_VERSION = createHash("sha1")
+  .update(MIGRATION_CHAIN.join(","))
+  .digest("hex")
+  .slice(0, 8);
+
+function getSentinelPath(repoPath: string): string {
+  return pathJoin(repoPath, "..", ".tg-migration-version");
+}
+
+function readSentinel(repoPath: string): string | null {
+  const p = getSentinelPath(repoPath);
+  try {
+    return existsSync(p) ? readFileSync(p, "utf8").trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeSentinel(repoPath: string): void {
+  try {
+    writeFileSync(getSentinelPath(repoPath), `${MIGRATION_VERSION}\n`, "utf8");
+  } catch {
+    // Non-fatal: sentinel write failure just means next run re-probes.
+  }
+}
 
 const SCHEMA = [
   "CREATE TABLE IF NOT EXISTS `plan` (plan_id CHAR(36) PRIMARY KEY, title VARCHAR(255) NOT NULL, intent TEXT NOT NULL, status ENUM('draft','active','paused','done','abandoned') DEFAULT 'draft', priority INT DEFAULT 0, source_path VARCHAR(512) NULL, source_commit VARCHAR(64) NULL, created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL);",
@@ -384,9 +440,10 @@ export function applyDomainToDocRenameMigration(
     return tableExists(repoPath, "task_domain", cache).andThen(
       (hasTaskDomain) => {
         if (!hasTaskDomain) {
-          // Fresh install — create task_doc directly
+          // Fresh install — create task_doc directly.
+          // IF NOT EXISTS guards against concurrent migration runs racing to create the table.
           return doltSql(
-            `CREATE TABLE \`task_doc\` (task_id CHAR(36) NOT NULL, doc VARCHAR(64) NOT NULL, PRIMARY KEY (task_id, doc), FOREIGN KEY (task_id) REFERENCES \`task\`(task_id))`,
+            `CREATE TABLE IF NOT EXISTS \`task_doc\` (task_id CHAR(36) NOT NULL, doc VARCHAR(64) NOT NULL, PRIMARY KEY (task_id, doc), FOREIGN KEY (task_id) REFERENCES \`task\`(task_id))`,
             repoPath,
           )
             .map(() => {
@@ -402,9 +459,10 @@ export function applyDomainToDocRenameMigration(
             )
             .map(() => undefined);
         }
-        // Upgrade path — copy data from task_domain into task_doc, then drop task_domain
+        // Upgrade path — copy data from task_domain into task_doc, then drop task_domain.
+        // IF NOT EXISTS / INSERT IGNORE / DROP IF EXISTS guard against concurrent migration runs.
         return doltSql(
-          `CREATE TABLE \`task_doc\` (task_id CHAR(36) NOT NULL, doc VARCHAR(64) NOT NULL, PRIMARY KEY (task_id, doc), FOREIGN KEY (task_id) REFERENCES \`task\`(task_id))`,
+          `CREATE TABLE IF NOT EXISTS \`task_doc\` (task_id CHAR(36) NOT NULL, doc VARCHAR(64) NOT NULL, PRIMARY KEY (task_id, doc), FOREIGN KEY (task_id) REFERENCES \`task\`(task_id))`,
           repoPath,
         )
           .map(() => {
@@ -412,12 +470,26 @@ export function applyDomainToDocRenameMigration(
             return undefined;
           })
           .andThen(() =>
-            doltSql(
-              "INSERT INTO `task_doc` (task_id, doc) SELECT task_id, domain FROM `task_domain`",
-              repoPath,
+            tableExists(repoPath, "task_domain", cache).andThen(
+              (domainStillExists) => {
+                if (!domainStillExists)
+                  return ResultAsync.fromSafePromise(Promise.resolve([]));
+                return doltSql(
+                  "INSERT IGNORE INTO `task_doc` (task_id, doc) SELECT task_id, domain FROM `task_domain`",
+                  repoPath,
+                );
+              },
             ),
           )
-          .andThen(() => doltSql("DROP TABLE `task_domain`", repoPath))
+          .andThen(() =>
+            tableExists(repoPath, "task_domain", cache).andThen(
+              (domainStillExists) => {
+                if (!domainStillExists)
+                  return ResultAsync.fromSafePromise(Promise.resolve([]));
+                return doltSql("DROP TABLE `task_domain`", repoPath);
+              },
+            ),
+          )
           .andThen(() =>
             doltCommit(
               "db: rename task_domain to task_doc",
@@ -846,11 +918,79 @@ export function applyPlanWorktreeMigration(
   });
 }
 
-/** Chains all idempotent migrations. Safe to run on every command. */
+/** Returns true when the named index exists on a table (using information_schema). */
+function indexExists(
+  repoPath: string,
+  table: string,
+  indexName: string,
+  cache?: QueryCache,
+): ResultAsync<boolean, AppError> {
+  const sql = `SELECT COUNT(*) AS cnt FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '${table}' AND INDEX_NAME = '${indexName}'`;
+  return doltSql(sql, repoPath, undefined).map((rows) => {
+    cache?.clear();
+    const cnt = Number(rows?.[0]?.cnt ?? 0);
+    return cnt > 0;
+  });
+}
+
+/** Add secondary indexes on hot FK/filter columns (idempotent). */
+export function applyIndexMigration(
+  repoPath: string,
+  noCommit: boolean = false,
+  cache?: QueryCache,
+): ResultAsync<void, AppError> {
+  // gate must come first: Dolt validates all FK backing-indexes when any
+  // CREATE INDEX runs, so idx_gate_task_id must exist before we create
+  // indexes on other tables that would trigger that validation.
+  const indexes: Array<{ table: string; name: string; cols: string }> = [
+    { table: "gate", name: "idx_gate_task_id", cols: "task_id" },
+    { table: "task", name: "idx_task_plan_id", cols: "plan_id" },
+    { table: "task", name: "idx_task_status", cols: "status" },
+    { table: "event", name: "idx_event_task_id", cols: "task_id" },
+    { table: "edge", name: "idx_edge_from_task_id", cols: "from_task_id" },
+  ];
+
+  // Run sequentially: Dolt revalidates all FK backing-indexes on each CREATE
+  // INDEX, so parallel execution would see idx_gate_task_id missing while
+  // creating idx_event_task_id and throw ER_UNKNOWN_ERROR.
+  const sequential = indexes.reduce(
+    (acc, { table, name, cols }) =>
+      acc.andThen(() =>
+        indexExists(repoPath, table, name, cache).andThen((exists) => {
+          if (exists) return ResultAsync.fromSafePromise(Promise.resolve());
+          return doltSql(
+            `CREATE INDEX \`${name}\` ON \`${table}\`(\`${cols}\`)`,
+            repoPath,
+          ).map(() => undefined);
+        }),
+      ),
+    ResultAsync.fromSafePromise<void, AppError>(Promise.resolve()),
+  );
+
+  return sequential
+    .andThen(() =>
+      doltCommit(
+        "db: add secondary indexes for hot FK/filter columns",
+        repoPath,
+        noCommit,
+      ),
+    )
+    .map(() => undefined);
+}
+
+/** Chains all idempotent migrations. Safe to run on every command.
+ *
+ * Fast path: if `.tg-migration-version` in the parent of repoPath already
+ * matches MIGRATION_VERSION, all probes are skipped entirely. The sentinel is
+ * written after a successful full run so subsequent invocations are O(1).
+ */
 export function ensureMigrations(
   repoPath: string,
   noCommit: boolean = false,
 ): ResultAsync<void, AppError> {
+  if (readSentinel(repoPath) === MIGRATION_VERSION) {
+    return ResultAsync.fromSafePromise(Promise.resolve(undefined));
+  }
   const cache = new QueryCache();
   return applyPlanRichFieldsMigration(repoPath, noCommit, cache)
     .andThen(() => applyTaskDimensionsMigration(repoPath, noCommit, cache))
@@ -873,7 +1013,11 @@ export function ensureMigrations(
     .andThen(() => applyCycleMigration(repoPath, noCommit, cache))
     .andThen(() => applyInitiativeCycleIdMigration(repoPath, noCommit, cache))
     .andThen(() => applyPlanWorktreeMigration(repoPath, noCommit, cache))
-    .map(() => undefined);
+    .andThen(() => applyIndexMigration(repoPath, noCommit, cache))
+    .map(() => {
+      writeSentinel(repoPath);
+      return undefined;
+    });
 }
 
 export function applyMigrations(

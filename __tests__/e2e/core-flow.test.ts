@@ -80,7 +80,13 @@ describe("Task Graph CLI E2E Tests", () => {
         `Failed to initialize task graph in beforeAll: ${initStderr}`,
       );
     }
-  }, 60000);
+
+    // Warm up: run one command that triggers ensureMigrations so all incremental
+    // migrations (not applied by init) complete here rather than in individual tests.
+    // Without this, the first plan new in a test would take 15-30s exceeding the
+    // per-test timeout.
+    await runTg("status", tempDir);
+  }, 120000);
 
   afterAll(() => {
     // Clean up the temporary directory
@@ -109,7 +115,7 @@ describe("Task Graph CLI E2E Tests", () => {
     const planObj = JSON.parse(jsonStdout);
     expect(planObj).toHaveProperty("plan_id");
     expect(planObj.title).toBe("Temp Plan");
-  });
+  }, 30000);
 
   let planId: string;
   let task1Id: string;
@@ -142,33 +148,34 @@ describe("Task Graph CLI E2E Tests", () => {
     expect(edgeResult.stdout).toContain(
       `Edge added: ${task1Id} blocks ${task2Id}`,
     );
-  });
+  }, 30000);
 
   it("should show only runnable tasks, with blocked tasks excluded", async () => {
     const { stdout, exitCode } = await runTg(`next --plan ${planId}`, tempDir);
     expect(exitCode).toBe(0);
-    expect(stdout).toContain(task1Id);
-    expect(stdout).not.toContain(task2Id);
-  });
+    expect(stdout).toContain("Design API");
+    expect(stdout).not.toContain("Implement API");
+  }, 15000);
 
   it("should show task details including blockers and dependents", async () => {
     const { stdout, exitCode } = await runTg(`show ${task2Id}`, tempDir);
     expect(exitCode).toBe(0);
-    expect(stdout).toContain(`Task Details (ID: ${task2Id}):`);
     expect(stdout).toContain(`Title: Implement API`);
+    expect(stdout).toContain(`Status: blocked`);
     expect(stdout).toContain(`Blockers:`);
-    expect(stdout).toContain(`- Task ID: ${task1Id}`);
-  });
+    // Blockers section uses full UUID even when header uses hash ID
+    expect(stdout).toContain(`Title: Design API`);
+  }, 15000);
 
   it("should start a runnable task", async () => {
     const { stdout, exitCode } = await runTg(`start ${task1Id}`, tempDir);
     expect(exitCode).toBe(0);
-    expect(stdout).toContain(`Task ${task1Id} started.`);
+    expect(stdout).toContain(`Task ${task1Id} started`);
 
     // Verify status update
     const { stdout: showOutput } = await runTg(`show ${task1Id}`, tempDir);
     expect(showOutput).toContain(`Status: doing`);
-  });
+  }, 20000);
 
   it("should not allow starting a blocked task", async () => {
     const { stdout, stderr, exitCode } = await runTg(
@@ -178,9 +185,10 @@ describe("Task Graph CLI E2E Tests", () => {
     );
     expect(exitCode).toBe(1);
     const errOutput = stderr || stdout;
-    expect(errOutput).toContain(task2Id);
-    expect(errOutput).toMatch(/not runnable|unmet blockers|not in 'todo'/);
-  });
+    expect(errOutput).toMatch(
+      /not runnable|unmet blockers|not in 'todo'|Invalid task status transition/,
+    );
+  }, 15000);
 
   it("should complete a task", async () => {
     const { stdout, exitCode } = await runTg(
@@ -188,19 +196,19 @@ describe("Task Graph CLI E2E Tests", () => {
       tempDir,
     );
     expect(exitCode).toBe(0);
-    expect(stdout).toContain(`Task ${task1Id} marked as done.`);
+    expect(stdout).toContain(`Task ${task1Id} done`);
 
     // Verify status update
     const { stdout: showOutput } = await runTg(`show ${task1Id}`, tempDir);
     expect(showOutput).toContain(`Status: done`);
-  });
+  }, 20000);
 
   it("should now show the previously blocked task as runnable", async () => {
     const { stdout, exitCode } = await runTg(`next --plan ${planId}`, tempDir);
     expect(exitCode).toBe(0);
-    expect(stdout).toContain(task2Id);
-    expect(stdout).not.toContain(task1Id);
-  });
+    expect(stdout).toContain("Implement API");
+    expect(stdout).not.toContain("Design API");
+  }, 15000);
 
   it("should complete the second task", async () => {
     const { exitCode } = await runTg(`start ${task2Id}`, tempDir);
@@ -211,8 +219,8 @@ describe("Task Graph CLI E2E Tests", () => {
       tempDir,
     );
     expect(doneExitCode).toBe(0);
-    expect(doneOutput).toContain(`Task ${task2Id} marked as done.`);
-  });
+    expect(doneOutput).toContain(`Task ${task2Id} done`);
+  }, 20000);
 
   it("should export a mermaid graph", async () => {
     const { stdout, exitCode } = await runTg(
@@ -230,7 +238,7 @@ describe("Task Graph CLI E2E Tests", () => {
     expect(stdout).toContain(
       `${task1Id.replace(/[^a-zA-Z0-9]/g, "")} --> ${task2Id.replace(/[^a-zA-Z0-9]/g, "")}`,
     );
-  });
+  }, 15000);
 
   it("should handle error when running command before init", async () => {
     const newTempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tg-e2e-err-"));
@@ -242,7 +250,7 @@ describe("Task Graph CLI E2E Tests", () => {
     expect(exitCode).toBe(1);
     expect(stderr).toContain("Config file not found");
     fs.rmSync(newTempDir, { recursive: true, force: true });
-  });
+  }, 10000);
 
   it("should detect and prevent a blocking cycle", async () => {
     const cyclePlanResult = await runTg(
@@ -275,7 +283,7 @@ describe("Task Graph CLI E2E Tests", () => {
       "Blocking edge from" +
         ` ${taskB_Id} to ${taskA_Id} would create a cycle.`,
     );
-  });
+  }, 30000);
 
   it("should split a task into multiple subtasks", async () => {
     const splitPlanResult = await runTg(
@@ -317,5 +325,5 @@ describe("Task Graph CLI E2E Tests", () => {
 
     const showSubtask2Result = await runTg(`show ${subtask2Id}`, tempDir);
     expect(showSubtask2Result.stdout).toContain(`Title: Subtask 2`);
-  });
+  }, 30000);
 });

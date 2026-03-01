@@ -125,6 +125,38 @@ export async function killDetachedProcess(pid: number): Promise<void> {
   }
 }
 
+/**
+ * Wraps a test body to check for leaked dolt processes.
+ * Uses pgrep to count running dolt processes before and after the fn.
+ * Logs a warning (non-failing) if the count increases, so leaks are visible
+ * without breaking the suite.
+ */
+export async function assertNoDoltLeak<T>(fn: () => Promise<T>): Promise<T> {
+  const countDolt = async (): Promise<number> => {
+    try {
+      const result = await execa("pgrep", ["-c", "dolt"], {
+        reject: false,
+      });
+      return Number.parseInt(result.stdout.trim(), 10) || 0;
+    } catch {
+      return 0;
+    }
+  };
+  const before = await countDolt();
+  let result: T;
+  try {
+    result = await fn();
+  } finally {
+    const after = await countDolt();
+    if (after > before) {
+      console.warn(
+        `[assertNoDoltLeak] dolt process count grew: ${before} → ${after} (+${after - before} leaked)`,
+      );
+    }
+  }
+  return result;
+}
+
 const DOLT_PATH = process.env.DOLT_PATH || "dolt";
 if (!process.env.DOLT_PATH) process.env.DOLT_PATH = DOLT_PATH;
 
@@ -257,6 +289,10 @@ export async function teardownIntegrationTest(
     await killDetachedProcess(context.serverPid);
     unregisterServerPid(context.serverPid);
   }
+  // Clear server env vars so they don't leak into subsequent test files
+  // (e.g. e2e tests) running in the same bun test process.
+  delete process.env.TG_DOLT_SERVER_PORT;
+  delete process.env.TG_DOLT_SERVER_DATABASE;
   if (fs.existsSync(context.tempDir)) {
     fs.rmSync(context.tempDir, { recursive: true, force: true });
   }

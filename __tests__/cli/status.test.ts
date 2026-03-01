@@ -320,7 +320,7 @@ isProject: false
     );
 
     const updateResult = await doltSql(
-      `UPDATE \`plan\` SET \`status\` = 'done' WHERE plan_id = '${planIdC}'`,
+      `UPDATE \`project\` SET \`status\` = 'done' WHERE plan_id = '${planIdC}'`,
       context.doltRepoPath,
     );
     expect(updateResult.isOk()).toBe(true);
