@@ -21,6 +21,7 @@ This document describes how Task-Graph supports 2–3 simultaneous agents workin
 | `tg start <taskId> --force` | Override claim when task is already being worked (human override) |
 | `tg note <taskId> --msg <text> [--agent <name>]` | Append a note event; visible in `tg show` |
 | `tg status` | Shows "Active work" section with doing tasks, agent_id, plan title, started_at |
+| `tg stats [--agent <name>] [--plan <planId>] [--json]` | Derive agent metrics from events: tasks_done, review pass/fail, avg elapsed time |
 
 ## Conventions
 
@@ -32,6 +33,10 @@ This document describes how Task-Graph supports 2–3 simultaneous agents workin
 ## Event Body Conventions
 
 - **started**: `{ agent, timestamp }`
-- **note**: `{ message, agent, timestamp }`
+- **note**: `{ message, agent, timestamp }`. For review verdicts (orchestrator records after spec/quality reviewer), use **review event convention**: record with `tg note <taskId> --msg '<JSON>'` where the message body is JSON containing `"type": "review"`, e.g. `{ "type": "review", "verdict": "PASS" | "FAIL", "reviewer": "<agent_name>", "stage": "spec" | "quality" }`. This enables `tg stats` to count pass/fail by stage and by reviewer.
 
 Missing `agent` is treated as `"unknown"`.
+
+## Using stats for dispatch
+
+`tg stats` shows tasks completed, review pass/fail counts, and average elapsed time per agent. Use it to inform dispatch: rebalance workload (e.g. assign more to faster or less-loaded agents), spot agents with high review fail rates (consider re-dispatch or different reviewer), or choose which agent to assign follow-up tasks.

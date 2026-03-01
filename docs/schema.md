@@ -7,7 +7,7 @@ triggers:
 
 # Dolt Schema Reference
 
-The Task Graph system leverages Dolt as its underlying data store, providing version control capabilities for all stored data. The schema consists of five main tables: `plan`, `task`, `edge`, `event`, and `decision`.
+The Task Graph system leverages Dolt as its underlying data store, providing version control capabilities for all stored data. The schema consists of six main tables: `plan`, `task`, `edge`, `event`, `decision`, and `gate`.
 
 **Auto-migrate**: Every CLI command (except `init` and `setup`) runs idempotent migrations at startup. Agents never encounter a stale schema. See [multi-agent](multi-agent.md) for event body conventions.
 
@@ -121,6 +121,22 @@ Optional but high-leverage table for recording key decisions made during develop
 | `consequences` | `TEXT`         | `NULL`                           | Anticipated consequences of the decision            |
 | `source_ref`   | `VARCHAR(512)` | `NULL`                           | Reference to external documentation (e.g., PR link) |
 | `created_at`   | `DATETIME`     | `NOT NULL`                       | Timestamp when the decision was recorded            |
+
+## Table: `gate`
+
+Represents external gates that block a task until an external condition is satisfied (e.g., human approval, CI pass, webhook). Unlike task-on-task blocking (see `edge` with `type='blocks'`), gates model dependencies on conditions outside the task graph.
+
+| Column       | Type                                                    | Constraints                      | Description                                                                 |
+| :----------- | :------------------------------------------------------ | :------------------------------- | :-------------------------------------------------------------------------- |
+| `gate_id`    | `CHAR(36)`                                              | `PRIMARY KEY`                    | Unique identifier for the gate                                             |
+| `name`       | `VARCHAR(255)`                                          | `NOT NULL`                       | Human-readable name for the gate (e.g., "QA sign-off", "CI green")         |
+| `gate_type`  | `ENUM('human','ci','webhook')`                           | `NOT NULL`                       | Kind of gate: human approval, CI result, or webhook-triggered               |
+| `status`     | `ENUM('pending','resolved','expired')`                   | `DEFAULT 'pending'`              | Current status; resolved when the condition is met, expired if no longer applicable |
+| `task_id`    | `CHAR(36)`                                              | `NULL`, `FK -> task.task_id`     | Optional task that is blocked until this gate is resolved                  |
+| `resolved_at`| `DATETIME`                                              | `NULL`                           | Timestamp when the gate was resolved                                        |
+| `created_at` | `DATETIME`                                              | `NOT NULL`                       | Timestamp when the gate was created                                         |
+
+**Gates vs blocks:** A **gate** blocks a task on an *external* condition (human, CI, webhook). The **block** command and `edge` table with `type='blocks'` model a task blocked on *another task* in the graph. Use gates when the dependency is outside the task graph; use blocks for task-on-task dependencies.
 
 ## Invariants
 

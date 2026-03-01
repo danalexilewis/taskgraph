@@ -77,6 +77,14 @@ tg block <currentTaskId> --on <newBlockerTaskId> --reason "Requires human decisi
 
 4.  **Stop and Report**: After blocking, the agent should report the blockage and await further instructions from the human.
 
+## Escalation ladder
+
+When a task is not completed after re-dispatch or direct execution, follow the escalation ladder: **re-dispatch** (same or adjusted sub-agent) → **direct execution** (orchestrator does the task) → **fixer** (stronger model) → **escalate to human**.
+
+- **Escalation decision tree**: See [.cursor/rules/subagent-dispatch.mdc](../.cursor/rules/subagent-dispatch.mdc) (section "Escalation decision tree") for when to re-dispatch vs direct execution vs escalate to human.
+- **Fixer agent**: See [.cursor/agents/fixer.md](../.cursor/agents/fixer.md). Use when the implementer (and optionally reviewer) failed twice and the orchestrator escalates to a stronger model; the fixer receives task context, failure feedback, and diff.
+- **When to escalate to human**: Credentials or secrets; ambiguous intent that cannot be resolved from context; safety or approval (e.g. destructive change); or repeated direct-execution failure.
+
 ## Decisions
 
 If a decision is required to proceed with a task that is not a straightforward technical implementation:

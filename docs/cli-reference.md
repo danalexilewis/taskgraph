@@ -37,6 +37,8 @@ tg init
 **Options:**
 
 - `--no-commit`: Do not commit changes to Dolt.
+- `--remote-url <url>`: Dolt remote URL; stored in `.taskgraph/config.json` for future sync (e.g. `tg sync`).
+- `--remote <url>`: Alias for `--remote-url`.
 
 **Output:**
 
@@ -288,7 +290,7 @@ tg show b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11
 Moves one or more tasks from `todo` to `doing` status, indicating active work has begun. Each task is only allowed if runnable (no unmet blockers). If a task is already `doing`, returns `TASK_ALREADY_CLAIMED` unless `--force` is used. Options (e.g. `--agent`, `--force`) apply to all IDs. Exit code is 1 if any task fails. With `--json`, outputs an array of `{ id, status? }` or `{ id, error? }`.
 
 ```bash
-tg start <taskIds...> [--agent <name>] [--force]
+tg start <taskIds...> [--agent <name>] [--force] [--branch] [--worktree]
 ```
 
 **Arguments:**
@@ -299,6 +301,8 @@ tg start <taskIds...> [--agent <name>] [--force]
 
 - `--agent <name>`: Agent identifier for multi-agent visibility. Recorded in the started event body. Applies to all IDs.
 - `--force`: Override claim when a task is already being worked by another agent (human override). Applies to all IDs.
+- `--branch`: Create and checkout a Dolt agent branch for this task (e.g. `agent-<taskId-prefix>`). The branch name is stored in the started event; `tg done` will merge it into main (or `mainBranch` from config) and delete the branch. If merge conflicts occur, `tg done` reports an error and leaves the branch for manual resolution.
+- `--worktree`: Create a git worktree for the task at `.taskgraph/worktrees/<taskId>/` on branch `tg/<taskId>`. The worktree path and branch are stored in the **started event body** as `worktree_path` and `worktree_branch`. Use this for parallel implementers so each works in an isolated directory; the orchestrator should pass `worktree_path` to implementers (e.g. in the dispatch prompt) so they run their work from that path.
 
 **Example:**
 
@@ -307,16 +311,16 @@ tg start b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11 --agent alice
 # Output:
 # Task b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11 started.
 
-tg start id1 id2 --agent bob --json
+tg start id1 id2 --agent bob --worktree --json
 # Output: [{"id":"id1","status":"doing"},{"id":"id2","status":"doing"}]
 ```
 
 ### `tg done <taskIds...> --evidence <text>`
 
-Marks one or more tasks as `done`. Requires evidence of completion. Multiple IDs can be passed space-separated or comma-separated in one token. Options (e.g. `--evidence`, `--checks`) apply to all IDs. Exit code is 1 if any operation fails. With `--json`, outputs an array of `{ id, status? }` or `{ id, error? }`.
+Marks one or more tasks as `done`. Requires evidence of completion. Multiple IDs can be passed space-separated or comma-separated in one token. Options (e.g. `--evidence`, `--checks`) apply to all IDs. Exit code is 1 if any operation fails. With `--json`, outputs an array of `{ id, status? }` or `{ id, error? }`. If the task was started with `tg start --branch`, `tg done` merges the agent branch into main (or `mainBranch` from `.taskgraph/config.json`); on merge conflict an error is reported and the branch is left for manual resolution. If the task was started with `tg start --worktree`, `tg done` removes the worktree; with `--merge` it first merges the worktree branch (`tg/<taskId>`) into the base branch (main or `mainBranch` from config), then removes the worktree and deletes the branch. Without `--merge`, only the worktree directory is removed and the branch is left.
 
 ```bash
-tg done <taskIds...> --evidence "<text>"
+tg done <taskIds...> --evidence "<text>" [--merge]
 ```
 
 **Arguments:**
@@ -328,6 +332,7 @@ tg done <taskIds...> --evidence "<text>"
 - `--evidence <text>`: **(Required)** A description of the evidence of completion (e.g., tests run, commands output summary, git commit hash). Applies to all IDs.
 - `--checks <json>`: An optional JSON array of acceptance checks that were verified. Applies to all IDs.
 - `--force`: Force the task to `done` status even if it's not currently `doing` (discouraged). Applies to all IDs.
+- `--merge`: When the task has an associated worktree (started with `--worktree`), merge the worktree branch into the base branch before removing the worktree and deleting the branch. If omitted, only the worktree directory is removed; the branch `tg/<taskId>` remains.
 
 **Example:**
 
@@ -339,6 +344,105 @@ tg done b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11 --evidence "All frontend components
 tg done id1 id2 --evidence "batch" --json
 # Output: [{"id":"id1","status":"done"},{"id":"id2","status":"done"}]
 ```
+
+### `tg worktree list`
+
+Lists active git worktrees (main working tree plus any linked worktrees, e.g. those created by `tg start --worktree`). Run from the repo root (directory containing `.git` and `.taskgraph/`).
+
+```bash
+tg worktree list [--json]
+```
+
+**Options:**
+
+- `--json`: Output an array of objects with `path`, `commit`, and optional `branch`. Otherwise prints one line per worktree: path, commit, and branch in brackets.
+
+**Output (human):** One line per worktree: `<path>  <commit> [<branch>]`.
+
+**Example:**
+
+```bash
+tg worktree list
+# /path/to/repo  abc1234 [main]
+# /path/to/repo/.taskgraph/worktrees/55f51191-99a5-4688-8e2e-54115378c81e  def5678 [tg/55f51191-99a5-4688-8e2e-54115378c81e]
+```
+
+### Git worktree integration (parallel tasks)
+
+When running **parallel implementers**, use `tg start --worktree` so each task gets an isolated git worktree at `.taskgraph/worktrees/<taskId>/` on branch `tg/<taskId>`. The **started event body** stores `worktree_path` (absolute path to the worktree) and `worktree_branch`; the **orchestrator** should pass `worktree_path` to implementers in the dispatch prompt (e.g. "Work in &lt;worktree_path&gt;" or "Run all commands from &lt;worktree_path&gt;") so they perform their work in that directory and avoid file conflicts. When the task is complete, run `tg done --evidence "..."`; add `--merge` to merge the worktree branch into the base branch before removing the worktree. Use `tg worktree list` to see active worktrees.
+
+### `tg gate create <name>`
+
+Creates an external gate and blocks the given task until the gate is resolved (e.g., human approval, CI pass, webhook). Gates represent dependencies on conditions *outside* the task graph; use `tg block` for task-on-task dependencies.
+
+```bash
+tg gate create <name> --task <taskId> [--type human|ci|webhook]
+```
+
+**Arguments:**
+
+- `<name>`: Human-readable name for the gate (e.g., "QA sign-off", "CI green").
+
+**Options:**
+
+- `--task <taskId>`: **(Required)** Task ID to block until the gate is resolved.
+- `--type <human|ci|webhook>`: Gate type (default: `human`). `human` = manual approval; `ci` = CI pipeline result; `webhook` = external webhook.
+
+**Example:**
+
+```bash
+tg gate create "QA sign-off" --task b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11 --type human
+# Output: Gate created with ID: ...
+```
+
+### `tg gate resolve <gateId>`
+
+Marks a gate as resolved, satisfying the external condition. If a task was associated with the gate, it may become unblocked (per application logic).
+
+```bash
+tg gate resolve <gateId>
+```
+
+**Arguments:**
+
+- `<gateId>`: The ID of the gate to resolve.
+
+**Example:**
+
+```bash
+tg gate resolve a1b2c3d4-e5f6-7890-abcd-ef1234567890
+# Output: Gate resolved.
+```
+
+### `tg gate list`
+
+Lists gates, optionally filtered to pending only.
+
+```bash
+tg gate list [--pending]
+```
+
+**Options:**
+
+- `--pending`: Show only gates with status `pending`.
+
+**Output:** Gate ID, name, type, status, task_id, created_at. With `--json`: array of gate objects.
+
+**Example:**
+
+```bash
+tg gate list --pending
+# Output: Lists all pending gates.
+```
+
+**Gates vs blocks:** **Gates** block a task on an *external* condition (human, CI, webhook). **Blocks** (`tg block`, `edge` with `type='blocks'`) block a task on *another task* in the graph. Use gates when the dependency is outside the task graph; use blocks for task-on-task dependencies.
+
+### Multi-machine workflow and sync
+
+The task graph is stored in a Dolt repo (`.taskgraph/dolt/`). To use the same graph on multiple machines:
+
+-   **No `tg sync` yet**: Sync is done via Dolt. From the project root, run Dolt in the repo (e.g. `cd .taskgraph/dolt && dolt remote add origin <url>` once, then `dolt pull` / `dolt push`). See [architecture.md](architecture.md) for the full multi-machine sync and workflow section.
+-   **Planned**: A future `tg sync` may wrap Dolt pull/push and support an optional remote in `.taskgraph/config.json`. Until then, use Dolt remotes and pull/push manually.
 
 ### `tg block <taskId> --on <blockerTaskId> --reason <text>`
 
@@ -499,7 +603,8 @@ Cross-plan analysis for domains, skills, file overlaps, and proposed cross-plan 
 
 ```bash
 tg crossplan <subcommand> [options]
-# Subcommands: domains | skills | files | edges | summary
+# Subcommands: plans | domains | skills | files | edges | summary
+tg crossplan plans [--json]
 tg crossplan domains [--json]
 tg crossplan skills [--json]
 tg crossplan files [--json]
@@ -509,6 +614,7 @@ tg crossplan summary [--json]
 
 **Subcommands:**
 
+- **`plans`**: Summary of tasks by plan: task counts per plan with status breakdown (todo, doing, blocked, done, canceled). One line per plan in human output; with `--json`, array of `{ plan_id, title, status, task_count, todo, doing, blocked, done, canceled }`.
 - **`domains`**: Domains shared by more than one plan, with task counts and which plans each domain appears in.
 - **`skills`**: Skills shared across multiple plans, with task counts and plan list.
 - **`files`**: Files touched by more than one plan (parsed from each plan’s `file_tree`). Useful for ordering: if Plan A and Plan B both modify the same file, one should typically go first.
@@ -522,6 +628,7 @@ tg crossplan summary [--json]
 
 **Output (human-readable when not `--json`):**
 
+- **plans**: One line per plan: `Title (plan_id): N tasks [todo: x, doing: x, blocked: x, done: x, canceled: x]`.
 - **domains** / **skills**: One block per domain/skill: name, plan count, task count, list of plan titles.
 - **files**: One block per file: path, plan count, list of plan titles.
 - **edges**: List of proposed edges (type, from_task_id, to_task_id, reason); if not `--dry-run`, also "Added to DB" with inserted edges.
@@ -530,6 +637,10 @@ tg crossplan summary [--json]
 **Example:**
 
 ```bash
+tg crossplan plans
+# Output (example):
+# Plan A (6dbadd46-...): 8 tasks [todo: 3, doing: 1, blocked: 0, done: 4, canceled: 0]
+
 tg crossplan domains
 # Output (example):
 # api: 2 plans, 5 tasks
@@ -605,6 +716,32 @@ With `--json` (one-shot only; not with `--dashboard`): default view outputs an o
 - **Polling.** The status query chain is re-run every 2 seconds. Dolt is invoked via execa per call. File watching is out of scope.
 - **Raw mode and exit.** On entering live mode, `process.stdin.setRawMode(true)` is set so that the "q" key can quit. On **SIGINT**, **SIGTERM**, or key **"q"**: clear the refresh interval, call `setRawMode(false)`, then `process.exit(0)`. **Ctrl+C** and **"q"** both quit live mode.
 - **`--json` with `--dashboard` unsupported.** If `--json` is passed with `--dashboard`, the CLI prints to stderr: `tg status --dashboard does not support --json`, then `process.exit(1)`.
+
+### `tg stats`
+
+Derives agent metrics from the event table: tasks completed per agent (from done + started events), review pass/fail counts (from note events whose message body is JSON with `"type": "review"`; see [multi-agent.md](multi-agent.md) for the review event convention), and average elapsed time per task (started → done).
+
+```bash
+tg stats [--agent <name>] [--plan <planId>] [--json]
+```
+
+**Options:**
+
+- `--agent <name>`: Restrict metrics to the given agent.
+- `--plan <planId>`: Restrict to tasks that belong to the given plan (plan ID or title).
+- `--json`: Output an array of objects: `agent`, `tasks_done`, `avg_seconds`, `review_pass`, `review_fail`.
+
+**Output (human):** One line per agent: agent name, tasks_done, avg_elapsed (seconds or —), and review PASS/FAIL counts when present.
+
+**Example:**
+
+```bash
+tg stats
+# Agent metrics (from event data):
+#   implementer-1  tasks_done: 5  avg_elapsed: 120s  review: 4 PASS, 0 FAIL
+
+tg stats --plan "My Plan" --json
+```
 
 ### `tg portfolio overlaps`
 
@@ -687,3 +824,53 @@ tg import plans/new-feature.md --plan "New Feature Development"
 # Created new plan 'New Feature Development' with ID: a1b2c3d4-e5f6-7890-1234-567890abcdef
 # Successfully imported tasks and edges from plans/new-feature.md to plan a1b2c3d4-e5f6-7890-1234-567890abcdef.
 ```
+
+### `tg template apply <file>`
+
+Reads a template YAML file (Cursor plan frontmatter shape), substitutes variables from `--var key=value`, and creates a plan and tasks in Dolt using the same logic as `tg import --format cursor`. Use templates when you want to reuse the same plan structure with different names or areas.
+
+```bash
+tg template apply <file> --plan "<planName>" [--var key=value]...
+```
+
+**Arguments:**
+
+- `<file>`: Path to the template YAML file.
+
+**Options:**
+
+- `--plan <name>`: **(Required)** Plan name for the created plan (or existing plan to add tasks to). If no plan exists with this title/ID, a new plan is created.
+- `--var <pairs...>`: Variable substitutions as `key=value`. Multiple pairs: `--var feature=auth --var area=backend`. Any `{{varName}}` in the template is replaced by the value for `varName`.
+
+**Template format**
+
+The file must be valid YAML with the same shape as Cursor plan frontmatter: `name`, `overview`, `todos` (required), `fileTree`, `risks`, `tests`. Any string value may contain `{{varName}}` placeholders (alphanumeric names). After substitution, the result is passed through the same plan/task creation and upsert logic as cursor import.
+
+**Variables**
+
+Placeholders use the form `{{varName}}`. Supply values via `--var key=value`. Placeholders not provided are left as literal `{{varName}}` in the output. Substitution runs recursively over all string fields in the YAML.
+
+**When to use templates vs full plans**
+
+- **Templates (`tg template apply`)**: Use when you want to **reuse** the same plan structure with different names or areas (e.g. per-feature or per-module). The template is YAML-only (no markdown body); variables allow one file to drive many plans.
+- **Import (`tg import --plan X --format cursor`)**: Use for **one-off** Cursor plan files: a markdown document whose YAML frontmatter describes the plan. No variable substitution; the file is imported as-is.
+
+**Example:**
+
+```bash
+tg template apply docs/templates/feature-rollout.yaml --plan "Auth rollout" --var feature=Auth --var area=backend
+# Output:
+# Created new plan 'Auth rollout' with ID: ...
+# Successfully applied template docs/templates/feature-rollout.yaml to plan ... (2 tasks).
+```
+
+See [docs/templates/README.md](templates/README.md) for more examples and template authoring.
+
+## MCP Server
+
+Task Graph provides an MCP (Model Context Protocol) server so AI assistants (Cursor, Claude Desktop, etc.) can read task and plan data without using the CLI.
+
+- **Command:** `tg-mcp` — run from the project root (directory containing `.taskgraph/`). Reads config from `.taskgraph/config.json`.
+- **Tools (read-only):** `tg_status`, `tg_context`, `tg_next`, `tg_show` — same data as `tg status --json`, `tg context <taskId> --json`, `tg next`, and `tg show <taskId> --json`.
+
+For setup, tool parameters, and how to configure Cursor or Claude to use the server, see [docs/mcp.md](mcp.md).

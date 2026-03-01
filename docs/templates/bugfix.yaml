@@ -1,0 +1,28 @@
+# Bug investigation and fix template.
+# Use: tg template apply docs/templates/bugfix.yaml --plan "Fix X" [--var bug=export empty plan]
+name: "Fix {{bug}}"
+overview: "Investigate and fix the bug: {{bug}}. Reproduce, root-cause, fix, and verify."
+fileTree: |
+  src/                           (investigate then modify)
+  __tests__/                     (add or extend)
+risks:
+  - description: Fix addresses symptom not root cause
+    severity: medium
+    mitigation: Investigation task must document root cause; fix task references it.
+tests:
+  - "Regression test or existing test that now passes"
+todos:
+  - id: investigate
+    content: "Reproduce and root-cause {{bug}}"
+    intent: "Reproduce the bug (steps or test case). Identify root cause (code path, invariant violated, or missing check). Document in a note or task intent; do not implement fix yet."
+    changeType: investigate
+  - id: fix
+    content: "Implement fix for {{bug}}"
+    intent: "Implement the minimal fix for the root cause identified in investigate. Prefer targeted changes; avoid refactors unless necessary for the fix."
+    blockedBy: [investigate]
+    changeType: fix
+  - id: verify
+    content: "Add or run tests to verify the fix"
+    intent: "Add a regression test or extend existing tests so the bug does not reoccur. Run relevant tests and confirm green."
+    blockedBy: [fix]
+    changeType: test

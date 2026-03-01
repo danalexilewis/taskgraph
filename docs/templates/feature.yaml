@@ -1,0 +1,38 @@
+# Standard feature template: schema, implementation, tests, docs.
+# Use: tg template apply docs/templates/feature.yaml --plan "My Feature" [--var feature=Auth]
+name: "{{feature}} feature"
+overview: "Implement {{feature}}: schema/API, implementation, tests, and documentation."
+fileTree: |
+  src/
+  ├── domain/                    (modify or create)
+  ├── db/                        (modify if schema)
+  └── ...                        (implementation)
+  __tests__/                     (create)
+  docs/                          (modify)
+risks:
+  - description: Scope creep into unrelated areas
+    severity: medium
+    mitigation: Keep tasks scoped to schema, impl, tests, docs only; fileTree bounds the change set.
+tests:
+  - "Unit/integration tests for new behavior"
+  - "Docs and CLI reference updated if user-facing"
+todos:
+  - id: schema
+    content: "Add or extend schema/types for {{feature}}"
+    intent: "Define domain types, validation, and any DB schema or config needed for {{feature}}. No implementation yet."
+    changeType: create
+  - id: impl
+    content: "Implement {{feature}} (core logic and wiring)"
+    intent: "Implement the feature: core logic, CLI or API surface, and wiring. Follow existing patterns in the codebase."
+    blockedBy: [schema]
+    changeType: create
+  - id: tests
+    content: "Add tests for {{feature}}"
+    intent: "Add unit and/or integration tests covering the new behavior. Prefer tests that document expected behavior."
+    blockedBy: [impl]
+    changeType: test
+  - id: docs
+    content: "Update docs for {{feature}} (cli-reference, schema, or domain docs)"
+    intent: "Update docs in the same change: cli-reference for new commands/options, schema.md or domain docs if relevant. See docs-sync rule."
+    blockedBy: [impl]
+    changeType: document

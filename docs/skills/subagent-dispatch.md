@@ -15,4 +15,6 @@ Execute task-graph work by dispatching fast sub-agents instead of doing every ta
 
 **Concurrency**: Feed all runnable, non-conflicting tasks (no file overlap); Cursor decides how many run in parallel. Do not cap the batch size yourself.
 
+**Review verdict events**: After each spec-reviewer or quality-reviewer completes, the orchestrator records the verdict as a note event for stats: `tg note <taskId> --msg '{"type":"review","verdict":"PASS"|"FAIL","reviewer":"<agent_name>","stage":"spec"|"quality"}'`. See `.cursor/rules/subagent-dispatch.mdc` (two-stage review steps) and docs/multi-agent.md (Event body conventions).
+
 ...

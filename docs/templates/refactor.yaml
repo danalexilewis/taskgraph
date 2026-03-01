@@ -1,0 +1,32 @@
+# Safe refactoring template: tests first, then change, then verify.
+# Use: tg template apply docs/templates/refactor.yaml --plan "Refactor X" [--var scope=query layer]
+name: "Refactor {{scope}}"
+overview: "Safely refactor {{scope}}: ensure tests exist and pass before and after; change structure or implementation without changing behavior."
+fileTree: |
+  src/                           (modify)
+  __tests__/                     (modify or create)
+risks:
+  - description: Behavior change introduced during refactor
+    severity: high
+    mitigation: Tests-first task locks behavior; verify task runs full suite. Small, reviewable steps.
+  - description: Scope creep (new features during refactor)
+    severity: medium
+    mitigation: Limit refactor task to structure/implementation only; no new behavior.
+tests:
+  - "Existing or new tests that lock current behavior before refactor"
+  - "Full suite (e.g. gate:full) after refactor to confirm no regressions"
+todos:
+  - id: tests-first
+    content: "Add or confirm tests that cover {{scope}} behavior"
+    intent: "Ensure there are tests (unit or integration) that cover the current behavior of {{scope}}. Add tests if missing. All must pass before refactor. This locks behavior so refactor does not change it."
+    changeType: test
+  - id: refactor
+    content: "Refactor {{scope}} (structure/implementation only)"
+    intent: "Change structure or implementation of {{scope}} without changing behavior. Small steps; run tests after each logical step. No new features or behavior changes."
+    blockedBy: [tests-first]
+    changeType: refactor
+  - id: verify
+    content: "Run full test suite to verify no regressions"
+    intent: "Run the full test suite (e.g. pnpm gate:full). Confirm all tests pass. Document result in evidence."
+    blockedBy: [refactor]
+    changeType: test
