@@ -1,5 +1,7 @@
 ---
 triggers:
+  files: ["docs/performance.md", "src/**"]
+  change_types: ["create", "modify"]
   keywords: ["performance", "benchmarking", "token", "analytics", "tg stats", "parallel agents", "context optimization", "resource", "memory", "specs"]
 ---
 

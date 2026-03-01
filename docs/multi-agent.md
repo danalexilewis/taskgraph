@@ -1,3 +1,10 @@
+---
+triggers:
+  files: ["src/cli/**", ".cursor/rules/**", "docs/multi-agent.md"]
+  change_types: ["create", "modify"]
+  keywords: ["worktree", "multi-agent", "tg start", "tg done", "plan branch"]
+---
+
 # Multi-Agent Centaur Model
 
 This document describes how Task-Graph supports 2–3 simultaneous agents working alongside the human. The model is **centaur-first**: the human plans, audits, and routes; agents execute with shared visibility.

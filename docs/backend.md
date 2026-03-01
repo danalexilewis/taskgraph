@@ -1,3 +1,10 @@
+---
+triggers:
+  files: ["src/**", "api/**", "docs/backend.md"]
+  change_types: ["create", "modify"]
+  keywords: ["backend", "api", "domain"]
+---
+
 # Backend
 
 This doc is a **template stub**. Project-specific content has not been added. Tasks with `domain: backend` point here (`docs/backend.md`).

@@ -1,3 +1,10 @@
+---
+triggers:
+  files: ["docs/**", "plans/**"]
+  change_types: ["create", "modify"]
+  keywords: ["plan", "project", "task", "glossary", "terminology"]
+---
+
 # Glossary — Naming Conventions and Definitions
 
 This document is the single source of truth for terminology used in Task Graph: naming conventions, definitions, and how terms relate. When adding or changing concepts, update the glossary and keep other docs aligned.

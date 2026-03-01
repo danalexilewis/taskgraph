@@ -1,3 +1,10 @@
+---
+triggers:
+  files: ["package.json", "pnpm-lock.yaml", "docs/recommended-packages.md"]
+  change_types: ["create", "modify"]
+  keywords: ["dependency", "package", "npm", "pnpm", "recommended"]
+---
+
 # Recommended Packages
 
 When you need to add a dependency, **check this list first**. These are curated, well-maintained packages that fit common needs. Prefer a recommended package when it covers your use case.
@@ -10,22 +17,22 @@ When you need to add a dependency, **check this list first**. These are curated,
 
 ## Table
 
-| Category      | Package     | npm name                | When to use it                                                                              |
-| ------------- | ----------- | ----------------------- | ------------------------------------------------------------------------------------------- |
-| CLI prompts   | clack       | `@clack/prompts`        | Interactive terminal prompts (text, select, multiselect); use for tg init and other interactive flows. |
-| Validation    | Zod         | `zod`                   | Schema declaration and validation; use for all input/output validation at boundaries.       |
-| Data fetching | React Query | `@tanstack/react-query` | Server state management; use for any API data fetching in React.                            |
-| Utilities     | Lodash      | `lodash-es`             | Collection/object manipulation; prefer lodash-es for tree-shaking.                          |
-| Identifiers   | UUID        | `uuid`                  | RFC-compliant UUID generation when you need unique IDs.                                     |
-| Authorization | CASL        | `@casl/ability`         | Isomorphic authorization; use for permission/access control logic.                          |
-| Pattern match | ts-pattern  | `ts-pattern`            | Exhaustive pattern matching; use instead of long switch/if chains for discriminated unions. |
-| SQL           | Knex        | `knex`                  | SQL query builder; use when an ORM is too heavy.                                            |
-| Database      | Dolt        | `dolt`                  | Version-controlled MySQL-compatible database (used by TaskGraph).                           |
-| API contracts | ts-rest     | `@ts-rest/core`         | Type-safe REST contracts; use for defining and consuming REST APIs.                         |
-| Visualization | React Flow  | `@xyflow/react`         | Node-based UIs; use for flowcharts, diagrams, graph editors.                                |
-| Data grid     | AG Grid     | `ag-grid-react`         | Enterprise data grid; use for complex tables with sorting/filtering.                        |
-| Dates         | date-fns    | `date-fns`              | Date utilities; use instead of moment.js for date manipulation.                             |
-| Email         | MJML        | `mjml`                  | Responsive email framework; use for building HTML emails.                                   |
+| Category      | Package                      | npm name                | When to use it                                                                                                                                                                                                 |
+| ------------- | ---------------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CLI prompts   | clack                        | `@clack/prompts`        | Interactive terminal prompts (text, select, multiselect); use for tg init and other interactive flows.                                                                                                         |
+| Validation    | Zod                          | `zod`                   | Schema declaration and validation; use for all input/output validation at boundaries.                                                                                                                          |
+| Data fetching | TanStack Query (React Query) | `@tanstack/react-query` | Server state management, caching, and synchronisation; use for API data fetching in React. Part of the TanStack suite — see also TanStack Table, Router, and Form for the same quality bar across UI concerns. |
+| Utilities     | Lodash                       | `lodash-es`             | Collection/object manipulation; prefer lodash-es for tree-shaking.                                                                                                                                             |
+| Identifiers   | UUID                         | `uuid`                  | RFC-compliant UUID generation when you need unique IDs.                                                                                                                                                        |
+| Authorization | CASL                         | `@casl/ability`         | Isomorphic authorization; use for permission/access control logic.                                                                                                                                             |
+| Pattern match | ts-pattern                   | `ts-pattern`            | Exhaustive pattern matching; use instead of long switch/if chains for discriminated unions.                                                                                                                    |
+| SQL           | Knex                         | `knex`                  | SQL query builder; use when an ORM is too heavy.                                                                                                                                                               |
+| Database      | Dolt                         | `dolt`                  | Version-controlled MySQL-compatible database (used by TaskGraph).                                                                                                                                              |
+| API contracts | ts-rest                      | `@ts-rest/core`         | Type-safe REST contracts; use for defining and consuming REST APIs.                                                                                                                                            |
+| Visualization | React Flow                   | `@xyflow/react`         | Node-based UIs; use for flowcharts, diagrams, graph editors.                                                                                                                                                   |
+| Data grid     | AG Grid                      | `ag-grid-react`         | Enterprise data grid; use for complex tables with sorting/filtering.                                                                                                                                           |
+| Dates         | date-fns                     | `date-fns`              | Date utilities; use instead of moment.js for date manipulation.                                                                                                                                                |
+| Email         | MJML                         | `mjml`                  | Responsive email framework; use for building HTML emails.                                                                                                                                                      |
 
 ## Contributing
 

@@ -1,3 +1,10 @@
+---
+triggers:
+  files: ["plans/**", "docs/plan-format.md"]
+  change_types: ["create", "modify"]
+  keywords: ["plan", "plan format", "cursor format", "fileTree", "risks", "todos"]
+---
+
 # Enhanced Plan Format (Rich Planning)
 
 This document defines the **enhanced Cursor plan format**: analysis-rich plans with file trees, risks, tests, per-task intent and suggested code changes, and a structured markdown body. It extends the base Cursor format described in [Plan Import](plan-import.md) and is the reference for [Plan Authoring](.cursor/rules/plan-authoring.mdc).

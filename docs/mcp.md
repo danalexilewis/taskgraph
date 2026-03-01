@@ -1,3 +1,10 @@
+---
+triggers:
+  files: ["src/mcp/**", "docs/mcp.md", ".cursor/**"]
+  change_types: ["create", "modify"]
+  keywords: ["mcp", "model context protocol", "tg-mcp", "tools"]
+---
+
 # Task Graph MCP Server
 
 The Task Graph MCP server exposes Task Graph data to AI assistants (Cursor, Claude Desktop, etc.) via the [Model Context Protocol](https://modelcontextprotocol.io/). Tools are read-only and mirror the JSON output of `tg status`, `tg context`, `tg next`, and `tg show`.
