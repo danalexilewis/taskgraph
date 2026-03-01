@@ -349,5 +349,5 @@ If it fails, the error message includes the parse cause. Strip frontmatter down 
 
 - **Import behavior**: [Plan Import](plan-import.md) — how `tg import --format cursor` works and how base Cursor fields are mapped.
 - **Authoring guidance**: [Plan Authoring](.cursor/rules/plan-authoring.mdc) — when to use rich fields, mermaid, suggested changes, and the original prompt.
-- **Schema**: [Schema](schema.md) — `project.file_tree`, `project.risks`, `project.tests`, `project.overview`, `task.suggested_changes`, `task.intent`.
+- **Schema**: [Schema](schema.md) — `project.file_tree`, `project.risks`, `project.tests`, `project.overview`, `project.is_benchmark`, `task.suggested_changes`, `task.intent`.
 - **CLI**: [CLI Reference](cli-reference.md) — `tg context` output when suggested_changes, file_tree, or risks are present.
