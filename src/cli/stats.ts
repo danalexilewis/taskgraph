@@ -84,12 +84,16 @@ export function statsCommand(program: Command) {
     .description(
       "Derive agent metrics from event data: tasks completed, review pass/fail counts, average elapsed time per task",
     )
-    .option("--agent <name>", "Filter by agent name")
+      .option("--agent <name>", "Filter by agent name")
+      .option('--benchmark <benchmark>', 'Filter by benchmark')
     .option(
       "--plan <planId>",
       "Show per-task elapsed table and plan summary for a specific plan",
     )
     .option("--timeline", "Show cross-plan execution history sorted by date")
+    .option("--recovery", "Include recovery metrics: investigator fix rate")
+    .option("--benchmark", "Filter to benchmark plans (only include projects where is_benchmark = 1)")
+    .option("--benchmark", "Filter benchmark projects")
     .action(async (options, cmd) => {
       const configResult = readConfig();
       if (configResult.isErr()) {
@@ -98,12 +102,15 @@ export function statsCommand(program: Command) {
       }
       const config = configResult.value;
       const json = rootOpts(cmd).json ?? false;
+      const benchmark = options.benchmark ?? false;
+      const filterSql = benchmark ? "AND p.is_benchmark = 1" : "";
       const q = query(config.doltRepoPath);
 
       // --timeline mode: show cross-plan history
       if (options.timeline) {
         const tableName = "project";
-        const timelineSql = `
+        const filterSql = benchmark ? "WHERE p.is_benchmark = 1" : "";
+        let timelineSql = `
           SELECT
             p.plan_id,
             p.title,
@@ -121,6 +128,9 @@ export function statsCommand(program: Command) {
           ORDER BY started_at DESC
         `;
 
+        if (options.benchmark) {
+          timelineSql = timelineSql.replace(`FROM \`${tableName}\` p`, `FROM \`${tableName}\` p WHERE p.is_benchmark = 1`);
+        }
         const timelineResult = await q.raw<TimelineRow>(timelineSql);
         timelineResult.match(
           (rows) => {
@@ -192,7 +202,7 @@ export function statsCommand(program: Command) {
           /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/i.test(
             options.plan,
           );
-        const planCondition = isUUID
+        let planCondition = isUUID
           ? `p.plan_id = '${planRaw}'`
           : `p.title = '${planRaw}'`;
         const tableName = "project";
@@ -208,7 +218,7 @@ export function statsCommand(program: Command) {
           JOIN task t ON t.plan_id = p.plan_id
           JOIN event e_start ON e_start.task_id = t.task_id AND e_start.kind = 'started'
           JOIN event e_done  ON e_done.task_id  = t.task_id AND e_done.kind  = 'done'
-          WHERE ${planCondition}
+          WHERE ${planCondition} ${filterSql}
         `;
 
         const planTasksSql = `
@@ -223,7 +233,7 @@ export function statsCommand(program: Command) {
           JOIN \`${tableName}\` p ON p.plan_id = t.plan_id
           JOIN event e_start ON e_start.task_id = t.task_id AND e_start.kind = 'started'
           JOIN event e_done  ON e_done.task_id  = t.task_id AND e_done.kind  = 'done'
-          WHERE ${planCondition}
+          WHERE ${planCondition} ${filterSql}
           ORDER BY elapsed_s DESC
         `;
 
@@ -522,7 +532,43 @@ export function statsCommand(program: Command) {
                         };
                         if (tokenUsage.length > 0)
                           result.token_usage = tokenUsage;
-                        console.log(JSON.stringify(result, null, 2));
+                        if (options.recovery) {
+            const recoverySql = `
+              SELECT
+                SUM(CASE WHEN had_failure THEN 1 ELSE 0 END) AS plans_with_failure,
+                SUM(CASE WHEN fixed THEN 1 ELSE 0 END) AS plans_fixed
+              FROM (
+                SELECT
+                  p.plan_id,
+                  MAX(CASE WHEN body LIKE '%gate:full failed%' THEN 1 ELSE 0 END) = 1 AS had_failure,
+                  MAX(CASE WHEN body LIKE '%gate:full passed%' THEN 1 ELSE 0 END) = 1 AS fixed
+                FROM project p
+                JOIN task t ON t.plan_id = p.plan_id
+                JOIN event e ON e.task_id = t.task_id AND e.kind = 'done'
+                WHERE t.title RLIKE 'run[ -]?full[ -]?suite|gate:full'
+                GROUP BY p.plan_id
+              ) x
+            `;
+            const recoveryResult = await q.raw<{plans_with_failure: number; plans_fixed: number;}>(recoverySql);
+            recoveryResult.match(
+              (rows) => {
+                const stats = rows[0];
+                result.recovery = {
+                  plans_with_failure: Number(stats.plans_with_failure),
+                  plans_fixed: Number(stats.plans_fixed),
+                  fix_rate: stats.plans_with_failure > 0 ? Number(stats.plans_fixed) / Number(stats.plans_with_failure) : null,
+                };
+              },
+              (e: AppError) => {
+                console.error(`Error fetching recovery stats: ${e.message}`);
+                if (json) {
+                  console.log(JSON.stringify({ status: "error", code: e.code, message: e.message }, null, 2));
+                }
+                process.exit(1);
+              },
+            );
+          }
+          console.log(JSON.stringify(result, null, 2));
                       } else {
                         if (out.length === 0) {
                           console.log(
