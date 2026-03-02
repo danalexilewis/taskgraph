@@ -6,8 +6,17 @@ import { tableExists } from "../db/migrate";
 import { query } from "../db/query";
 import type { AppError } from "../domain/errors";
 import { renderTable } from "./table";
-import { getTerminalHeight, getTerminalWidth } from "./terminal";
-import { boxedSection, getBoxInnerWidth } from "./tui/boxen";
+import {
+  enterAlternateScreen,
+  exitAlternateScreen,
+  getTerminalHeight,
+  getTerminalWidth,
+} from "./terminal";
+import {
+  boxedSection,
+  getBoxInnerWidth,
+  getBoxInnerWidthDashboard,
+} from "./tui/boxen";
 import { type Config, readConfig, rootOpts } from "./utils";
 
 const INITIATIVES_STUB_MESSAGE =
@@ -129,6 +138,8 @@ export interface StatusData {
     blocked: number;
     done: number;
     actionable: number;
+    /** Initiative title when initiative table exists; undefined when not fetched. */
+    initiative?: string | null;
   }>;
   staleTasks: Array<{ task_id: string; hash_id: string | null; title: string }>;
   staleDoingTasks: StaleDoingTaskRow[];
@@ -158,6 +169,12 @@ export interface StatusData {
   subAgentRuns: number;
   /** Sum of started→done elapsed time in hours. */
   totalAgentHours: number;
+  /** Number of done events where agent = 'investigator'. */
+  investigatorRuns: number;
+  /** Percentage of subAgentRuns that are investigator (0–100). */
+  investigatorFixRate: number;
+  /** Number of sub-agent types defined in the project (e.g. implementer, reviewer). */
+  subAgentTypesDefined: number;
 }
 
 export function fetchStatusData(
@@ -212,6 +229,7 @@ export function fetchStatusData(
     SELECT
       (SELECT COUNT(DISTINCT JSON_UNQUOTE(JSON_EXTRACT(body, '$.agent'))) FROM ${bt("event")} WHERE kind = 'started' AND JSON_EXTRACT(body, '$.agent') IS NOT NULL) AS agent_count,
       (SELECT COUNT(*) FROM ${bt("event")} WHERE kind = 'done') AS sub_agent_runs,
+      (SELECT COUNT(*) FROM ${bt("event")} WHERE kind = 'done' AND JSON_UNQUOTE(JSON_EXTRACT(body, '$.agent')) = 'investigator') AS investigator_runs,
       (SELECT COALESCE(SUM(sec), 0) / 3600 FROM (
         SELECT TIMESTAMPDIFF(SECOND,
           (SELECT created_at FROM ${bt("event")} e2 WHERE e2.task_id = d.task_id AND e2.kind = 'started' ORDER BY e2.created_at DESC LIMIT 1),
@@ -346,6 +364,7 @@ export function fetchStatusData(
   interface AgentMetricsRow {
     agent_count: number;
     sub_agent_runs: number;
+    investigator_runs: number;
     total_agent_minutes: number;
   }
   // All queries are independent reads — run them all in parallel.
@@ -393,9 +412,14 @@ export function fetchStatusData(
         const canceledTasks = canRes[0]?.count ?? 0;
         const agentCount = Number(amRes[0]?.agent_count ?? 0);
         const subAgentRuns = Number(amRes[0]?.sub_agent_runs ?? 0);
+        const investigatorRuns = Number(amRes[0]?.investigator_runs ?? 0);
         const totalAgentHours = Math.round(
           Number(amRes[0]?.total_agent_minutes ?? 0),
         );
+        const investigatorFixRate =
+          subAgentRuns > 0
+            ? Math.round((investigatorRuns / subAgentRuns) * 100)
+            : 0;
 
         const actionableMap = new Map(
           actionableRows.map((r) => [r.plan_id, r.count]),
@@ -458,12 +482,42 @@ export function fetchStatusData(
           agentCount,
           subAgentRuns,
           totalAgentHours,
+          investigatorRuns,
+          investigatorFixRate,
+          subAgentTypesDefined: SUB_AGENT_TYPES_DEFINED,
         };
 
-        return tableExists(config.doltRepoPath, "cycle").andThen(
-          (cycleExists) => {
-            if (!cycleExists) return okAsync(base);
-            const currentCycleSql = `
+        return tableExists(config.doltRepoPath, "initiative")
+          .andThen((initiativeExists) => {
+            if (!initiativeExists) return okAsync(base);
+            const initiativeSql = `
+              SELECT p.plan_id, i.title AS initiative_title
+              FROM ${bt("project")} p
+              LEFT JOIN ${bt("initiative")} i ON p.initiative_id = i.initiative_id
+              WHERE p.status NOT IN ('done', 'abandoned')
+              ${options.plan ? (isUUID ? `AND p.plan_id = '${sqlEscape(options.plan)}'` : `AND p.title = '${sqlEscape(options.plan)}'`) : ""}`;
+            return q
+              .raw<{
+                plan_id: string;
+                initiative_title: string | null;
+              }>(initiativeSql)
+              .map((rows) => {
+                const imap = new Map(
+                  rows.map((r) => [r.plan_id, r.initiative_title ?? null]),
+                );
+                return {
+                  ...base,
+                  activePlans: base.activePlans.map((p) => ({
+                    ...p,
+                    initiative: imap.get(p.plan_id) ?? null,
+                  })),
+                };
+              });
+          })
+          .andThen((baseWithInitiative) =>
+            tableExists(config.doltRepoPath, "cycle").andThen((cycleExists) => {
+              if (!cycleExists) return okAsync(baseWithInitiative);
+              const currentCycleSql = `
           SELECT c.name, c.start_date, c.end_date,
                  COUNT(DISTINCT i.initiative_id) AS initiative_count
           FROM ${bt("cycle")} c
@@ -471,16 +525,19 @@ export function fetchStatusData(
           WHERE CURDATE() BETWEEN c.start_date AND c.end_date
           GROUP BY c.cycle_id, c.name, c.start_date, c.end_date
           LIMIT 1`;
-            return q
-              .raw<{
-                name: string;
-                start_date: string;
-                end_date: string;
-                initiative_count: number;
-              }>(currentCycleSql)
-              .map((rows) => ({ ...base, currentCycle: rows[0] ?? null }));
-          },
-        );
+              return q
+                .raw<{
+                  name: string;
+                  start_date: string;
+                  end_date: string;
+                  initiative_count: number;
+                }>(currentCycleSql)
+                .map((rows) => ({
+                  ...baseWithInitiative,
+                  currentCycle: rows[0] ?? null,
+                }));
+            }),
+          );
       }
     },
   );
@@ -619,16 +676,22 @@ export function fetchTasksTableData(
       ? ` AND t.${bt("status")} IN ('todo', 'doing', 'blocked') `
       : "";
 
-  const tasksSql = `
-    SELECT t.task_id, t.hash_id, t.title, p.title AS plan_title, t.status, t.owner,
-      (SELECT g.name FROM ${bt("gate")} g WHERE g.task_id = t.task_id AND g.status = 'pending' ORDER BY g.created_at ASC LIMIT 1) AS blocked_by_gate_name
+  const baseSelect = `t.task_id, t.hash_id, t.title, p.title AS plan_title, t.status, t.owner`;
+  const gateSubquery = `(SELECT g.name FROM ${bt("gate")} g WHERE g.task_id = t.task_id AND g.status = 'pending' ORDER BY g.created_at ASC LIMIT 1) AS blocked_by_gate_name`;
+  const fromWhereOrder = `
     FROM ${bt("task")} t
     JOIN ${bt("project")} p ON t.plan_id = p.plan_id
     WHERE 1=1 ${planFilter} ${dimFilter} ${excludeCanceledAbandoned} ${filterActive}
     ORDER BY p.title ASC, t.created_at ASC
   `;
 
-  return q.raw<TaskRow>(tasksSql);
+  return tableExists(config.doltRepoPath, "gate").andThen((gateExists) => {
+    const blockedByCol = gateExists
+      ? gateSubquery
+      : "NULL AS blocked_by_gate_name";
+    const tasksSql = `SELECT ${baseSelect}, ${blockedByCol} ${fromWhereOrder}`;
+    return q.raw<TaskRow>(tasksSql);
+  });
 }
 
 /**
@@ -793,9 +856,8 @@ export function statusCommand(program: Command) {
           console.error("tg status --dashboard does not support --json");
           process.exit(1);
         }
-        const { runOpenTUILiveInitiatives } = await import(
-          "./tui/live-opentui.js"
-        );
+        const { runOpenTUILiveInitiatives } =
+          await import("./tui/live-opentui.js");
         try {
           await runOpenTUILiveInitiatives(config, statusOptions);
           return;
@@ -807,6 +869,7 @@ export function statusCommand(program: Command) {
         const cleanup = () => {
           if (timer) clearInterval(timer);
           if (stdin.isTTY && stdin.setRawMode) stdin.setRawMode(false);
+          exitAlternateScreen();
           process.exit(0);
         };
         process.on("SIGINT", cleanup);
@@ -814,6 +877,7 @@ export function statusCommand(program: Command) {
         if (stdin.isTTY && stdin.setRawMode) {
           stdin.setRawMode(true);
           stdin.resume();
+          enterAlternateScreen();
           stdin.on("data", (ch) => {
             if (ch.toString().toLowerCase() === "q") cleanup();
           });
@@ -842,6 +906,7 @@ export function statusCommand(program: Command) {
             }, 2000);
           },
           (e: AppError) => {
+            exitAlternateScreen();
             console.error(e.message);
             process.exit(1);
           },
@@ -932,9 +997,8 @@ export function statusCommand(program: Command) {
         const config = configResult.value;
 
         if (viewMode === "projects") {
-          const { runOpenTUILiveProjects } = await import(
-            "./tui/live-opentui.js"
-          );
+          const { runOpenTUILiveProjects } =
+            await import("./tui/live-opentui.js");
           try {
             await runOpenTUILiveProjects(config, statusOptions);
             return;
@@ -946,6 +1010,7 @@ export function statusCommand(program: Command) {
           const cleanup = () => {
             if (timer) clearInterval(timer);
             if (stdin.isTTY && stdin.setRawMode) stdin.setRawMode(false);
+            exitAlternateScreen();
             process.exit(0);
           };
           process.on("SIGINT", cleanup);
@@ -953,6 +1018,7 @@ export function statusCommand(program: Command) {
           if (stdin.isTTY && stdin.setRawMode) {
             stdin.setRawMode(true);
             stdin.resume();
+            enterAlternateScreen();
             stdin.on("data", (ch) => {
               if (ch.toString().toLowerCase() === "q") cleanup();
             });
@@ -981,6 +1047,7 @@ export function statusCommand(program: Command) {
               }, 2000);
             },
             (e: AppError) => {
+              exitAlternateScreen();
               console.error(e.message);
               process.exit(1);
             },
@@ -1074,6 +1141,7 @@ export function statusCommand(program: Command) {
         const cleanup = () => {
           if (timer) clearInterval(timer);
           if (stdin.isTTY && stdin.setRawMode) stdin.setRawMode(false);
+          exitAlternateScreen();
           process.exit(0);
         };
         process.on("SIGINT", cleanup);
@@ -1081,6 +1149,7 @@ export function statusCommand(program: Command) {
         if (stdin.isTTY && stdin.setRawMode) {
           stdin.setRawMode(true);
           stdin.resume();
+          enterAlternateScreen();
           stdin.on("data", (ch) => {
             if (ch.toString().toLowerCase() === "q") cleanup();
           });
@@ -1103,6 +1172,7 @@ export function statusCommand(program: Command) {
             }, 2000);
           },
           (e: AppError) => {
+            exitAlternateScreen();
             console.error(e.message);
             process.exit(1);
           },
@@ -1142,15 +1212,28 @@ export function statusCommand(program: Command) {
 
 function getCompletedSectionContent(d: StatusData): string {
   return (
-    `  Plans: ${chalk.green(d.completedPlans)} done    ` +
+    `  Projects: ${chalk.green(d.completedPlans)} done    ` +
     `Tasks: ${chalk.green(d.completedTasks)} done    ` +
     `Canceled: ${chalk.gray(d.canceledTasks)}`
   );
 }
 
-/** One-line footer for dashboard: agent count, sub-agent runs, total agent minutes. */
+/**
+ * One-line footer string for non-dashboard contexts (JSON output, inline summaries).
+ * THIS FUNCTION IS THE LEGACY/PLAIN VERSION — the canonical dashboard footer is
+ * `getDashboardFooterBox()` (boxed grid below). Do not remove `getDashboardFooterBox`.
+ */
 export function getDashboardFooterLine(d: StatusData): string {
-  return `Types of Agents: ${d.agentCount}  Total Agent Invocations: ${d.subAgentRuns}  Total Agent hours: ${d.totalAgentHours}`;
+  const activeAgents = d.statusCounts.doing ?? 0;
+  return [
+    `Active agents: ${activeAgents}`,
+    `Agents (defined): ${d.agentCount}`,
+    `Sub-agents (defined): ${d.subAgentTypesDefined}`,
+    `Total Agent Invocations: ${d.subAgentRuns}`,
+    `Total Agent hours: ${d.totalAgentHours}`,
+    `Investigator runs: ${d.investigatorRuns}`,
+    `Investigator fix rate: ${d.investigatorFixRate}%`,
+  ].join("  ");
 }
 
 const NARROW_PLAN_WIDTH = 50;
@@ -1158,74 +1241,269 @@ const NARROW_PLAN_WIDTH = 50;
 /** Reserve lines for box borders, section titles, completed summary. */
 const DASHBOARD_RESERVED_LINES = 12;
 
+/** Number of sub-agent types defined in the project (available-agents / docs/leads). Used in dashboard footer. */
+const SUB_AGENT_TYPES_DEFINED = 12;
+
+/** Dashboard box padding for table sections: top 0.5, bottom 0; left/right 2. */
+const DASHBOARD_BOX_PADDING = { top: 0.5, bottom: 0, left: 2, right: 2 };
+/** Stats footer: same as table boxes but bottom 1 so the footer has breathing room. */
+const DASHBOARD_FOOTER_BOX_PADDING = { top: 0.5, bottom: 1, left: 2, right: 2 };
+
+/** Min width per column in the footer stats grid so columns stay readable; allows up to 5 columns on wide screens. */
+const FOOTER_COL_MIN = 20;
+
+/** Number of columns for the footer stats grid (1–5 depending on inner width). */
+function getFooterGridColumns(innerWidth: number): number {
+  if (innerWidth >= FOOTER_COL_MIN * 5) return 5;
+  if (innerWidth >= FOOTER_COL_MIN * 4) return 4;
+  if (innerWidth >= FOOTER_COL_MIN * 3) return 3;
+  if (innerWidth >= FOOTER_COL_MIN * 2) return 2;
+  return 1;
+}
+
+/** Label style for Stats grid: yellow for high contrast against the yellow footer border. */
+const STATS_LABEL = chalk.yellow;
+
 /**
- * Max data rows per dashboard table from terminal height. Plans get ~40%, tasks ~60%.
- * Ensures no scrolling on small terminals.
+ * Dashboard footer content as a borderless table so stats line up and fill full width.
+ * Responsive: 1–5 columns depending on terminal width.
  */
-export function getDashboardRowLimits(terminalRows: number): {
+function getDashboardFooterContent(d: StatusData, innerWidth: number): string {
+  const activeAgents = d.statusCounts.doing ?? 0;
+  const bright = (s: string) => chalk.white(s);
+  const pairs: [string, string][] = [
+    ["Projects done", chalk.green(String(d.completedPlans))],
+    ["Tasks done", chalk.green(String(d.completedTasks))],
+    ["Active agents", bright(String(activeAgents))],
+    ["Agents (defined)", bright(String(d.agentCount))],
+    ["Sub-agents (defined)", bright(String(d.subAgentTypesDefined))],
+    ["Total invocations", bright(String(d.subAgentRuns))],
+    ["Agent hours", bright(String(d.totalAgentHours))],
+    ["Investigator runs", bright(String(d.investigatorRuns))],
+    ["Investigator fix rate", bright(`${d.investigatorFixRate}%`)],
+  ];
+  if (d.staleDoingTasks.length > 0) {
+    pairs.push([
+      "Stale doing (>2h)",
+      chalk.yellow(String(d.staleDoingTasks.length)),
+    ]);
+  }
+  const cols = getFooterGridColumns(innerWidth);
+  const rows: string[][] = [];
+  const emptyRow = (): string[] => Array.from({ length: cols }, () => "");
+  for (let i = 0; i < pairs.length; i += cols) {
+    if (rows.length > 0) rows.push(emptyRow());
+    const rowPairs = pairs.slice(i, i + cols);
+    const cells = rowPairs.map(
+      ([label, value]) => STATS_LABEL(`${label}: `) + value,
+    );
+    while (cells.length < cols) cells.push("");
+    rows.push(cells);
+  }
+  const headers = emptyRow();
+  return renderTable({
+    headers,
+    rows,
+    maxWidth: innerWidth,
+    minWidths: Array(cols).fill(FOOTER_COL_MIN),
+    flexColumnIndex: 0,
+    borderVisible: false,
+  });
+}
+
+/**
+ * Boxed dashboard footer with stats in a responsive grid.
+ * Yellow border + "Stats" title; rows fill full width; tiny gap between KPI rows.
+ */
+export function getDashboardFooterBox(d: StatusData, width: number): string {
+  const innerW = getBoxInnerWidthDashboard(width);
+  const gridContent = getDashboardFooterContent(d, innerW);
+  const content = `${chalk.yellow.bold("Stats")}\n${gridContent}`;
+  return boxedSection("", content, width, {
+    borderColor: "yellow",
+    padding: DASHBOARD_FOOTER_BOX_PADDING,
+    fullWidth: true,
+  });
+}
+
+/**
+ * First line of a boxed section: the section name as a clear header row inside the box.
+ * Use with boxedSection("", formatSectionTitleRow("Name") + "\n" + tableContent, w, ...).
+ */
+function formatSectionTitleRow(sectionName: string): string {
+  return chalk.cyan.bold(`  ${sectionName}`);
+}
+
+/** Hard caps for dashboard: total data rows across both tables cannot exceed _DASHBOARD_MAX_TOTAL. */
+/** Projects section: 6 project rows + 1 Total row = 7 rows; empty lines pad when fewer than 6 projects. */
+const DASHBOARD_MAX_PLANS = 7;
+const DASHBOARD_MAX_TASKS = 13;
+const DASHBOARD_MIN_TASK_ROWS = 7;
+const _DASHBOARD_MAX_TOTAL = DASHBOARD_MAX_PLANS + DASHBOARD_MAX_TASKS;
+
+/**
+ * Row limits for dashboard Active Projects + Active tasks tables.
+ * Fixed caps: up to 6 projects (7 rows including Total; empty lines when fewer), 13 tasks (taskboard shows at least 7 rows), total ≤ 20.
+ * If fewer tasks are available, the leftover slots go to projects (and vice versa).
+ *
+ * @deprecated terminalRows param kept for compatibility; row limits are now fixed.
+ */
+export function getDashboardRowLimits(_terminalRows?: number): {
   maxPlanRows: number;
   maxTaskRows: number;
 } {
-  const dataLines = Math.max(4, terminalRows - DASHBOARD_RESERVED_LINES);
-  return {
-    maxPlanRows: Math.max(2, Math.floor(dataLines * 0.4)),
-    maxTaskRows: Math.max(2, Math.floor(dataLines * 0.6)),
-  };
+  return { maxPlanRows: DASHBOARD_MAX_PLANS, maxTaskRows: DASHBOARD_MAX_TASKS };
+}
+
+/**
+ * Compute dynamic row limits given actual data counts so unused slots flow to the other table.
+ * Combines fixed caps (6 projects + Total = 7 rows, 13 tasks; taskboard minimum 7 rows) with terminal-height
+ * fit so content never scrolls. Terminal height takes the minimum when it would be tighter than the fixed cap.
+ *
+ * Priority: tasks get their cap first (and at least DASHBOARD_MIN_TASK_ROWS); projects get the remainder up to their cap (min 1).
+ */
+function getDashboardRowLimitsDynamic(
+  actualTaskRows: number,
+  actualPlanRows: number,
+  terminalRows?: number,
+): { maxPlanRows: number; maxTaskRows: number } {
+  let taskCap = DASHBOARD_MAX_TASKS;
+  let planCap = DASHBOARD_MAX_PLANS;
+
+  // Also constrain by terminal height so content fits without scrolling.
+  if (terminalRows != null && terminalRows > 0) {
+    const dataLines = Math.max(4, terminalRows - DASHBOARD_RESERVED_LINES);
+    taskCap = Math.min(
+      taskCap,
+      Math.max(DASHBOARD_MIN_TASK_ROWS, Math.floor(dataLines * 0.6)),
+    );
+    planCap = Math.min(planCap, Math.max(2, Math.floor(dataLines * 0.4)));
+  }
+
+  const taskRows = Math.max(
+    DASHBOARD_MIN_TASK_ROWS,
+    Math.min(actualTaskRows, taskCap),
+  );
+  const remaining = taskCap + planCap - taskRows;
+  const planRows = Math.min(actualPlanRows, planCap, Math.max(1, remaining));
+  return { maxPlanRows: planRows, maxTaskRows: taskRows };
+}
+
+/**
+ * Sort active plans for dashboard priority: doing first, then most ready (actionable), then most todo.
+ */
+function sortActivePlansForDashboard(
+  plans: StatusData["activePlans"],
+): StatusData["activePlans"] {
+  return [...plans].sort((a, b) => {
+    if (b.doing !== a.doing) return b.doing - a.doing;
+    if (b.actionable !== a.actionable) return b.actionable - a.actionable;
+    return b.todo - a.todo;
+  });
 }
 
 function getActivePlansSectionContent(
   d: StatusData,
   w: number,
   maxRows?: number,
+  innerWidthOverride?: number,
 ): string {
   if (d.activePlans.length === 0) return "";
-  const innerW = getBoxInnerWidth(w);
+  const innerW = innerWidthOverride ?? getBoxInnerWidth(w);
   const narrow = innerW < NARROW_PLAN_WIDTH;
   let plans = d.activePlans;
   if (maxRows != null && maxRows > 0) {
     plans = plans.slice(0, maxRows - 1);
   }
-  const planRows = plans.map((p) => [
-    p.title,
-    String(p.todo),
-    p.actionable > 0 ? chalk.greenBright(String(p.actionable)) : "0",
-    p.doing > 0 ? chalk.cyan(String(p.doing)) : "0",
-    p.blocked > 0 ? chalk.red(String(p.blocked)) : "0",
-    p.done > 0 ? chalk.green(String(p.done)) : "0",
-  ]);
+  const showInitiative = plans.some((p) => p.initiative !== undefined);
+  const colCount = showInitiative ? 7 : 6;
+  const emptyPlanRow = (): string[] => Array(colCount).fill("");
+  const planRows = plans.map((p) => {
+    const countCells = [
+      String(p.todo),
+      p.blocked > 0 ? chalk.red(String(p.blocked)) : "0",
+      p.actionable > 0 ? chalk.greenBright(String(p.actionable)) : "0",
+      p.doing > 0 ? chalk.cyan(String(p.doing)) : "0",
+      p.done > 0 ? chalk.green(String(p.done)) : "0",
+    ];
+    return showInitiative
+      ? [p.title, p.initiative ?? "—", ...countCells]
+      : [p.title, ...countCells];
+  });
   const sumTodo = d.activePlans.reduce((s, p) => s + Number(p.todo), 0);
   const sumDoing = d.activePlans.reduce((s, p) => s + Number(p.doing), 0);
   const sumBlocked = d.activePlans.reduce((s, p) => s + Number(p.blocked), 0);
   const sumDone = d.activePlans.reduce((s, p) => s + Number(p.done), 0);
   const sumReady = d.activePlans.reduce((s, p) => s + Number(p.actionable), 0);
-  const aggRow = [
-    chalk.dim("Total"),
+  const countCells = [
     String(sumTodo),
+    sumBlocked > 0 ? chalk.red(String(sumBlocked)) : "0",
     sumReady > 0 ? chalk.greenBright(String(sumReady)) : "0",
     sumDoing > 0 ? chalk.cyan(String(sumDoing)) : "0",
-    sumBlocked > 0 ? chalk.red(String(sumBlocked)) : "0",
     sumDone > 0 ? chalk.green(String(sumDone)) : "0",
   ];
-  const headers = narrow
-    ? ["Project name", "To", "Rdy", "Do", "Blk", "Done"]
-    : ["Project name", "Todo", "Ready", "Doing", "Blocked", "Done"];
-  const numericHeaders = headers.slice(1);
+  const aggRow = showInitiative
+    ? [chalk.dim("Total"), "", ...countCells]
+    : [chalk.dim("Total"), ...countCells];
+  // Pad to fixed height when maxRows is set (dashboard) so the section always renders the same height.
+  const dataRowCap =
+    maxRows != null && maxRows > 0 ? maxRows - 1 : planRows.length;
+  while (planRows.length < dataRowCap) {
+    planRows.push(emptyPlanRow());
+  }
+  const headers = (() => {
+    const countHeaders = narrow
+      ? ["To", "Blk", "Rdy", "Do", "Done"]
+      : ["Todo", "Blocked", "Ready", "Doing", "Done"];
+    return showInitiative
+      ? narrow
+        ? ["Project name", "Initiative", ...countHeaders]
+        : ["Project name", "Initiative", ...countHeaders]
+      : narrow
+        ? ["Project name", ...countHeaders]
+        : ["Project name", ...countHeaders];
+  })();
+  const numericHeaders = headers.slice(showInitiative ? 2 : 1);
   const numericColW = Math.max(...numericHeaders.map((h) => h.length));
+  const minWidths = showInitiative
+    ? narrow
+      ? [8, 10, numericColW, numericColW, numericColW, numericColW, numericColW]
+      : [
+          12,
+          12,
+          numericColW,
+          numericColW,
+          numericColW,
+          numericColW,
+          numericColW,
+        ]
+    : narrow
+      ? [8, numericColW, numericColW, numericColW, numericColW, numericColW]
+      : [12, numericColW, numericColW, numericColW, numericColW, numericColW];
+  const maxWidths = showInitiative
+    ? [
+        undefined,
+        undefined,
+        numericColW,
+        numericColW,
+        numericColW,
+        numericColW,
+        numericColW,
+      ]
+    : [
+        undefined,
+        numericColW,
+        numericColW,
+        numericColW,
+        numericColW,
+        numericColW,
+      ];
   return renderTable({
     headers,
     rows: [...planRows, aggRow],
     maxWidth: innerW,
-    minWidths: narrow
-      ? [8, numericColW, numericColW, numericColW, numericColW, numericColW]
-      : [12, numericColW, numericColW, numericColW, numericColW, numericColW],
-    maxWidths: [
-      undefined,
-      numericColW,
-      numericColW,
-      numericColW,
-      numericColW,
-      numericColW,
-    ],
+    minWidths,
+    maxWidths,
   });
 }
 
@@ -1269,8 +1547,9 @@ function getMergedActiveNextContent(
   d: StatusData,
   w: number,
   maxRows?: number,
+  innerWidthOverride?: number,
 ): string {
-  const innerW = getBoxInnerWidth(w);
+  const innerW = innerWidthOverride ?? getBoxInnerWidth(w);
   const staleDoingSet = new Set(d.staleDoingTasks.map((t) => t.task_id));
   const now = Date.now();
   const doingRows = d.activeWork.map((work) => {
@@ -1305,7 +1584,14 @@ function getMergedActiveNextContent(
     ];
   });
   let rows = [...doingRows, ...todoRows];
-  if (maxRows != null && maxRows > 0) rows = rows.slice(0, maxRows);
+  if (maxRows != null && maxRows > 0) {
+    rows = rows.slice(0, maxRows);
+    // Pad to fixed height so the section always renders the same height.
+    const emptyTaskRow: string[] = ["—", "", "—", "—", "—", "—"];
+    while (rows.length < maxRows) {
+      rows.push(emptyTaskRow);
+    }
+  }
   const tableRows =
     rows.length > 0
       ? rows
@@ -1337,6 +1623,8 @@ export function formatProjectsAsString(
     p.blocked > 0 ? chalk.red(String(p.blocked)) : "0",
     p.done > 0 ? chalk.green(String(p.done)) : "0",
   ]);
+  const countHeaders = ["Todo", "Doing", "Blocked", "Done"];
+  const numericColW = Math.max(...countHeaders.map((h) => h.length));
   const table = renderTable({
     headers: ["Project name", "Status", "Todo", "Doing", "Blocked", "Done"],
     rows:
@@ -1344,8 +1632,15 @@ export function formatProjectsAsString(
         ? projectRows
         : [["No projects", "—", "0", "0", "0", "0"]],
     maxWidth: innerW,
-    minWidths: [12, 8, 4, 3, 5, 3],
-    maxWidths: [undefined, undefined, undefined, 5, 7, 4],
+    minWidths: [12, 8, numericColW, numericColW, numericColW, numericColW],
+    maxWidths: [
+      undefined,
+      undefined,
+      numericColW,
+      numericColW,
+      numericColW,
+      numericColW,
+    ],
   });
   return boxedSection("Projects", table, w);
 }
@@ -1517,60 +1812,62 @@ export function formatDashboardProjectsView(
   const innerW = getBoxInnerWidth(w);
   const parts: string[] = [];
 
+  const showInitiative = d.activePlans.some((p) => p.initiative !== undefined);
+  const countHeaders = ["Todo", "Blocked", "Ready", "Doing", "Done"];
+  const planHeaders = showInitiative
+    ? ["Project name", "Initiative", ...countHeaders]
+    : ["Project name", ...countHeaders];
+  const numericColW = Math.max(...countHeaders.map((h) => h.length));
   const activePlanRows =
     d.activePlans.length > 0
-      ? d.activePlans.map((p) => [
-          p.title,
-          String(p.todo),
-          p.actionable > 0 ? chalk.greenBright(String(p.actionable)) : "0",
-          p.doing > 0 ? chalk.cyan(String(p.doing)) : "0",
-          p.blocked > 0 ? chalk.red(String(p.blocked)) : "0",
-          p.done > 0 ? chalk.green(String(p.done)) : "0",
-        ])
-      : [["No active plans", "0", "0", "0", "0", "0"]];
+      ? d.activePlans.map((p) => {
+          const countCells = [
+            String(p.todo),
+            p.blocked > 0 ? chalk.red(String(p.blocked)) : "0",
+            p.actionable > 0 ? chalk.greenBright(String(p.actionable)) : "0",
+            p.doing > 0 ? chalk.cyan(String(p.doing)) : "0",
+            p.done > 0 ? chalk.green(String(p.done)) : "0",
+          ];
+          return showInitiative
+            ? [p.title, p.initiative ?? "—", ...countCells]
+            : [p.title, ...countCells];
+        })
+      : [
+          showInitiative
+            ? ["No active plans", "—", "0", "0", "0", "0", "0"]
+            : ["No active plans", "0", "0", "0", "0", "0"],
+        ];
   const sumTodo = d.activePlans.reduce((s, p) => s + Number(p.todo), 0);
   const sumDoing = d.activePlans.reduce((s, p) => s + Number(p.doing), 0);
   const sumBlocked = d.activePlans.reduce((s, p) => s + Number(p.blocked), 0);
   const sumDone = d.activePlans.reduce((s, p) => s + Number(p.done), 0);
   const sumReady = d.activePlans.reduce((s, p) => s + Number(p.actionable), 0);
-  const totalRow = [
-    chalk.dim("Total"),
+  const totalCountCells = [
     String(sumTodo),
+    sumBlocked > 0 ? chalk.red(String(sumBlocked)) : "0",
     sumReady > 0 ? chalk.greenBright(String(sumReady)) : "0",
     sumDoing > 0 ? chalk.cyan(String(sumDoing)) : "0",
-    sumBlocked > 0 ? chalk.red(String(sumBlocked)) : "0",
     sumDone > 0 ? chalk.green(String(sumDone)) : "0",
   ];
+  const totalRow = showInitiative
+    ? [chalk.dim("Total"), "", ...totalCountCells]
+    : [chalk.dim("Total"), ...totalCountCells];
   const activeRows =
     d.activePlans.length > 0 ? [...activePlanRows, totalRow] : activePlanRows;
-  const planHeaders = [
-    "Project name",
-    "Todo",
-    "Ready",
-    "Doing",
-    "Blocked",
-    "Done",
-  ];
-  const numericColW = Math.max(...planHeaders.slice(1).map((h) => h.length));
+  const colCount = planHeaders.length;
   const activeTable = renderTable({
     headers: planHeaders,
     rows: activeRows,
     maxWidth: innerW,
     minWidths: [
       12,
-      numericColW,
-      numericColW,
-      numericColW,
-      numericColW,
-      numericColW,
+      ...(showInitiative ? [12] : []),
+      ...Array(colCount - (showInitiative ? 2 : 1)).fill(numericColW),
     ],
     maxWidths: [
       undefined,
-      numericColW,
-      numericColW,
-      numericColW,
-      numericColW,
-      numericColW,
+      ...(showInitiative ? [undefined] : []),
+      ...Array(colCount - (showInitiative ? 2 : 1)).fill(numericColW),
     ],
   });
   parts.push(boxedSection("Active plans", activeTable, w, { fullWidth: true }));
@@ -1680,21 +1977,54 @@ export function formatStatusAsString(
   }
 
   if (dashboard) {
-    const height = getTerminalHeight();
-    const { maxPlanRows, maxTaskRows } = getDashboardRowLimits(height);
-    const activePlansContent = getActivePlansSectionContent(d, w, maxPlanRows);
+    const actualTaskRows = d.activeWork.length + d.nextTasks.length;
+    const actualPlanRows = d.activePlans.length;
+    const { maxTaskRows } = getDashboardRowLimitsDynamic(
+      actualTaskRows,
+      actualPlanRows,
+      getTerminalHeight(),
+    );
+    const innerW = getBoxInnerWidthDashboard(w);
+    const sortedPlans = {
+      ...d,
+      activePlans: sortActivePlansForDashboard(d.activePlans),
+    };
+    // Projects board: fixed 6 project rows + Total (7 rows), empty lines when fewer than 6 projects.
+    const activePlansContent = getActivePlansSectionContent(
+      sortedPlans,
+      w,
+      DASHBOARD_MAX_PLANS,
+      innerW,
+    );
+    const tasksContent = getMergedActiveNextContent(d, w, maxTaskRows, innerW);
     if (activePlansContent) {
-      parts.push("Active Projects");
-      parts.push(activePlansContent);
+      parts.push(
+        boxedSection(
+          "",
+          `${formatSectionTitleRow("Active Projects")}\n${activePlansContent}`,
+          w,
+          {
+            borderColor: "cyan",
+            fullWidth: true,
+            padding: DASHBOARD_BOX_PADDING,
+          },
+        ),
+      );
     }
-    parts.push("Active tasks and upcoming");
-    parts.push(getMergedActiveNextContent(d, w, maxTaskRows));
-    const summary =
-      d.staleDoingTasks.length > 0
-        ? `Completed: Plans: ${d.completedPlans} done, Tasks: ${d.completedTasks} done  │  ${chalk.yellow(`⚠ ${d.staleDoingTasks.length} stale doing (>2h)`)}`
-        : `Completed: Plans: ${d.completedPlans} done, Tasks: ${d.completedTasks} done`;
-    parts.push(`${summary}  │  ${getDashboardFooterLine(d)}`);
-    return parts.join("\n\n");
+    parts.push(
+      boxedSection(
+        "",
+        `${formatSectionTitleRow("Active tasks and upcoming")}\n${tasksContent}`,
+        w,
+        {
+          borderColor: "cyan",
+          fullWidth: true,
+          padding: DASHBOARD_BOX_PADDING,
+        },
+      ),
+    );
+    parts.push(getDashboardFooterBox(d, w));
+    return parts.join("\n");
   }
 
   const activePlans = getActivePlansSectionContent(d, w);
@@ -1786,27 +2116,34 @@ function printHumanStatus(
   }
 
   if (dashboard) {
-    const height = getTerminalHeight();
-    const { maxPlanRows, maxTaskRows } = getDashboardRowLimits(height);
-    const activePlansContent = getActivePlansSectionContent(d, w, maxPlanRows);
+    const actualTaskRows = d.activeWork.length + d.nextTasks.length;
+    const actualPlanRows = d.activePlans.length;
+    const { maxTaskRows } = getDashboardRowLimitsDynamic(
+      actualTaskRows,
+      actualPlanRows,
+      getTerminalHeight(),
+    );
+    const innerW = getBoxInnerWidthDashboard(w);
+    const sortedPlans = {
+      ...d,
+      activePlans: sortActivePlansForDashboard(d.activePlans),
+    };
+    // Projects board: fixed 6 project rows + Total (7 rows), empty lines when fewer than 6 projects.
+    const activePlansContent = getActivePlansSectionContent(
+      sortedPlans,
+      w,
+      DASHBOARD_MAX_PLANS,
+      innerW,
+    );
     if (activePlansContent) {
       console.log(
-        `\n${boxedSection("Active Projects", activePlansContent, w)}`,
+        `\n${boxedSection("", `${formatSectionTitleRow("Active Projects")}\n${activePlansContent}`, w, { borderColor: "cyan", fullWidth: true, padding: DASHBOARD_BOX_PADDING })}`,
       );
     }
     console.log(
-      `\n${boxedSection("Active tasks and upcoming", getMergedActiveNextContent(d, w, maxTaskRows), w)}`,
+      `\n${boxedSection("", `${formatSectionTitleRow("Active tasks and upcoming")}\n${getMergedActiveNextContent(d, w, maxTaskRows, innerW)}`, w, { borderColor: "cyan", fullWidth: true, padding: DASHBOARD_BOX_PADDING })}`,
     );
-    const summary =
-      d.staleDoingTasks.length > 0
-        ? chalk.dim(
-            `Plans: ${chalk.green(d.completedPlans)} done, Tasks: ${chalk.green(d.completedTasks)} done  │  ${chalk.yellow(`⚠ ${d.staleDoingTasks.length} stale doing (>2h)`)}`,
-          )
-        : chalk.dim(
-            `Plans: ${chalk.green(d.completedPlans)} done, Tasks: ${chalk.green(d.completedTasks)} done`,
-          );
-    const footer = chalk.dim(getDashboardFooterLine(d));
-    console.log(`\n  ${summary}  │  ${footer}\n`);
+    console.log(`\n${getDashboardFooterBox(d, w)}\n`);
     return;
   }
 
@@ -1856,6 +2193,9 @@ function printJsonStatus(d: StatusData): void {
         agentCount: d.agentCount,
         subAgentRuns: d.subAgentRuns,
         totalAgentHours: d.totalAgentHours,
+        investigatorRuns: d.investigatorRuns,
+        investigatorFixRate: d.investigatorFixRate,
+        subAgentTypesDefined: d.subAgentTypesDefined,
         summary: {
           not_done: todo + doing + blocked,
           in_progress: doing,
