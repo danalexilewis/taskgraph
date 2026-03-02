@@ -733,6 +733,37 @@ tg evolve health [--json]
 
 **Output (human):** One-off summary: plans done, tasks done, tasks canceled, done events count, gate pass/fail counts and pass rate. When a baseline is present, a note is printed.
 
+### `tg evolve record-finding`
+
+Record a finding/learning in the recurrence tracker and link to prior learnings by fingerprint. Used by the evolve skill or learnings flow for closed-loop verification (new, seen_again, caught, escaped).
+
+```bash
+tg evolve record-finding --directive "<text>" --source evolve|learnings [--category <name>] [--outcome new|seen_again|caught|escaped] [--plan-id <uuid>] [--run-id <uuid>] [--json]
+```
+
+**Options:**
+
+- `--directive <text>`: One-line directive summary; normalized and hashed for fingerprint matching (required).
+- `--source <source>`: Source of the finding: `evolve` or `learnings` (required).
+- `--category <name>`: Optional category (e.g. SQL pattern, Type pattern).
+- `--outcome <outcome>`: Optional. If omitted: `new` when no prior learning matches fingerprint, `seen_again` when a prior exists.
+- `--plan-id <uuid>`, `--run-id <uuid>`: Optional; use when source is evolve.
+- `--json`: Output `{ learning_id, outcome }`.
+
+### `tg evolve recurrences`
+
+List recorded learnings from the recurrence tracker, optionally filtered by outcome (newest first).
+
+```bash
+tg evolve recurrences [--outcome new|seen_again|caught|escaped] [--limit <n>] [--json]
+```
+
+**Options:**
+
+- `--outcome <outcome>`: Filter by outcome.
+- `--limit <n>`: Max rows (default 50).
+- `--json`: Output `{ recurrences: [{ learning_id, fingerprint, directive_summary, category, source, outcome, prior_learning_id, plan_id, run_id, created_at }, ...] }`.
+
 ### `tg status`
 
 Quick overview: plans count, task counts by status, next runnable tasks.
@@ -1048,3 +1079,7 @@ Task Graph provides an MCP (Model Context Protocol) server so AI assistants (Cur
 - **Tools (read-only):** `tg_status`, `tg_context`, `tg_next`, `tg_show` — same data as `tg status --json`, `tg context <taskId> --json`, `tg next`, and `tg show <taskId> --json`.
 
 For setup, tool parameters, and how to configure Cursor or Claude to use the server, see [docs/mcp.md](mcp.md).
+
+## Programmatic API (SDK)
+
+For programmatic access without spawning the CLI, use the Task Graph SDK. Import `TgClient` from `@danalexilewis/taskgraph/api` (or `dist/api/index.js`). The client exposes `next()`, `context()`, `status()`, `start()`, `done()`, `note()`, and `block()` with the same semantics as the CLI; results are typed and return `ResultAsync<T, AppError>`. See [docs/api.md](api.md) for usage, options, and error handling.

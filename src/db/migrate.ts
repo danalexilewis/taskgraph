@@ -40,6 +40,7 @@ export const MIGRATION_CHAIN = [
   "applyEventKindIndex",
   "applyIsBenchmarkMigration",
   "applyEvolveRunQualityMigration",
+  "applyLearningRecurrenceMigration",
 ] as const;
 
 const MIGRATION_VERSION = createHash("sha1")
@@ -1083,6 +1084,47 @@ export function applyEvolveRunQualityMigration(
   );
 }
 
+/** Create learning table for recurrence tracker: links new findings to prior learnings (seen_again, caught, escaped). */
+export function applyLearningRecurrenceMigration(
+  repoPath: string,
+  noCommit: boolean = false,
+  cache?: QueryCache,
+): ResultAsync<void, AppError> {
+  return tableExists(repoPath, "learning", cache).andThen((exists) => {
+    if (exists) return ResultAsync.fromSafePromise(Promise.resolve());
+    const create = [
+      "CREATE TABLE IF NOT EXISTS `learning` (",
+      "learning_id CHAR(36) PRIMARY KEY,",
+      "fingerprint VARCHAR(64) NOT NULL,",
+      "directive_summary TEXT NOT NULL,",
+      "category VARCHAR(64) NULL,",
+      "source ENUM('evolve','learnings') NOT NULL,",
+      "outcome ENUM('new','seen_again','caught','escaped') NOT NULL,",
+      "prior_learning_id CHAR(36) NULL,",
+      "plan_id CHAR(36) NULL,",
+      "run_id CHAR(36) NULL,",
+      "created_at DATETIME NOT NULL,",
+      "INDEX idx_learning_fingerprint (fingerprint),",
+      "INDEX idx_learning_outcome (outcome),",
+      "INDEX idx_learning_created (created_at)",
+      ")",
+    ].join(" ");
+    return doltSql(create, repoPath)
+      .map(() => {
+        cache?.clear();
+        return undefined;
+      })
+      .andThen(() =>
+        doltCommit(
+          "db: add learning table for recurrence tracker",
+          repoPath,
+          noCommit,
+        ),
+      )
+      .map(() => undefined);
+  });
+}
+
 /** Chains all idempotent migrations. Safe to run on every command.
  *
  * Fast path: if `.tg-migration-version` in the parent of repoPath already
@@ -1122,6 +1164,9 @@ export function ensureMigrations(
     .andThen(() => applyEventKindIndex(repoPath, noCommit, cache))
     .andThen(() => applyIsBenchmarkMigration(repoPath, noCommit, cache))
     .andThen(() => applyEvolveRunQualityMigration(repoPath, noCommit, cache))
+    .andThen(() =>
+      applyLearningRecurrenceMigration(repoPath, noCommit, cache),
+    )
     .map(() => {
       writeSentinel(repoPath);
       return undefined;

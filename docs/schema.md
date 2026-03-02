@@ -7,7 +7,7 @@ triggers:
 
 # Dolt Schema Reference
 
-The Task Graph system leverages Dolt as its underlying data store, providing version control capabilities for all stored data. The schema consists of core tables (`plan`/`project`, `task`, `edge`, `event`, `decision`, `gate`), optional strategic tables (`cycle`, `initiative`, `plan_worktree`), and optional instrumentation tables (`evolve_run_quality` for the evolve skill).
+The Task Graph system leverages Dolt as its underlying data store, providing version control capabilities for all stored data. The schema consists of core tables (`plan`/`project`, `task`, `edge`, `event`, `decision`, `gate`), optional strategic tables (`cycle`, `initiative`, `plan_worktree`), and optional instrumentation tables (`evolve_run_quality` for the evolve skill, `learning` for the recurrence tracker).
 
 **Auto-migrate**: Every CLI command (except `init` and `setup`) runs idempotent migrations at startup. Agents never encounter a stale schema. See [multi-agent](multi-agent.md) for event body conventions.
 
@@ -194,6 +194,25 @@ Stores run-quality scorecards for the evolve skill (Evolve v2 baseline and instr
 | `recurrence`  | `INT`          | `NULL`        | Recurrence count or strength (e.g. times pattern was observed)              |
 | `created_at`  | `DATETIME`     | `NOT NULL`    | Timestamp when the scorecard was recorded                                   |
 
+## Table: `learning`
+
+Recurrence tracker for closed-loop verification (Evolve v2 P3). Links new findings (from evolve or learnings) to prior learnings so the system can detect repeats: **new** (first time), **seen_again** (matched prior by fingerprint), **caught**, or **escaped**. Record via `tg evolve record-finding`; list via `tg evolve recurrences`.
+
+| Column              | Type           | Constraints   | Description                                                                 |
+| ------------------- | -------------- | ------------- | --------------------------------------------------------------------------- |
+| `learning_id`        | `CHAR(36)`     | `PRIMARY KEY` | Unique identifier for this recorded finding                                 |
+| `fingerprint`       | `VARCHAR(64)`  | `NOT NULL`   | SHA256 hex of normalized directive (used to match prior learnings)           |
+| `directive_summary` | `TEXT`         | `NOT NULL`   | One-line directive or pattern summary                                       |
+| `category`          | `VARCHAR(64)`  | `NULL`       | Category (e.g. SQL pattern, Type pattern)                                  |
+| `source`            | `ENUM`         | `NOT NULL`   | Source of the finding (values: see [ENUM reference](#enum-reference) below) |
+| `outcome`           | `ENUM`         | `NOT NULL`   | new, seen_again, caught, escaped                                            |
+| `prior_learning_id`  | `CHAR(36)`     | `NULL`       | When outcome is seen_again/caught/escaped, link to the prior learning       |
+| `plan_id`           | `CHAR(36)`     | `NULL`       | Plan ID when source is evolve                                               |
+| `run_id`            | `CHAR(36)`     | `NULL`       | Evolve run ID when source is evolve                                        |
+| `created_at`        | `DATETIME`     | `NOT NULL`   | When the finding was recorded                                               |
+
+Indexes: `idx_learning_fingerprint`, `idx_learning_outcome`, `idx_learning_created`.
+
 ## Invariants
 
 The following business logic invariants are enforced by the application to maintain graph integrity:
@@ -227,6 +246,8 @@ Columns whose Type is `ENUM` in the tables above have the following value lists 
 | `event.actor`      | human, agent                                                                       |
 | `gate.gate_type`   | human, ci, webhook                                                                 |
 | `gate.status`      | pending, resolved, expired                                                         |
+| `learning.source`  | evolve, learnings                                                                   |
+| `learning.outcome` | new, seen_again, caught, escaped                                                    |
 
 ## Related projects
 
@@ -234,3 +255,4 @@ Columns whose Type is `ENUM` in the tables above have the following value lists 
 - Thin SQL Query Builder
 - Restructure package — src at root, standard npm layout
 - Evolve v2 P1 (run-quality scorecard schema)
+- Evolve v2 P3 (recurrence tracker: learning table, record-finding, recurrences)

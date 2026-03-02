@@ -61,7 +61,7 @@ export type GateType = z.infer<typeof GateTypeSchema>;
 export const GateStatusSchema = z.enum(["pending", "resolved", "expired"]);
 export type GateStatus = z.infer<typeof GateStatusSchema>;
 
-/** Run-quality scorecard for the evolve skill: sample size, confidence, recurrence. */
+/** State Documentation (Metrics) for the evolve skill: sample size, confidence, recurrence. See .cursor/skills/evolve/SKILL.md — State Documentation vs Pattern Learnings. */
 export const EvolveRunQualityScorecardSchema = z.object({
   /** Number of items (e.g. tasks or diffs) in the evolve run. */
   sample_size: z.number().int().min(0),
@@ -73,6 +73,19 @@ export const EvolveRunQualityScorecardSchema = z.object({
 export type EvolveRunQualityScorecard = z.infer<
   typeof EvolveRunQualityScorecardSchema
 >;
+
+/** Outcome when recording a finding against prior learnings (closed-loop verification). */
+export const LearningOutcomeSchema = z.enum([
+  "new",
+  "seen_again",
+  "caught",
+  "escaped",
+]);
+export type LearningOutcome = z.infer<typeof LearningOutcomeSchema>;
+
+/** Source of a recorded learning/finding. */
+export const LearningSourceSchema = z.enum(["evolve", "learnings"]);
+export type LearningSource = z.infer<typeof LearningSourceSchema>;
 
 // Risk entry for plan.risks (rich planning)
 export const PlanRiskEntrySchema = z.object({
