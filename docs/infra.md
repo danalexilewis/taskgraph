@@ -30,6 +30,27 @@ Domain guide for build tooling, CI validation, package publishing, and Dolt data
 - **Gate**: `pnpm gate` runs `scripts/cheap-gate.sh` (lint + typecheck changed + affected tests). `pnpm gate:full` runs full test suite.
 - **Integration tests**: Require built CLI; run `pnpm build` before `pnpm test:integration` if `src/` changed. Golden template and Dolt identity are configured in `__tests__/integration/global-setup.ts`.
 
+## Dolt Binary Setup
+
+The `tg` CLI requires `dolt` to be installed and available on PATH.
+
+- **macOS**: `brew install dolt`
+- **Linux**: `bash -c "$(curl -fsSL https://github.com/dolthub/dolt/releases/latest/download/install.sh)"`
+- **Docker**: Add `dolt` to your image (see [DoltHub Docker](https://docs.dolthub.com/introduction/installation/docker))
+- **Custom path**: Set `DOLT_PATH=/path/to/dolt` in your environment
+
+### tg server commands
+
+- `pnpm tg server start` — start a background Dolt SQL server (improves query performance)
+- `pnpm tg server stop` — stop the background server
+- `pnpm tg server status` — check server health and clean up stale state
+
+The server state is tracked in `.taskgraph/tg-server.json`. On ungraceful shutdown, `tg` automatically detects and removes stale server state on next invocation.
+
+### Multi-user / Docker notes
+
+If the Dolt server is started by a different OS user than the one running `tg`, set `TG_DOLT_SERVER_PORT` and `TG_DOLT_SERVER_DATABASE` environment variables manually to bypass automatic server detection.
+
 ## Dolt
 
 - **Install**: `brew install dolt` (or from [dolthub](https://github.com/dolthub/dolt)).
@@ -59,6 +80,7 @@ TaskGraph supports an optional **sql-server mode** that replaces the default `do
 
 | Variable | Type | Default | Description |
 |---|---|---|---|
+| `DOLT_PATH` | string (optional) | `dolt` | Path to the `dolt` binary. Set when `dolt` is not on PATH. |
 | `TG_QUERY_CACHE_TTL_MS` | number (optional) | `0` | Query result cache TTL in milliseconds. `0` = disabled (default). Dashboard mode uses a `1500 ms` floor regardless of this setting. |
 | `TG_DOLT_SERVER_PORT` | number (optional) | unset | Port of a running `dolt sql-server`. When set with `TG_DOLT_SERVER_DATABASE`, activates mysql2 pool mode for all queries. |
 | `TG_DOLT_SERVER_DATABASE` | string (optional) | unset | Database name to use with the mysql2 pool. Must be non-empty to enable pool mode. |

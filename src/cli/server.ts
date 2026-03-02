@@ -3,6 +3,7 @@ import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import * as net from "node:net";
 import * as path from "node:path";
 import type { Command } from "commander";
+import execa from "execa";
 import type { Config } from "./utils";
 
 export interface ServerMeta {
@@ -110,6 +111,22 @@ export async function startDoltServerProcess(
   port: number,
 ): Promise<{ pid: number }> {
   const doltPath = process.env.DOLT_PATH || "dolt";
+
+  // Preflight: verify dolt binary exists
+  try {
+    await execa(doltPath, ["--version"], { timeout: 3000 });
+  } catch (err: unknown) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") {
+      throw new Error(
+        `dolt binary not found at "${doltPath}". ` +
+          `Install dolt: https://docs.dolthub.com/getting-started/installation ` +
+          `or set the DOLT_PATH environment variable to the dolt binary path.`,
+      );
+    }
+    throw err;
+  }
+
   const server = spawn(
     doltPath,
     ["sql-server", "--port", String(port), "--data-dir", doltRepoPath],

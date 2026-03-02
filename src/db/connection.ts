@@ -255,12 +255,23 @@ export function doltSql(
           },
         ).finally(release),
       ),
-      (e) =>
-        buildError(
+      (e) => {
+        const code = (e as NodeJS.ErrnoException).code;
+        if (code === "ENOENT") {
+          return buildError(
+            ErrorCode.DB_QUERY_FAILED,
+            `dolt binary not found at "${doltPath()}". ` +
+              `Install dolt: https://docs.dolthub.com/getting-started/installation ` +
+              `or set the DOLT_PATH environment variable to the dolt binary path.`,
+            e,
+          );
+        }
+        return buildError(
           ErrorCode.DB_QUERY_FAILED,
           `Dolt SQL query failed: ${query}${e instanceof Error ? ` — ${e.message}` : ""}`,
           e,
-        ),
+        );
+      },
     ).andThen((result) => {
       const out = (result.stdout || "").trim();
       if (!out) return ok([]); // DML (INSERT/UPDATE/DELETE) returns no JSON
