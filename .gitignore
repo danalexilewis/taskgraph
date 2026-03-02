@@ -20,6 +20,7 @@ exports/
 .taskgraph/tg-test-server-pids.json
 .taskgraph/tg-golden-server-pid.txt
 .taskgraph/tg-dolt-server-port.txt
+.taskgraph/sitrep-breadcrumb.json
 
 # Test & coverage
 coverage/

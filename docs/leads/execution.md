@@ -11,10 +11,11 @@ Created by the **/work** skill. Autonomous task execution loop: grind through pl
 
 When `/work` is invoked **without** a specific plan or directive:
 
-1. **Read the sitrep breadcrumb first** (`.taskgraph/sitrep-breadcrumb.json`). If `state === "making_sitrep"` and `at` is within 10 minutes, skip sitrep generation and go to task pull or read existing sitrep. Otherwise, check for a recent sitrep (see [sitrep-breadcrumb.md](sitrep-breadcrumb.md): staleness = 30 min).
-2. If no recent sitrep and no recent breadcrumb claim, write breadcrumb `making_sitrep`, generate sitrep (dispatch sitrep-analyst, write to `reports/sitrep-YYYY-MM-DD-HHmm.md`), then clear breadcrumb (`idle` or remove file). Otherwise reuse the existing sitrep file.
-3. Self-select lead role from the sitrep formation (see .cursor/rules/available-agents.mdc § Lead Roles and Formation).
-4. Enter the role-specific workflow: execution-lead → **Start-of-run sync** (breadcrumb + context; see work skill) then **focus project selection** (see work skill § Focus project selection) then existing loop; overseer → watchdog/monitor; investigator-lead → hunter-killer; planner-lead → /plan.
+1. **Read the sitrep breadcrumb** (`.taskgraph/sitrep-breadcrumb.json`). If `state === "making_sitrep"` and `at` is within 10 minutes, skip sitrep generation and go to task pull or read existing sitrep; otherwise continue to step 2.
+2. **Check for a recent sitrep** (staleness = 30 min; see [sitrep-breadcrumb.md](sitrep-breadcrumb.md)). If one exists and is fresh, reuse it and go to step 4.
+3. **If none or stale:** write breadcrumb `making_sitrep`, generate sitrep (dispatch sitrep-analyst, write to `reports/sitrep-YYYY-MM-DD-HHmm.md`), then write breadcrumb `idle` (or remove the file).
+4. **Read the sitrep and self-select role** from the formation (see .cursor/rules/available-agents.mdc § Lead Roles and Formation).
+5. **Enter the role workflow:** execution-lead → **Start-of-run sync** (breadcrumb + context; see work skill) then **focus project selection** (see work skill § Focus project selection) then existing loop; overseer → watchdog/monitor; investigator-lead → hunter-killer; planner-lead → /plan.
 
 When a plan is specified (by context or user), skip Phase 0 and go straight to the loop.
 

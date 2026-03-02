@@ -62,7 +62,7 @@ When `/work` is invoked without a specific plan, each instance **self-orients** 
 
 | Role              | Cardinality | Description                                                    | Self-selects when                                                          |
 | ----------------- | ----------- | -------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| execution-lead    | 1–N         | Grinds through plan tasks via implementer dispatch             | Runnable tasks exist; no other execution-lead on same plan (or slot open). |
+| execution-lead    | 1–N         | Grinds through plan tasks via implementer dispatch             | Runnable tasks exist; pick a **focus project** (unclaimed = fewest doing, then highest priority) so each instance focuses on a different plan. |
 | overseer          | 0–1         | Monitors active agents, detects stalls, manages sitrep refresh | 2+ execution-leads active; no overseer claimed.                            |
 | investigator-lead | 0–1         | Handles gate:full failures, debug clusters                     | gate:full failed; no investigator-lead active.                             |
 | planner-lead      | 0–1         | Runs /plan for queued initiatives/requests                     | Unplanned initiatives exist; no planner-lead active.                       |
@@ -74,7 +74,7 @@ When `/work` is invoked without a specific plan, each instance **self-orients** 
 3. Pick the highest-priority unfilled role:
    - If gate:full just failed and no investigator-lead → become investigator-lead.
    - If 2+ execution-leads active and no overseer → become overseer.
-   - If runnable tasks exist for an unclaimed plan → become execution-lead for that plan.
+   - If runnable tasks exist → become execution-lead; choose a **focus project** (see work skill § Focus project selection): pick the plan with fewest doing tasks, then highest priority, so multiple instances each focus on a different project. Focus is ephemeral (nothing persisted); coordination is via live doing counts. The project is not assigned to the agent.
    - If nothing runnable but unplanned work exists → become planner-lead.
    - If nothing to do → report "all clear" and exit.
 
