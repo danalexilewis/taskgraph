@@ -4,6 +4,14 @@ Shared learnings for all agent personas and sub-agents. When building prompts or
 
 ---
 
+## Hive coordination
+
+- **Context ping as impetus:** When you need to sync with other active agents, run `tg context --hive --json` (when available) to get a HiveSnapshot of all doing tasks (agents, phases, files in progress, recent notes). That call is the driver for coordination.
+- **Bi-directional check:** (1) **Read the group** — consume the snapshot. (2) **Reflect on self** — is there anything in that context I should consider for my task? (3) **Reflect and give back** — given my local context, is there anything on _other_ tasks that should be updated? If yes, use `tg note <otherTaskId> --msg "..."` so the hive (and future context pings) see it.
+- **Experiment and share:** There is no single mandated procedure. Try different timings (e.g. ping at start, before pre-done) and different rules for when to note on other tasks (e.g. same file touched, same domain). When something works, **append a short learning to this section** so other agents can adopt it. Example: _"[YYYY-MM-DD] Noting on sibling task when we touch the same file reduced duplicate work; pattern: if hive shows task B editing F and I'm editing F, tg note <B> --msg 'Also editing F; see my approach in commit X'."_
+
+---
+
 ## Result / error handling
 
 - **[2026-03-01]** Empty early-return inside a `.andThen()` chain — do not use `Promise.resolve({ isOk: () => true, value: [] }) as unknown as ResultAsync<T, E>`; that bypasses neverthrow's interface and will not chain. Use `okAsync(value)` (or `okAsync([])`) for trivially-known early returns inside `ResultAsync` chains.
@@ -23,9 +31,18 @@ Shared learnings for all agent personas and sub-agents. When building prompts or
 - **[2026-03-01]** Migration calling `doltCommit` unconditionally creates spurious empty Dolt commits on idempotent re-runs. Guard: `let changed = false; if (!exists) { runDDL(); changed = true; } if (changed) { doltCommit(...); }`.
 - **[2026-03-01]** `dolt sql-server` spawned with `stdio: "ignore"` — startup panics invisible; only signal was "did not become ready after 50 attempts". Add an `"exit"` event listener in the polling loop: if `child.exitCode !== null`, throw immediately. Prefer `stdio: "pipe"` in test infra setup.
 
+## Refactoring / scope discipline
+
+- **[2026-03-02]** Rename-triggered collateral deletion: during a terminology-rename task touching a large file, implementers can silently delete functions that contain none of the renamed identifiers. Before committing any file modified during a rename, verify that every deleted function or constant contained the renamed identifier or was explicitly listed in the task's stated change list — if a deletion cannot be traced to either, revert it.
+- **[2026-03-02]** Misleading "legacy" comment as deletion invitation: a JSDoc comment `/** legacy; prefer X */` on function A means A is the candidate for removal — not X. Never delete the function that a "legacy" comment explicitly names as preferred; delete the function that carries the "legacy" label.
+- **[2026-03-02]** "Clean while you're here" helper and type deletion: do not remove supporting types, helper functions, or constants from a file unless the task intent explicitly states their removal or their removal is forced by a type error that was itself caused by the stated task change. When in doubt, leave them in place and note the potential cleanup for the orchestrator via `tg note`.
+- **[2026-03-02]** Squash commit scope verification: before calling `tg done` on a task that squashes multiple sub-commits, run `git diff HEAD~1 --stat` and verify every changed file maps to a stated todo item; flag and revert any deletion that cannot be mapped to the task's intent.
+
 ## CLI conventions
 
 - **[2026-03-01]** CLI command renames must be immediately followed by a grep sweep of `.cursor/agents/*.md` and `.cursor/rules/*.mdc` for stale references. Treat a CLI rename the same as a public API rename.
+- **[2026-03-02]** Visual regression with no type-system protection: functions in `src/cli/status.ts` and `src/cli/tui/boxen.ts` that render styled dashboard output (borders, colour grids, section titles) are called only internally — removing them causes zero TypeScript errors but destroys the dashboard UI. Before committing changes to these files, grep for every function in the "Key styling functions (do not remove)" table in `docs/cli-tables.md` and confirm each is still present and called.
+- **[2026-03-02]** Rendering regression detection: when modifying any formatting or rendering function in `status.ts`, verify `__tests__/cli/dashboard-format.test.ts` asserts the modified function's structural output (section titles, Stats heading, box chars); if not, add the assertion in the same commit.
 - **[2026-03-01]** New CLI flags on `tg done`/`tg start` won't be used by agents until they appear in agent templates. When new flags are added to task-graph CLI commands, update all agent templates that call those commands immediately.
 - **[2026-03-01]** Extract domain-style logic (e.g. group-by agent, sort, latest-per-key) from command handlers into pure functions; keep handlers to config read, call pure fn, then format/output. Do not put large aggregation blocks inside `.match()` callbacks.
 - **[2026-03-01]** When multiple subcommands share the same sequence (readConfig → isErr exit → path resolution → operation → .match err handling), deduplicate via a shared helper (e.g. `withConfig(cmd, fn)`) so each action only supplies the operation.

@@ -10,7 +10,7 @@ alwaysApply: true
 At the start of every session, run:
 
 - **Orchestrator (main session):** `pnpm tg status --tasks` — full task list (Id, Title, Plan, Status, Owner). Use this so you see all active tasks, not just the 3 next runnable shown by default status.
-- **Sub-agents (implementer, reviewer, etc.):** `pnpm tg status --tasks` — task list only; you don't need plans or initiatives.
+- **Sub-agents (implementer, reviewer, etc.):** `pnpm tg status --tasks` — task list only; you don't need projects or initiatives. (Default status and `tg status --initiatives` show initiative rollup when the initiative table exists.)
 
 ```bash
 # Orchestrator:

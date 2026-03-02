@@ -14,11 +14,12 @@ When this skill is invoked, enter an autonomous execution loop. Do not stop to a
 - **You (orchestrator / execution lead)**: Coordinates the execution loop. Dispatches implementers, reviews results, escalates failures.
 - **Sub-agents**:
 
-  | Agent                                          | Purpose                                 | Permission |
-  | ---------------------------------------------- | --------------------------------------- | ---------- |
-  | implementer                                    | Execute task (code, tests, docs)        | read-write |
-  | reviewer (or spec-reviewer + quality-reviewer) | Evaluate implementation                 | read-only  |
-  | fixer                                          | Escalation after 2 implementer failures | read-write |
+  | Agent                                          | Purpose                                  | Permission |
+  | ---------------------------------------------- | ---------------------------------------- | ---------- |
+  | sitrep-analyst                                 | Generate situation report (Phase 0 only) | read-only  |
+  | implementer                                    | Execute task (code, tests, docs)         | read-write |
+  | reviewer (or spec-reviewer + quality-reviewer) | Evaluate implementation                  | read-only  |
+  | fixer                                          | Escalation after 2 implementer failures  | read-write |
 
 ## Permissions
 
@@ -36,7 +37,20 @@ When this skill is invoked, enter an autonomous execution loop. Do not stop to a
 
 ```mermaid
 flowchart TD
-    A[Start: check for plan to import] --> B{Import needed?}
+    W["/work invoked"] --> X{Plan specified?}
+    X -->|Yes| A[Skip Phase 0]
+    X -->|No| Z{Recent sitrep exists?}
+    Z -->|Yes, under 1h| AA[Read existing sitrep]
+    Z -->|No| AB[Dispatch sitrep-analyst]
+    AB --> AC[Write sitrep to reports/]
+    AC --> AA
+    AA --> AD[Self-select role from formation]
+    AD --> AE{Selected role}
+    AE -->|execution-lead| A
+    AE -->|overseer| AF[Watchdog/monitor mode]
+    AE -->|investigator-lead| AG[Hunter-killer mode]
+    AE -->|planner-lead| AH[/plan mode]
+    A --> B{Import needed?}
     B -->|Yes| C[tg import plan]
     B -->|No| D[tg next --json]
     C --> D
@@ -82,6 +96,33 @@ When executing tasks from tg, **always structure work so Cursor surfaces the "Ta
 3. **Scope the run (optional)** — If you imported or identified a single plan to run, use it for the loop: `tg next --plan "<Plan Name>" --json --limit 20` so work focuses on that plan’s tasks first. Otherwise proceed in multi-plan mode (see below).
 
 If no plan is indicated by context or the user, skip import and use multi-plan mode.
+
+## Phase 0: Self-Orientation (when no plan specified)
+
+Run this phase **only** when `/work` is invoked without a specific plan or directive. When the user says "/work on Plan X" or the conversation implies a plan to execute, skip Phase 0 and go to **Before the loop** (and then the Loop).
+
+1. **Check for recent sitrep**
+   - Glob `reports/sitrep-*.md` and find the most recent.
+   - Parse `generated_at` from its frontmatter (ISO8601).
+   - If `generated_at` is under 1 hour ago, use that file and go to step 3.
+
+2. **Generate fresh sitrep**
+   - Dispatch the **sitrep-analyst** sub-agent (read-only, session model). Use `.cursor/agents/sitrep-analyst.md`; the analyst runs CLI commands and returns the sitrep markdown.
+   - Write the output to `reports/sitrep-YYYY-MM-DD-HHmm.md` (current date and time to the minute).
+   - Log: `[work] Generated fresh sitrep: reports/sitrep-...`
+
+3. **Read sitrep and self-select role**
+   - Parse the **Formation** section (and Suggested Work Order).
+   - Run the self-selection algorithm from `.cursor/rules/available-agents.mdc` (Lead Roles and Formation): read `tg status --tasks` to see which roles are filled, then pick the highest-priority unfilled role.
+   - Log: `[work] Self-selected role: <role> for <plan/scope>`
+
+4. **Enter role-specific workflow**
+   - **execution-lead** → Use the sitrep’s suggested plan/stream if present; then proceed to **Before the loop** and the **Loop** (existing machinery).
+   - **overseer** → Run watchdog/monitor mode (existing Sub-Agent Watchdog Protocol; optionally refresh sitrep periodically).
+   - **investigator-lead** → Run hunter-killer dispatch for active gate:full failures (see When gate:full fails).
+   - **planner-lead** → Run the /plan skill for the suggested initiative/request; after planning, re-read sitrep and re-select role.
+
+Keep the existing loop and all other sections unchanged. Phase 0 only decides what to do; it then delegates to the existing flow.
 
 ## Loop
 
@@ -133,9 +174,11 @@ Order: run plan-merge for all completed plans first, then **Final action — com
 ## Sub-Agent Watchdog Protocol
 
 **Optional: Start the overseer daemon** before the first wave of dispatches:
+
 ```bash
 bash scripts/overseer.sh /tmp/tg-overseer-status.json &
 ```
+
 The daemon runs in the background, writing filesystem staleness data every 180s for active worktrees. No action needed if the script is absent or Dolt is unavailable — it degrades to an empty status file.
 
 Implementers run with a soft 10-minute budget (set `block_until_ms: 600000` when dispatching via Task tool).
