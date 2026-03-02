@@ -143,10 +143,11 @@ When using the fallback (squash commit): use `git show <commit> --shortstat` to 
 - **Scope drift** → append to `implementer.md ## Learnings`
 - **Durable / structural** (same issue 3+ times or across multiple files) → note for docs/skills suggestion; cross-cutting patterns → append to `.cursor/agent-utility-belt.md` (under the appropriate section)
 
-**Dedupe check (mandatory before every append):** Before writing any new learning or utility-belt entry, check for duplicates in **both** agent learnings and the utility belt; skip or merge as follows.
+**Dedupe check (mandatory before every append):** Before writing any new learning to agent `## Learnings`, the utility belt, memory, or docs, check that it is not already present in **agent learnings** or the **utility belt** and skip or merge as follows.
 
-- **When the target is an agent file** (e.g. `implementer.md ## Learnings`): (1) Read that file’s `## Learnings` section. (2) Read `.cursor/agent-utility-belt.md` (all sections that contain bullet-list learnings). If the same directive already exists in either (keyword or close paraphrase match), **skip** the new entry or **merge** into the existing one (e.g. add a date to an existing bullet); do not add a duplicate.
-- **When the target is the utility belt** (`.cursor/agent-utility-belt.md`): (1) Read the utility belt. (2) Read the `## Learnings` sections of the agent files that typically receive this category (e.g. `implementer.md`, `quality-reviewer.md`). If the same directive already exists in any of them, **skip** or **merge**; do not add a duplicate.
+- **Sources to check every time:** (1) `.cursor/memory.md`, (2) `.cursor/pending-learnings.md` (if present), (3) `.cursor/agent-utility-belt.md`, (4) the relevant agent file’s `## Learnings` section (e.g. `implementer.md`, `quality-reviewer.md`). Read these once at the start of Step 4, then for each candidate learning check for keyword or close-paraphrase match in any of them.
+- **When the target is an agent file** (e.g. `implementer.md ## Learnings`): If the same directive already exists in memory, pending-learnings, the utility belt, or that file’s Learnings section, **skip** the new entry or **merge** into the existing one (e.g. add a date to an existing bullet); do not add a duplicate.
+- **When the target is the utility belt** (`.cursor/agent-utility-belt.md`): If the same directive already exists in memory, pending-learnings, the utility belt, or the relevant agent Learnings sections, **skip** or **merge**; do not add a duplicate.
 
 **Format for each entry:**
 
@@ -158,16 +159,19 @@ When using the fallback (squash commit): use `git show <commit> --shortstat` to 
 
 ### Step 5 — Report to user
 
-Output the findings table, the **Metrics** section (so metrics can be captured for instrumentation), and a summary of what was written. Do not import or create plan tasks unless the user explicitly asks for follow-up work.
+Emit both **Pattern Learnings** and **State Documentation** in the report so the orchestrator and downstream steps can use them separately (routing vs instrumentation/context). Do not import or create plan tasks unless the user explicitly asks for follow-up work.
+
+## Output categories
+
+Split the evolve report into two categories:
+
+1. **Pattern Learnings** — Actionable patterns, anti-patterns, and learnings to route to memory, docs, or agent templates: the findings table (category, pattern, file, confidence, routed-to, recurrence), learnings written (which agent files received entries), and durable-pattern suggestions (docs/skills updates). Downstream steps use this section to perform routing; do not use it for run context.
+
+2. **State Documentation** — Descriptive state that does not need routing: what was done (plan name, branch, scope), metrics (sample_size, confidence, recurrence for instrumentation), task list or commit count, file counts. Used for reporting, scorecards, and context only.
 
 ## Output format
 
-Structure every evolve report into two categories:
-
-1. **State Documentation** — Point-in-time snapshot of the run: what was analysed, sample size, confidence, and recurrence counts. Use for instrumentation and run-quality scorecards.
-2. **Pattern Learnings** — Reusable patterns, anti-patterns, and directives for agents: findings table, learnings written to agent files, and durable pattern suggestions for docs/skills.
-
-Use the following structure so that metrics (e.g. for scorecards or analytics) can be captured consistently. Every evolve report must include both **State Documentation** and **Pattern Learnings** sections.
+Use the following structure. Every evolve report must include both **Pattern Learnings** and **State Documentation** blocks.
 
 ```markdown
 ## Evolve: Plan "<name>" — <YYYY-MM-DD>
@@ -240,6 +244,8 @@ Assign one label per finding so consumers can prioritize. Emit the label with ea
 **State Documentation:** The **Metrics** table (and optional **Run context**) is the canonical slot for run-quality instrumentation. Populate:
 
 - **sample_size** — e.g. `git log plan-<hash> --not main --oneline | wc -l`, or number of done tasks in the plan.
+- **diff_lines** — from `git diff main...plan-<hash> --shortstat` (insertions + deletions), or from `git show <commit> --shortstat` in fallback; use "—" when diff is unavailable.
+- **files_changed** — from the same `--shortstat` output; use "—" when diff is unavailable. These two fields are used by the evidence gate and must be present when the diff was used.
 - **confidence** — from context: full plan branch diff + task notes = high; single squash commit = medium; partial or inferred = low.
 - **recurrence** — per row in Findings: how many times that pattern appeared; in the Metrics table you may also set recurrence to the number of findings with recurrence ≥ 2, or the sum of recurrence counts.
 
