@@ -199,6 +199,20 @@ export interface Config {
   queryCacheTtlMs?: number;
   /** Path to agent-context SQLite DB (default: .taskgraph/agent_context.db). */
   agentContextDbPath?: string;
+  breadcrumbPolicy?: {
+    /**
+     * "all"     = check .breadcrumbs.json for every file touched
+     * "touched" = check only for files the agent explicitly edits (default when omitted)
+     * "none"    = skip breadcrumb checks entirely
+     */
+    readScope?: "all" | "touched" | "none";
+    /**
+     * "all"         = always drop a breadcrumb after any fix
+     * "non_obvious" = only after non-obvious fixes (default when omitted)
+     * "none"        = never drop breadcrumbs
+     */
+    dropScope?: "all" | "non_obvious" | "none";
+  };
 }
 
 export function readConfig(basePath?: string): Result<Config, AppError> {
