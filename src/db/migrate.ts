@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join as pathJoin } from "node:path";
-import { execa } from "execa";
+import execa from "execa";
 import { ok, ResultAsync } from "neverthrow";
 import { type AppError, buildError, ErrorCode } from "../domain/errors";
 import { generateUniqueHashId } from "../domain/hash-id";
@@ -37,6 +37,7 @@ export const MIGRATION_CHAIN = [
   "applyInitiativeCycleIdMigration",
   "applyPlanWorktreeMigration",
   "applyIndexMigration",
+  "applyEventKindIndex",
 ] as const;
 
 const MIGRATION_VERSION = createHash("sha1")
@@ -978,6 +979,35 @@ export function applyIndexMigration(
     .map(() => undefined);
 }
 
+/** Add composite index on event(kind, task_id) if missing (idempotent). */
+export function applyEventKindIndex(
+  repoPath: string,
+  noCommit: boolean = false,
+  cache?: QueryCache,
+): ResultAsync<void, AppError> {
+  return indexExists(
+    repoPath,
+    "event",
+    "idx_event_kind_task_id",
+    cache,
+  ).andThen((exists) => {
+    if (exists) return ResultAsync.fromSafePromise(Promise.resolve());
+    return doltSql(
+      "CREATE INDEX `idx_event_kind_task_id` ON `event`(kind, task_id)",
+      repoPath,
+    )
+      .map(() => undefined)
+      .andThen(() =>
+        doltCommit(
+          "db: add idx_event_kind_task_id index on event(kind, task_id)",
+          repoPath,
+          noCommit,
+        ),
+      )
+      .map(() => undefined);
+  });
+}
+
 /** Chains all idempotent migrations. Safe to run on every command.
  *
  * Fast path: if `.tg-migration-version` in the parent of repoPath already
@@ -1014,6 +1044,7 @@ export function ensureMigrations(
     .andThen(() => applyInitiativeCycleIdMigration(repoPath, noCommit, cache))
     .andThen(() => applyPlanWorktreeMigration(repoPath, noCommit, cache))
     .andThen(() => applyIndexMigration(repoPath, noCommit, cache))
+    .andThen(() => applyEventKindIndex(repoPath, noCommit, cache))
     .map(() => {
       writeSentinel(repoPath);
       return undefined;
