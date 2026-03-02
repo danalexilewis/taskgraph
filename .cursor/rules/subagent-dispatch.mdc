@@ -227,6 +227,20 @@ Place this after the main instructions and before any task-specific context. The
 - If a fast sub-agent fails (error, wrong result, or spec-reviewer/quality-reviewer FAIL): re-dispatch once with clearer context or that reviewer's feedback. If it fails again: either dispatch the **fixer** agent (Opus) for that task, or complete it yourself with direct execution. Prefer fixer dispatch over direct execution when the task is non-trivial.
 - When dispatching in parallel, ensure each task has a distinct agent name (`implementer-1`, etc.) so `tg status` and events stay clear.
 
+## Task batching (optional)
+
+When the execution lead has multiple runnable tasks that are small and low-risk, they may **batch 2–3 tasks for a single implementer or documenter** instead of one task per sub-agent.
+
+**When batching is allowed:**
+
+- **risk** = low (from `tg next --json`).
+- **estimate_mins** ≤ 15 per task (from `tg next --json`).
+- **change_type** in `[modify, fix, test, document]` (from `tg context <taskId> --json`).
+- **Same agent type** for all tasks (e.g. all implementer or all documenter).
+- **No file overlap** between tasks (compare file_tree, suggested_changes, or intent).
+
+**Multi-task prompt shape:** Build one context block per task via `pnpm tg context <taskId> --json` for each task ID. In the prompt, list N task IDs and N context blocks. Instruct the sub-agent to run **start → work → done per task in order**; the worktree remains **one per task** (start worktree for task 1, do work and `tg done --merge`, then start worktree for task 2, etc.). Use **task size signals** from `tg next` (risk, estimate_mins) and `tg context` (change_type, token_estimate when present) to decide whether to batch; when in doubt, use one task per sub-agent.
+
 ## Building prompts from context JSON
 
 `pnpm tg context <taskId> --json` returns an object with: `task_id`, `title`, `agent`, `docs`, `skills`, `change_type`, `suggested_changes`, `file_tree`, `risks`, `doc_paths`, `skill_docs`, `related_done_by_domain`, `related_done_by_skill`. Map these to the placeholders in each agent template (see `.cursor/agents/README.md`). For **implementer** when using worktrees (Pattern 1): `{{WORKTREE_PATH}}` is **optional**. Omit it by default — the implementer self-starts in Step 1. Pass it only when you have pre-started for a specific reason (e.g. capturing `plan_branch` from the started event; see `tg worktree list --json` for the path). For the spec-reviewer and quality-reviewer you also need the implementer's git diff (e.g. `git diff` or `git show` after the implementer's run).

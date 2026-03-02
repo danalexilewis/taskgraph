@@ -35,6 +35,18 @@ When a plan is specified (by context or user), skip Phase 0 and go straight to t
 
 Orchestrator coordinates; implementers and reviewers are workers.
 
+### Task batching (optional)
+
+The execution lead may assign **2–3 tasks to a single implementer or documenter** when all of the following hold:
+
+- **risk** = low (from `tg next --json`: task risk field).
+- **estimate_mins** small (e.g. ≤ 15 per task; from `tg next --json`).
+- **change_type** in `[modify, fix, test, document]` (from `tg context <taskId> --json`).
+- **Same agent type** for all tasks in the batch (e.g. all implementer or all documenter).
+- **No file overlap** between tasks (compare file_tree, suggested_changes, or intent).
+
+Build the **multi-task prompt** with N task IDs and N context blocks (one `tg context <taskId> --json` per task). Instruct the sub-agent to run **start → work → done per task in order**; the worktree remains **one per task** (the agent starts a worktree for the first task, does work and `tg done --merge`, then starts the next task’s worktree and repeats). Use task size signals from `tg next` (risk, estimate_mins) and `tg context` (change_type, token_estimate when present) to decide whether to batch; when in doubt, dispatch one task per sub-agent.
+
 ## Safeguards
 
 - **File conflict check** — avoid assigning tasks that touch the same files to different agents in the same batch.
