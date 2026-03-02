@@ -147,7 +147,8 @@ export function getStartedEventWorktree(
   });
 }
 
-export { Config, readConfig, writeConfig } from "../config";
+export type { Config } from "../config";
+export { readConfig, writeConfig } from "../config";
 
 /**
  * Normalize raw string[] from Commander (variadic args) into a flat list of IDs.

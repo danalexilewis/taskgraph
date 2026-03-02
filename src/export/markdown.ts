@@ -1,6 +1,6 @@
 import yaml from "js-yaml";
 import { errAsync, type ResultAsync } from "neverthrow";
-import { type Config, readConfig } from "../config";
+import { type Config, readConfig } from "../cli/utils";
 import { sqlEscape } from "../db/escape";
 import { query } from "../db/query";
 import { type AppError, buildError, ErrorCode } from "../domain/errors";
