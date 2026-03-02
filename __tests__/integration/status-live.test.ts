@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as path from "node:path";
-import { execa } from "execa";
+import execa from "execa";
 import {
   runTgCli,
   setupIntegrationTest,

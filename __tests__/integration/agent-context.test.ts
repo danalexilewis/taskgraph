@@ -82,7 +82,7 @@ function getEvents(
   }
 }
 
-describe.serial("Agent context collector and query integration", () => {
+describe("Agent context collector and query integration", () => {
   let tmpDir: string;
   let terminalsDir: string;
   let dbPath: string;
@@ -281,7 +281,8 @@ describe.serial("Agent context collector and query integration", () => {
       (count) => count >= 5,
     );
 
-    const { execa } = await import("execa");
+    const execaModule = await import("execa");
+    const execa = execaModule.default;
     const result = await execa(
       "bun",
       [QUERY_SCRIPT, "--db", dbPath, "--since", "3000"],

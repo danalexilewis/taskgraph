@@ -1,5 +1,6 @@
 import chalk from "chalk";
 import Table from "cli-table3";
+import { useAsciiBorders } from "./tui/boxen";
 
 export interface TableOptions {
   headers: string[];
@@ -184,23 +185,41 @@ export function renderTable(opts: TableOptions): string {
       compact: false,
     },
     chars: borderVisible
-      ? {
-          top: "─",
-          "top-mid": "┬",
-          "top-left": "┌",
-          "top-right": "┐",
-          bottom: "─",
-          "bottom-mid": "┴",
-          "bottom-left": "└",
-          "bottom-right": "┘",
-          left: "│",
-          "left-mid": "├",
-          mid: "─",
-          "mid-mid": "┼",
-          right: "│",
-          "right-mid": "┤",
-          middle: "│",
-        }
+      ? useAsciiBorders()
+        ? {
+            top: "-",
+            "top-mid": "+",
+            "top-left": "+",
+            "top-right": "+",
+            bottom: "-",
+            "bottom-mid": "+",
+            "bottom-left": "+",
+            "bottom-right": "+",
+            left: "|",
+            "left-mid": "+",
+            mid: "-",
+            "mid-mid": "+",
+            right: "|",
+            "right-mid": "+",
+            middle: "|",
+          }
+        : {
+            top: "─",
+            "top-mid": "┬",
+            "top-left": "┌",
+            "top-right": "┐",
+            bottom: "─",
+            "bottom-mid": "┴",
+            "bottom-left": "└",
+            "bottom-right": "┘",
+            left: "│",
+            "left-mid": "├",
+            mid: "─",
+            "mid-mid": "┼",
+            right: "│",
+            "right-mid": "┤",
+            middle: "│",
+          }
       : emptyBorderChars,
   });
 

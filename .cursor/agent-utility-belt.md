@@ -103,6 +103,11 @@ See `docs/breadcrumbs.md` for full format and guidance.
 
 - **[2026-03-01]** Script/output interfaces that represent a fixed JSON contract (e.g. query script stdout) should list only the known optional fields; avoid `[key: string]: unknown` if the shape is fixed so the type documents the contract.
 
+## Merge conflict resolution
+
+- **[2026-03-02]** **Docs (e.g. infra.md):** When both branches added distinct sections to the same doc, resolve by **combining both** in a coherent order. Do not drop additive content from either side. Typical order: shared intro → local-only sections → remote-only sections → shared body → tables/Decisions. Example: local added "Dolt Binary Setup" / "tg server commands"; remote added "Optimising gate:full" and env table — merged result kept all and ordered them logically.
+- **[2026-03-02]** **Code (e.g. CLI entrypoint):** When both branches changed the same line or block for different correctness reasons, resolve by **semantic merge** — keep the correct behavior from each side. Compare both versions for behavioral differences (e.g. local added `await` on async call; remote switched `process.exit(0)` to `process.exitCode = 0`). Take both fixes; do not choose "ours" or "theirs" blindly. If in doubt, prefer the version that preserves async correctness and avoids process.exit races (see memory: status-live stdout flush).
+
 ## Worktree / execution
 
 - **[2026-03-01]** `tg start --force` attempted when an aborted sub-agent's task branch already existed — failed with "Worktrunk worktree create failed". `--force` overrides the claim check but not branch creation. When a sub-agent is aborted and a live worktree exists: `tg worktree list --json`, find the entry, `cd` to its `path`, continue directly without re-running `tg start`.

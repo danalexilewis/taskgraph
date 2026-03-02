@@ -24,7 +24,7 @@ const REPO = "./test_repo";
 
 // describe.serial ensures tests run sequentially within this file to prevent
 // inter-test contamination from module-level cache state.
-describe.serial("cachedQuery — cache deduplication and invalidation", () => {
+describe("cachedQuery — cache deduplication and invalidation", () => {
   let cache: InstanceType<typeof QueryCache>;
 
   beforeEach(() => {
@@ -90,7 +90,7 @@ describe.serial("cachedQuery — cache deduplication and invalidation", () => {
   });
 });
 
-describe.serial("cachedQuery — TTL expiry passthrough", () => {
+describe("cachedQuery — TTL expiry passthrough", () => {
   let cache: InstanceType<typeof QueryCache>;
 
   beforeEach(() => {
@@ -113,7 +113,7 @@ describe.serial("cachedQuery — TTL expiry passthrough", () => {
   });
 });
 
-describe.serial("cachedQuery — count and raw caching", () => {
+describe("cachedQuery — count and raw caching", () => {
   let cache: InstanceType<typeof QueryCache>;
 
   beforeEach(() => {

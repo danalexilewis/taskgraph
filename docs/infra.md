@@ -30,6 +30,19 @@ Domain guide for build tooling, CI validation, package publishing, and Dolt data
 - **Gate**: `pnpm gate` runs `scripts/cheap-gate.sh` (lint + typecheck changed + affected tests). `pnpm gate:full` runs full test suite.
 - **Integration tests**: Require built CLI; run `pnpm build` before `pnpm test:integration` if `src/` changed. Golden template and Dolt identity are configured in `__tests__/integration/global-setup.ts`.
 
+## Doctor script
+
+Run `pnpm doctor` (or `bash scripts/doctor.sh`) to check that required and optional tooling is installed. For any missing tool it prints the Homebrew install command:
+
+| Tool       | Required | Brew install |
+| ---------- | -------- | ------------ |
+| pnpm       | Yes      | `brew install pnpm` |
+| bun        | Yes      | `brew install bun` |
+| dolt       | Yes      | `brew install dolt` |
+| worktrunk (wt) | No (optional) | `brew install worktrunk && wt config shell install` |
+
+Without `wt`, `tg` uses raw git worktrees; with `wt`, it uses Worktrunk for worktree management.
+
 ## Dolt Binary Setup
 
 The `tg` CLI requires `dolt` to be installed and available on PATH.
@@ -95,6 +108,7 @@ TaskGraph supports an optional **sql-server mode** that replaces the default `do
 | `TG_DOLT_SERVER_USER`     | string (optional) | `root`      | MySQL user for the Dolt SQL server (pool mode).                                                                                                                                         |
 | `TG_DOLT_SERVER_PASSWORD` | string (optional) | unset       | MySQL password for the Dolt SQL server (pool mode).                                                                                                                                     |
 | `TG_SKIP_MIGRATE`         | flag (optional)   | unset       | When set, skips `ensureMigrations` in the CLI preAction hook. Intended for test environments where migrations have already been applied. CLI prints a warning when this flag is active. |
+| `TG_ASCII_DASHBOARD`      | flag (optional)   | unset       | When the dashboard looks garbled (box-drawing or symbols as replacement glyphs), set to `1` for ASCII-only borders and symbols. |
 
 ## Decisions / gotchas
 

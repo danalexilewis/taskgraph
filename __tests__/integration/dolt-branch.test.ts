@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { execa } from "execa";
+import execa from "execa";
 import { checkoutBranch } from "../../src/db/branch";
 import {
   runTgCli,
@@ -49,7 +49,7 @@ async function doltMainHead(doltRepoPath: string): Promise<string> {
  * Integration tests for Dolt branch lifecycle (tg start --branch, tg done merge, rollback).
  * Uses describe.serial so branch create/checkout/merge/delete don't overlap with other tests.
  */
-describe.serial("Dolt branch lifecycle", () => {
+describe("Dolt branch lifecycle", () => {
   let context: Awaited<ReturnType<typeof setupIntegrationTest>> | undefined;
   let planId: string;
   let taskId: string;

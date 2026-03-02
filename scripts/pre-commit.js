@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 /**
  * Pre-commit script: format and lint staged files with Biome and re-stage them.
  * Hook should run: pnpm run precommit (or npm run precommit)

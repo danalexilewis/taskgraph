@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { query } from "../../src/db/query";
 import { setupIntegrationTest, teardownIntegrationTest } from "./test-utils";
 
-describe.serial("is_benchmark migration", () => {
+describe("is_benchmark migration", () => {
   let context: Awaited<ReturnType<typeof setupIntegrationTest>>;
 
   beforeAll(async () => {

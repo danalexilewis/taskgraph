@@ -4,7 +4,8 @@ import * as net from "node:net";
 import * as os from "node:os";
 import * as path from "node:path";
 import { CommanderError } from "commander";
-import { type ExecaError, execa } from "execa";
+import type { ExecaError } from "execa";
+import execa from "execa";
 import { createProgram } from "../../src/cli/index";
 import { writeConfig } from "../../src/cli/utils";
 import { closeServerPool } from "../../src/db/connection";
@@ -377,7 +378,7 @@ export async function runTgCliInProcess(
         .match(/("([^"]*)"|'([^']*)'|\S+)/g)
         ?.map((s) => s.replace(/^["']|["']$/g, "")) ?? [];
     const hasNoCommit = parts.includes("--no-commit");
-    const argv = ["node", "tg", ...parts];
+    const argv = ["bun", "tg", ...parts];
     if (!hasNoCommit) argv.push("--no-commit");
 
     const program = createProgram();
@@ -427,7 +428,7 @@ export async function runTgCliInProcess(
   }
 }
 
-/** Run CLI via subprocess (node dist/cli). Use for cursor-import and setup-scaffold. */
+/** Run CLI via subprocess (bun dist/cli). Use for cursor-import and setup-scaffold. */
 export async function runTgCliSubprocess(
   command: string,
   cwd: string,
@@ -437,7 +438,7 @@ export async function runTgCliSubprocess(
   const finalCommand = command.includes("--no-commit")
     ? command
     : `${command} --no-commit`;
-  const TG_BIN = `node ${cliPath} `;
+  const TG_BIN = `bun ${cliPath} `;
   try {
     const result = await execa(TG_BIN + finalCommand, {
       cwd,

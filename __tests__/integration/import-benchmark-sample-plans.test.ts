@@ -8,7 +8,7 @@ import {
   teardownIntegrationTest,
 } from "./test-utils";
 
-describe.serial("Import sample benchmark plans", () => {
+describe("Import sample benchmark plans", () => {
   let context: Awaited<ReturnType<typeof setupIntegrationTest>>;
 
   beforeAll(async () => {

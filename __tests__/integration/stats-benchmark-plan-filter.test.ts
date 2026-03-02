@@ -13,7 +13,7 @@ function toDatetime(d: Date): string {
   return d.toISOString().slice(0, 19).replace("T", " ");
 }
 
-describe.serial("tg stats --plan --benchmark filter", () => {
+describe("tg stats --plan --benchmark filter", () => {
   let context: Awaited<ReturnType<typeof setupIntegrationTest>>;
   let benchmarkPlanId: string;
   let normalPlanId: string;

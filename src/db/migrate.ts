@@ -38,6 +38,7 @@ export const MIGRATION_CHAIN = [
   "applyPlanWorktreeMigration",
   "applyIndexMigration",
   "applyEventKindIndex",
+  "applyIsBenchmarkMigration",
 ] as const;
 
 const MIGRATION_VERSION = createHash("sha1")
@@ -1008,6 +1009,51 @@ export function applyEventKindIndex(
   });
 }
 
+/** Add is_benchmark column to project and task tables (idempotent). */
+export function applyIsBenchmarkMigration(
+  repoPath: string,
+  noCommit: boolean = false,
+  cache?: QueryCache,
+): ResultAsync<void, AppError> {
+  return columnExists(repoPath, "project", "is_benchmark", cache).andThen(
+    (projectHas) => {
+      const addToProject = projectHas
+        ? ResultAsync.fromSafePromise<void, AppError>(Promise.resolve())
+        : doltSql(
+            "ALTER TABLE `project` ADD COLUMN `is_benchmark` TINYINT NOT NULL DEFAULT 0",
+            repoPath,
+          ).map(() => {
+            cache?.clear();
+            return undefined;
+          });
+
+      return addToProject.andThen(() =>
+        columnExists(repoPath, "task", "is_benchmark", cache).andThen(
+          (taskHas) => {
+            const addToTask = taskHas
+              ? ResultAsync.fromSafePromise<void, AppError>(Promise.resolve())
+              : doltSql(
+                  "ALTER TABLE `task` ADD COLUMN `is_benchmark` TINYINT NOT NULL DEFAULT 0",
+                  repoPath,
+                ).map(() => {
+                  cache?.clear();
+                  return undefined;
+                });
+
+            return addToTask.andThen(() =>
+              doltCommit(
+                "db: add is_benchmark column to project and task",
+                repoPath,
+                noCommit,
+              ).map(() => undefined),
+            );
+          },
+        ),
+      );
+    },
+  );
+}
+
 /** Chains all idempotent migrations. Safe to run on every command.
  *
  * Fast path: if `.tg-migration-version` in the parent of repoPath already
@@ -1045,6 +1091,7 @@ export function ensureMigrations(
     .andThen(() => applyPlanWorktreeMigration(repoPath, noCommit, cache))
     .andThen(() => applyIndexMigration(repoPath, noCommit, cache))
     .andThen(() => applyEventKindIndex(repoPath, noCommit, cache))
+    .andThen(() => applyIsBenchmarkMigration(repoPath, noCommit, cache))
     .map(() => {
       writeSentinel(repoPath);
       return undefined;

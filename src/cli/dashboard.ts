@@ -13,11 +13,17 @@ import {
   type StatusOptions,
   type StatusViewMode,
 } from "./status";
+import { runLoadingProgressBar } from "./tui/loading-progress";
 import { getTerminalWidth } from "./terminal";
 import type { Config } from "./utils";
 import { readConfig } from "./utils";
 
 const REFRESH_MS = 2000;
+
+/** OpenTUI is Bun/native-oriented; under Node we use the ansi-diff fallback for the same dashboard look. */
+function isBun(): boolean {
+  return typeof (globalThis as { Bun?: unknown }).Bun !== "undefined";
+}
 
 /** Write content to stdout via ansi-diff so only changed pixels are updated (no full-screen clear). */
 function createDiffWriter(): (content: string) => void {
@@ -62,7 +68,10 @@ async function runLiveFallbackDashboard(
     });
   }
   const write = createDiffWriter();
-  write("Loading...");
+  const progressBar = runLoadingProgressBar({
+    onTick: write,
+    getWidth: getTerminalWidth,
+  });
   let consecutiveErrors = 0;
   timer = setInterval(async () => {
     const r = await readConfig().asyncAndThen((c: Config) =>
@@ -86,6 +95,7 @@ async function runLiveFallbackDashboard(
     );
   }, REFRESH_MS);
   fetchStatusData(config, statusOptions).then((result) => {
+    progressBar.stop();
     result.match(
       (d) => {
         write(formatStatusAsString(d, getTerminalWidth(), { dashboard: true }));
@@ -97,6 +107,7 @@ async function runLiveFallbackDashboard(
       },
     );
   });
+  return new Promise<void>(() => {});
 }
 
 /** Live fallback for tg dashboard --tasks: Active + Next 7 + Last 7 sections, 2s refresh. */
@@ -174,6 +185,7 @@ async function runLiveFallbackDashboardTasks(
       process.exit(1);
     },
   );
+  return new Promise<void>(() => {});
 }
 
 /** Live fallback for tg dashboard --projects: Active plans + Next 7 + Last 7 sections, 2s refresh. */
@@ -234,6 +246,7 @@ async function runLiveFallbackDashboardProjects(
       process.exit(1);
     },
   );
+  return new Promise<void>(() => {});
 }
 
 export function dashboardCommand(program: Command) {
@@ -258,7 +271,7 @@ export function dashboardCommand(program: Command) {
           ? "projects"
           : "dashboard";
 
-      const configResult = await readConfig();
+      const configResult = readConfig();
       if (configResult.isErr()) {
         console.error(configResult.error.message);
         process.exit(1);
@@ -271,39 +284,45 @@ export function dashboardCommand(program: Command) {
       };
 
       if (viewMode === "projects") {
-        const { runOpenTUILiveDashboardProjects } = await import(
-          "./tui/live-opentui.js"
-        );
-        try {
-          await runOpenTUILiveDashboardProjects(config, statusOptions);
-          return;
-        } catch {
-          // OpenTUI not available; use fallback live loop
+        if (isBun()) {
+          const { runOpenTUILiveDashboardProjects } = await import(
+            "./tui/live-opentui.js"
+          );
+          try {
+            await runOpenTUILiveDashboardProjects(config, statusOptions);
+            return;
+          } catch {
+            // OpenTUI not available; use fallback
+          }
         }
         await runLiveFallbackDashboardProjects(config, statusOptions);
         return;
       }
 
       if (viewMode === "tasks") {
-        const { runOpenTUILiveDashboardTasks } = await import(
-          "./tui/live-opentui.js"
-        );
-        try {
-          await runOpenTUILiveDashboardTasks(config, statusOptions);
-          return;
-        } catch {
-          // OpenTUI not available; use fallback live loop
+        if (isBun()) {
+          const { runOpenTUILiveDashboardTasks } = await import(
+            "./tui/live-opentui.js"
+          );
+          try {
+            await runOpenTUILiveDashboardTasks(config, statusOptions);
+            return;
+          } catch {
+            // OpenTUI not available; use fallback
+          }
         }
         await runLiveFallbackDashboardTasks(config, statusOptions);
         return;
       }
 
-      const { runOpenTUILive } = await import("./tui/live-opentui.js");
-      try {
-        await runOpenTUILive(config, statusOptions);
-        return;
-      } catch {
-        // OpenTUI not available; use fallback live loop
+      if (isBun()) {
+        const { runOpenTUILive } = await import("./tui/live-opentui.js");
+        try {
+          await runOpenTUILive(config, statusOptions);
+          return;
+        } catch {
+          // OpenTUI not available; use fallback
+        }
       }
       await runLiveFallbackDashboard(config, statusOptions);
     });

@@ -16,6 +16,7 @@ import {
   boxedSection,
   getBoxInnerWidth,
   getBoxInnerWidthDashboard,
+  useAsciiBorders,
 } from "./tui/boxen";
 import { type Config, readConfig, rootOpts } from "./utils";
 
@@ -1308,7 +1309,7 @@ export function getDashboardFooterLine(d: StatusData): string {
   const activeAgents = d.statusCounts.doing ?? 0;
   return [
     `Active agents: ${activeAgents}`,
-    `Agents (defined): ${d.agentCount}`,
+    `Types of Agents: ${d.agentCount}`,
     `Sub-agents (defined): ${d.subAgentTypesDefined}`,
     `Total Agent Invocations: ${d.subAgentRuns}`,
     `Total Agent hours: ${d.totalAgentHours}`,
@@ -1325,13 +1326,47 @@ const DASHBOARD_RESERVED_LINES = 12;
 /** Number of sub-agent types defined in the project (available-agents / docs/leads). Used in dashboard footer. */
 const SUB_AGENT_TYPES_DEFINED = 12;
 
-/** Dashboard box padding for table sections: top 0.5, bottom 0; left/right 2. */
-const DASHBOARD_BOX_PADDING = { top: 0.5, bottom: 0, left: 2, right: 2 };
+/** Dashboard box padding for table sections: top 1, bottom 0; left/right 2. */
+const DASHBOARD_BOX_PADDING = { top: 1, bottom: 0, left: 2, right: 2 };
 /** Stats footer: same as table boxes but bottom 1 so the footer has breathing room. */
-const DASHBOARD_FOOTER_BOX_PADDING = { top: 0.5, bottom: 1, left: 2, right: 2 };
+const DASHBOARD_FOOTER_BOX_PADDING = { top: 1, bottom: 1, left: 2, right: 2 };
 
 /** Min width per column in the footer stats grid so columns stay readable; allows up to 5 columns on wide screens. */
 const FOOTER_COL_MIN = 20;
+
+export interface DashboardSymbols {
+  check: string;
+  dot: string;
+  triangle: string;
+  diamond: string;
+  emDash: string;
+  warning: string;
+  ellipsis: string;
+}
+
+/** Status/dashboard symbols: Unicode by default, ASCII when TG_ASCII_DASHBOARD=1. */
+export function getDashboardSymbols(): DashboardSymbols {
+  const ascii = useAsciiBorders();
+  return ascii
+    ? {
+        check: "[x]",
+        dot: "*",
+        triangle: "^",
+        diamond: "-",
+        emDash: "-",
+        warning: "!",
+        ellipsis: "...",
+      }
+    : {
+        check: "✓",
+        dot: "●",
+        triangle: "▲",
+        diamond: "◆",
+        emDash: "—",
+        warning: "⚠",
+        ellipsis: "…",
+      };
+}
 
 /** Number of columns for the footer stats grid (1–5 depending on inner width). */
 function getFooterGridColumns(innerWidth: number): number {
@@ -1490,6 +1525,7 @@ function getActivePlansSectionContent(
   innerWidthOverride?: number,
 ): string {
   if (d.activePlans.length === 0) return "";
+  const sym = getDashboardSymbols();
   const innerW = innerWidthOverride ?? getBoxInnerWidth(w);
   const narrow = innerW < NARROW_PLAN_WIDTH;
   let plans = d.activePlans;
@@ -1508,7 +1544,7 @@ function getActivePlansSectionContent(
       p.done > 0 ? chalk.green(String(p.done)) : "0",
     ];
     return showInitiative
-      ? [p.title, p.initiative ?? "—", ...countCells]
+      ? [p.title, p.initiative ?? sym.emDash, ...countCells]
       : [p.title, ...countCells];
   });
   const sumTodo = d.activePlans.reduce((s, p) => s + Number(p.todo), 0);
@@ -1608,14 +1644,16 @@ function displayStatus(
 
 /** Status-only icon (no stale): used when Stale has its own column. */
 function statusIconOnly(status: string, isRecentlyDone: boolean): string {
-  if (isRecentlyDone || status === "done") return chalk.green("✓");
-  if (status === "blocked") return chalk.red("●");
-  return chalk.green("●");
+  const sym = getDashboardSymbols();
+  if (isRecentlyDone || status === "done") return chalk.green(sym.check);
+  if (status === "blocked") return chalk.red(sym.dot);
+  return chalk.green(sym.dot);
 }
 
 function truncatePlan(s: string): string {
   if (s.length <= PLAN_TITLE_MAX_LEN) return s;
-  return `${s.slice(0, PLAN_TITLE_MAX_LEN - 1)}…`;
+  const sym = getDashboardSymbols();
+  return `${s.slice(0, PLAN_TITLE_MAX_LEN - 1)}${sym.ellipsis}`;
 }
 
 /**
@@ -1630,6 +1668,7 @@ function getMergedActiveNextContent(
   maxRows?: number,
   innerWidthOverride?: number,
 ): string {
+  const sym = getDashboardSymbols();
   const innerW = innerWidthOverride ?? getBoxInnerWidth(w);
   const staleDoingSet = new Set(d.staleDoingTasks.map((t) => t.task_id));
   const now = Date.now();
@@ -1640,13 +1679,13 @@ function getMergedActiveNextContent(
         : typeof work.body === "string"
           ? (JSON.parse(work.body) as { agent?: string })
           : (work.body as { agent?: string });
-    const agent = body?.agent ?? "—";
+    const agent = body?.agent ?? sym.emDash;
     const isStale = staleDoingSet.has(work.task_id);
     return [
       displayId(work.task_id, work.hash_id),
       work.title,
       truncatePlan(work.plan_title),
-      isStale ? chalk.yellow("▲") : "—",
+      isStale ? chalk.yellow(sym.triangle) : sym.emDash,
       "doing",
       agent,
     ];
@@ -1659,16 +1698,23 @@ function getMergedActiveNextContent(
       displayId(t.task_id, t.hash_id),
       t.title,
       truncatePlan(t.plan_title),
-      staleRunnable ? chalk.yellow("▲") : "—",
+      staleRunnable ? chalk.yellow(sym.triangle) : sym.emDash,
       "todo",
-      "—",
+      sym.emDash,
     ];
   });
   let rows = [...doingRows, ...todoRows];
   if (maxRows != null && maxRows > 0) {
     rows = rows.slice(0, maxRows);
     // Pad to fixed height so the section always renders the same height.
-    const emptyTaskRow: string[] = ["—", "", "—", "—", "—", "—"];
+    const emptyTaskRow: string[] = [
+      sym.emDash,
+      "",
+      sym.emDash,
+      sym.emDash,
+      sym.emDash,
+      sym.emDash,
+    ];
     while (rows.length < maxRows) {
       rows.push(emptyTaskRow);
     }
@@ -1676,7 +1722,16 @@ function getMergedActiveNextContent(
   const tableRows =
     rows.length > 0
       ? rows
-      : [["—", "No active or runnable tasks", "—", "—", "—", "—"]];
+      : [
+          [
+            sym.emDash,
+            "No active or runnable tasks",
+            sym.emDash,
+            sym.emDash,
+            sym.emDash,
+            sym.emDash,
+          ],
+        ];
   return renderTable({
     headers: ["Id", "Task", "Project", "Stale", "Status", "Agent"],
     rows: tableRows,
@@ -1711,7 +1766,7 @@ export function formatProjectsAsString(
     rows:
       projectRows.length > 0
         ? projectRows
-        : [["No projects", "—", "0", "0", "0", "0"]],
+        : [["No projects", getDashboardSymbols().emDash, "0", "0", "0", "0"]],
     maxWidth: innerW,
     minWidths: [12, 8, numericColW, numericColW, numericColW, numericColW],
     maxWidths: [
@@ -1728,7 +1783,7 @@ export function formatProjectsAsString(
 
 /**
  * Format tasks table as a single string (boxed). Used for one-shot and live tasks view.
- * When staleTaskIds is provided, adds Stale column (⚠ or —) and Status as icon (last column).
+ * When staleTaskIds is provided, adds Stale column (warning symbol or emDash) and Status as icon (last column).
  */
 export function formatTasksAsString(
   rows: TaskRow[],
@@ -1739,6 +1794,7 @@ export function formatTasksAsString(
   const innerW = getBoxInnerWidth(w);
   const staleSet = options?.staleTaskIds;
   const withStale = staleSet !== undefined;
+  const sym = getDashboardSymbols();
   const taskRows = withStale
     ? rows.map((r) => {
         const isStale = staleSet?.has(r.task_id);
@@ -1746,23 +1802,25 @@ export function formatTasksAsString(
           displayId(r.task_id, r.hash_id),
           r.title,
           r.plan_title,
-          isStale ? chalk.yellow("⚠") : "—",
-          r.owner ?? "—",
+          isStale ? chalk.yellow(sym.warning) : sym.emDash,
+          r.owner ?? sym.emDash,
           statusIconOnly(r.status, false),
         ];
       })
     : rows.map((r) => {
         const id = r.hash_id ?? r.task_id;
         const status = displayStatus(r.status, r.blocked_by_gate_name);
-        return [id, r.title, r.plan_title, status, r.owner ?? "—"];
+        return [id, r.title, r.plan_title, status, r.owner ?? sym.emDash];
       });
 
   const headers = withStale
     ? ["Id", "Title", "Project", "Stale", "Owner", "Status"]
     : ["Id", "Title", "Project", "Status", "Owner"];
   const emptyRow = withStale
-    ? [["—", "No tasks", "—", "—", "—", "—"]]
-    : [["—", "No tasks", "—", "—", "—"]];
+    ? [
+        [sym.emDash, "No tasks", sym.emDash, sym.emDash, sym.emDash, sym.emDash],
+      ]
+    : [[sym.emDash, "No tasks", sym.emDash, sym.emDash, sym.emDash]];
   const table = renderTable({
     headers,
     rows: taskRows.length > 0 ? taskRows : emptyRow,
@@ -1789,6 +1847,7 @@ export function formatDashboardTasksView(
   activeTaskRows: TaskRow[],
   width: number,
 ): string {
+  const sym = getDashboardSymbols();
   const w = width;
   const innerW = getBoxInnerWidth(w);
   const parts: string[] = [];
@@ -1806,8 +1865,8 @@ export function formatDashboardTasksView(
       displayId(r.task_id, r.hash_id),
       r.title,
       r.plan_title,
-      isStale ? chalk.yellow("▲") : "—",
-      r.owner ?? "—",
+      isStale ? chalk.yellow(sym.triangle) : sym.emDash,
+      r.owner ?? sym.emDash,
       statusIconOnly(r.status, false),
     ];
   });
@@ -1815,14 +1874,23 @@ export function formatDashboardTasksView(
     displayId(t.task_id, t.hash_id),
     t.title,
     t.plan_title,
-    "—",
-    "—",
-    chalk.green("✓"),
+    sym.emDash,
+    sym.emDash,
+    chalk.green(sym.check),
   ]);
   const activeRows =
     activeRowsFromActive.length > 0 || recentlyDoneRows.length > 0
       ? [...activeRowsFromActive, ...recentlyDoneRows]
-      : [["—", "No active tasks", "—", "—", "—", "—"]];
+      : [
+          [
+            sym.emDash,
+            "No active tasks",
+            sym.emDash,
+            sym.emDash,
+            sym.emDash,
+            sym.emDash,
+          ],
+        ];
   const activeTable = renderTable({
     headers: ["Id", "Title", "Project", "Stale", "Owner", "Status"],
     rows: activeRows,
@@ -1840,14 +1908,22 @@ export function formatDashboardTasksView(
             t.updated_at != null &&
             now - new Date(t.updated_at).getTime() >= STALE_HOURS_MS;
           return [
-            chalk.green("●"),
+            chalk.green(sym.dot),
             t.hash_id ?? t.task_id,
             t.title,
             t.plan_title,
-            staleRunnable ? chalk.yellow("▲") : "—",
+            staleRunnable ? chalk.yellow(sym.triangle) : sym.emDash,
           ];
         })
-      : [["—", "No runnable tasks", "—", "—", "—"]];
+      : [
+          [
+            sym.emDash,
+            "No runnable tasks",
+            sym.emDash,
+            sym.emDash,
+            sym.emDash,
+          ],
+        ];
   const next7Table = renderTable({
     headers: ["", "Id", "Task", "Project", "Stale"],
     rows: next7Rows,
@@ -1861,13 +1937,21 @@ export function formatDashboardTasksView(
   const last7Rows =
     d.last7CompletedTasks.length > 0
       ? d.last7CompletedTasks.map((t) => [
-          chalk.green("✓"),
+          chalk.green(sym.check),
           t.hash_id ?? t.task_id,
           t.title,
           t.plan_title,
-          t.updated_at ?? "—",
+          t.updated_at ?? sym.emDash,
         ])
-      : [["—", "No completed tasks", "—", "—", "—"]];
+      : [
+          [
+            sym.emDash,
+            "No completed tasks",
+            sym.emDash,
+            sym.emDash,
+            sym.emDash,
+          ],
+        ];
   const last7Table = renderTable({
     headers: ["", "Id", "Task", "Project", "Updated"],
     rows: last7Rows,
@@ -1889,6 +1973,7 @@ export function formatDashboardProjectsView(
   d: StatusData,
   width: number,
 ): string {
+  const sym = getDashboardSymbols();
   const w = width;
   const innerW = getBoxInnerWidth(w);
   const parts: string[] = [];
@@ -1910,12 +1995,20 @@ export function formatDashboardProjectsView(
             p.done > 0 ? chalk.green(String(p.done)) : "0",
           ];
           return showInitiative
-            ? [p.title, p.initiative ?? "—", ...countCells]
+            ? [p.title, p.initiative ?? sym.emDash, ...countCells]
             : [p.title, ...countCells];
         })
       : [
           showInitiative
-            ? ["No active plans", "—", "0", "0", "0", "0", "0"]
+            ? [
+                "No active plans",
+                sym.emDash,
+                "0",
+                "0",
+                "0",
+                "0",
+                "0",
+              ]
             : ["No active plans", "0", "0", "0", "0", "0"],
         ];
   const sumTodo = d.activePlans.reduce((s, p) => s + Number(p.todo), 0);
@@ -1958,9 +2051,9 @@ export function formatDashboardProjectsView(
       ? d.next7UpcomingPlans.map((p) => [
           p.title,
           p.status,
-          p.updated_at ?? "—",
+          p.updated_at ?? sym.emDash,
         ])
-      : [["No upcoming plans", "—", "—"]];
+      : [["No upcoming plans", sym.emDash, sym.emDash]];
   const next7Table = renderTable({
     headers: ["Project name", "Status", "Updated"],
     rows: next7Rows,
@@ -1982,13 +2075,20 @@ export function formatDashboardProjectsView(
               : Infinity;
           const justDone = completedAgo >= 0 && completedAgo <= DONE_VISIBLE_MS;
           return [
-            justDone ? chalk.green("✓") : "—",
+            justDone ? chalk.green(sym.check) : sym.emDash,
             p.title,
             p.status,
-            p.updated_at ?? "—",
+            p.updated_at ?? sym.emDash,
           ];
         })
-      : [["—", "No completed plans", "—", "—"]];
+      : [
+          [
+            sym.emDash,
+            "No completed plans",
+            sym.emDash,
+            sym.emDash,
+          ],
+        ];
   const last7Table = renderTable({
     headers: ["", "Project name", "Status", "Updated"],
     rows: last7Rows,
@@ -2010,13 +2110,14 @@ export function formatInitiativesAsString(
   rows: InitiativeRow[],
   width: number,
 ): string {
+  const sym = getDashboardSymbols();
   const w = width;
   const innerW = getBoxInnerWidth(w);
   const initiativeRows = rows.map((r) => [
     r.title,
     r.status,
-    r.cycle_start ?? "—",
-    r.cycle_end ?? "—",
+    r.cycle_start ?? sym.emDash,
+    r.cycle_end ?? sym.emDash,
     String(r.project_count),
   ]);
   const table = renderTable({
@@ -2024,7 +2125,15 @@ export function formatInitiativesAsString(
     rows:
       initiativeRows.length > 0
         ? initiativeRows
-        : [["No initiatives", "—", "—", "—", "0"]],
+        : [
+            [
+              "No initiatives",
+              sym.emDash,
+              sym.emDash,
+              sym.emDash,
+              "0",
+            ],
+          ],
     maxWidth: innerW,
     minWidths: [12, 8, 12, 10, 8],
   });
@@ -2114,7 +2223,8 @@ export function formatStatusAsString(
     parts.push(activePlans);
   }
   if (d.staleDoingTasks.length > 0) {
-    parts.push(chalk.yellow("⚠  Stale Doing Tasks (>2h)"));
+    const sym = getDashboardSymbols();
+    parts.push(chalk.yellow(`${sym.warning}  Stale Doing Tasks (>2h)`));
     parts.push(getStaleDoingTasksContent(d.staleDoingTasks, w));
   }
   parts.push("Active & next");
@@ -2131,12 +2241,13 @@ function getStaleDoingTasksContent(
   tasks: StaleDoingTaskRow[],
   w: number,
 ): string {
+  const sym = getDashboardSymbols();
   const innerW = getBoxInnerWidth(w);
   const narrow = innerW < 45;
   const rows = tasks.map((t) => [
-    (t.hash_id ?? "—").slice(0, narrow ? 8 : 10),
+    (t.hash_id ?? sym.emDash).slice(0, narrow ? 8 : 10),
     t.title,
-    (t.owner ?? "—").slice(0, narrow ? 6 : 12),
+    (t.owner ?? sym.emDash).slice(0, narrow ? 6 : 12),
     formatAgeHours(t.age_hours),
   ]);
   return renderTable({
@@ -2187,11 +2298,12 @@ function printHumanStatus(
   const dashboard = options?.dashboard === true;
 
   if (dashboard && d.currentCycle) {
+    const sym = getDashboardSymbols();
     const c = d.currentCycle;
     const startShort = c.start_date.slice(0, 10);
     const endShort = c.end_date.slice(0, 10);
     const line = chalk.cyan(
-      `◆ Cycle: ${c.name}  (${startShort} – ${endShort})  │  ${c.initiative_count} initiatives`,
+      `${sym.diamond} Cycle: ${c.name}  (${startShort} – ${endShort})  │  ${c.initiative_count} initiatives`,
     );
     console.log(`\n  ${line}\n`);
   }
@@ -2239,7 +2351,8 @@ function printHumanStatus(
     console.log(`\n${boxedSection("Active Plans", activePlansContent, w)}`);
   }
   if (d.staleDoingTasks.length > 0) {
-    const staleTitle = chalk.yellow("⚠  Stale Doing Tasks (>2h)");
+    const sym = getDashboardSymbols();
+    const staleTitle = chalk.yellow(`${sym.warning}  Stale Doing Tasks (>2h)`);
     const staleContent = getStaleDoingTasksContent(d.staleDoingTasks, w);
     console.log(`\n${boxedSection(staleTitle, staleContent, w)}`);
   }

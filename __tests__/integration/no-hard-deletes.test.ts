@@ -10,7 +10,7 @@ import {
 } from "./test-utils";
 
 // Serial: flaky under concurrency (DB-dependent; Dolt "read only" / commit conflicts when parallel).
-describe.serial("No hard deletes: guard and cancel", () => {
+describe("No hard deletes: guard and cancel", () => {
   let context: Awaited<ReturnType<typeof setupIntegrationTest>> | undefined;
   let planId: string;
   let taskId1: string;

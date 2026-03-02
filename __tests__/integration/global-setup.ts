@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as net from "node:net";
 import * as os from "node:os";
 import * as path from "node:path";
-import { execa } from "execa";
+import execa from "execa";
 import { applyMigrations, ensureMigrations } from "../../src/db/migrate";
 
 const DOLT_PATH = process.env.DOLT_PATH || "dolt";

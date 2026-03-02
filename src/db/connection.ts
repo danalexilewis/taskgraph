@@ -1,5 +1,5 @@
 import execa from "execa";
-import { createPool, type Pool } from "mysql2/promise";
+import { createPool, type Pool, type PoolConnection } from "mysql2/promise";
 import { err, errAsync, ok, ResultAsync } from "neverthrow";
 import { type AppError, buildError, ErrorCode } from "../domain/errors";
 import { checkoutBranch } from "./branch";
@@ -84,6 +84,25 @@ export function getServerPool(): Pool | null {
     poolCache.set(key, pool);
   }
   return pool;
+}
+
+/**
+ * Run a callback with a single server connection, then release it.
+ * Use when multiple operations (e.g. write + DOLT_COMMIT) must run on the same
+ * connection so Dolt's working set is committed by the session that wrote it.
+ * Returns null if server pool is not available.
+ */
+export async function runWithServerConnection<T>(
+  fn: (conn: PoolConnection) => Promise<T>,
+): Promise<T | null> {
+  const pool = getServerPool();
+  if (!pool) return null;
+  const conn = await pool.getConnection();
+  try {
+    return await fn(conn);
+  } finally {
+    conn.release();
+  }
 }
 
 /**

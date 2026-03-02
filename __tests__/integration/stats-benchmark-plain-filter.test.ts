@@ -9,7 +9,7 @@ import {
   teardownIntegrationTest,
 } from "./test-utils";
 
-describe.serial("tg stats --benchmark filter without timeline", () => {
+describe("tg stats --benchmark filter without timeline", () => {
   let context: Awaited<ReturnType<typeof setupIntegrationTest>>;
   let benchmarkPlanId: string;
   let normalPlanId: string;

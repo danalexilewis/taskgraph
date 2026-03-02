@@ -1,5 +1,12 @@
 import boxen from "boxen";
 
+/** When set (e.g. "1"), use ASCII-only borders (+ - |) so the dashboard is readable in terminals that don't support Unicode box-drawing. */
+export const ASCII_DASHBOARD_ENV = "TG_ASCII_DASHBOARD";
+
+export function useAsciiBorders(): boolean {
+  return process.env[ASCII_DASHBOARD_ENV] === "1" || process.env[ASCII_DASHBOARD_ENV] === "true";
+}
+
 /** Chars taken by box per side: 1 border + 1 padding = 2. Both sides = 4. */
 const BOX_HORIZONTAL_DEDUCTION = 4;
 /** Extra buffer so table does not touch box inner edge (2 per side). */
@@ -50,10 +57,34 @@ export function boxedSection(
 ): string {
   const inner = title.trim() ? `${title}\n${content}` : content;
   const padding = options?.padding ?? 1;
-  // boxen 5.x has no width option; box sizes to content
-  return boxen(inner, {
-    padding,
-    borderStyle: "double",
-    borderColor: options?.borderColor ?? "blue",
-  });
+  // boxen 5.x has no explicit width option — it derives box width from content and
+  // uses terminalColumns() as the ceiling. When content+padding+borders equals
+  // terminalColumns() exactly, boxen sets LINE_SEPARATOR='' and produces a single
+  // line with no newlines. Fix: tell boxen the terminal is 1 char wider than our
+  // intended box width so the condition is never triggered.
+  const savedCols = process.env.COLUMNS;
+  process.env.COLUMNS = String(width + 1);
+  const borderStyle = useAsciiBorders()
+    ? {
+        topLeft: "+",
+        topRight: "+",
+        bottomRight: "+",
+        bottomLeft: "+",
+        vertical: "|",
+        horizontal: "-",
+      }
+    : "double";
+  try {
+    return boxen(inner, {
+      padding,
+      borderStyle,
+      borderColor: options?.borderColor ?? "blue",
+    });
+  } finally {
+    if (savedCols === undefined) {
+      delete process.env.COLUMNS;
+    } else {
+      process.env.COLUMNS = savedCols;
+    }
+  }
 }

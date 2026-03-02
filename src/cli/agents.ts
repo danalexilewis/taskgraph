@@ -107,9 +107,11 @@ export function agentsCommand(program: Command) {
           e.body AS started_body, e.created_at AS started_at
         FROM task t
         JOIN project p ON t.plan_id = p.plan_id
-        LEFT JOIN event e ON e.task_id = t.task_id AND e.kind = 'started'
-          AND e.created_at = (SELECT MAX(e2.created_at) FROM event e2
-                               WHERE e2.task_id = t.task_id AND e2.kind = 'started')
+        LEFT JOIN event e ON e.event_id = (
+          SELECT e2.event_id FROM event e2
+          WHERE e2.task_id = t.task_id AND e2.kind = 'started'
+          ORDER BY e2.created_at DESC LIMIT 1
+        )
         WHERE t.status = 'doing' AND p.status != 'abandoned'
         ${planFilter}
         ORDER BY e.created_at DESC

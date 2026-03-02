@@ -15,7 +15,7 @@ function toDatetime(d: Date): string {
 
 // ─── Test: tg stats --recovery ───────────────────────────────────────────────
 
-describe.serial("tg stats --recovery shows investigator fix rate", () => {
+describe("tg stats --recovery shows investigator fix rate", () => {
   let context: Awaited<ReturnType<typeof setupIntegrationTest>> | undefined;
 
   beforeAll(async () => {

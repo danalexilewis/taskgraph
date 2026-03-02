@@ -2,7 +2,8 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { execa } from "execa";
+import execa from "execa";
+import { GOLDEN_TEMPLATE_PATH_FILE } from "../integration/global-setup";
 
 const CLI_PATH = path.resolve(__dirname, "../../dist/cli/index.js");
 const TG_BIN = `node ${CLI_PATH} `;
@@ -64,29 +65,45 @@ describe("Task Graph CLI E2E Tests", () => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tg-e2e-"));
     _doltRepoPath = path.join(tempDir, ".taskgraph", "dolt");
 
-    // Ensure CLI is built (run from package root)
-    await execa("pnpm run build", {
-      cwd: path.resolve(__dirname, "../.."),
-      shell: true,
-    });
+    // Reuse integration golden template when available (e.g. gate:full runs e2e after integration setup).
+    // Skips init + migration warm-up and speeds up the suite.
+    const useGoldenTemplate =
+      fs.existsSync(GOLDEN_TEMPLATE_PATH_FILE) &&
+      fs.readFileSync(GOLDEN_TEMPLATE_PATH_FILE, "utf8").trim().length > 0;
 
-    // Initialize the task graph once for the suite
-    const { exitCode: initExitCode, stderr: initStderr } = await runTg(
-      "init",
-      tempDir,
-    );
-    if (initExitCode !== 0) {
-      throw new Error(
-        `Failed to initialize task graph in beforeAll: ${initStderr}`,
+    if (useGoldenTemplate) {
+      const templatePath = fs
+        .readFileSync(GOLDEN_TEMPLATE_PATH_FILE, "utf8")
+        .trim();
+      fs.cpSync(
+        path.join(templatePath, ".taskgraph"),
+        path.join(tempDir, ".taskgraph"),
+        { recursive: true },
       );
+      fs.writeFileSync(
+        path.join(tempDir, ".taskgraph", "config.json"),
+        JSON.stringify(
+          { doltRepoPath: path.join(tempDir, ".taskgraph", "dolt") },
+          null,
+          2,
+        ),
+      );
+    } else {
+      // Initialize the task graph once for the suite (used when running pnpm test:e2e alone)
+      const { exitCode: initExitCode, stderr: initStderr } = await runTg(
+        "init",
+        tempDir,
+      );
+      if (initExitCode !== 0) {
+        throw new Error(
+          `Failed to initialize task graph in beforeAll: ${initStderr}`,
+        );
+      }
+      // Warm up: run one command that triggers ensureMigrations so all incremental
+      // migrations (not applied by init) complete here rather than in individual tests.
+      await runTg("status", tempDir);
     }
-
-    // Warm up: run one command that triggers ensureMigrations so all incremental
-    // migrations (not applied by init) complete here rather than in individual tests.
-    // Without this, the first plan new in a test would take 15-30s exceeding the
-    // per-test timeout.
-    await runTg("status", tempDir);
-  }, 120000);
+  }, 90000);
 
   afterAll(() => {
     // Clean up the temporary directory

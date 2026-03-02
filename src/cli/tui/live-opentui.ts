@@ -26,6 +26,7 @@ import {
   formatTasksAsString,
   getDashboardFooterLine,
 } from "../status.js";
+import { runLoadingProgressBar } from "./loading-progress.js";
 import { getTerminalWidth } from "../terminal.js";
 import type { Config } from "../utils.js";
 
@@ -107,7 +108,7 @@ function replaceRootWithNewBox(
     {
       id: rootId,
       borderStyle: "round",
-      border: true,
+      border: false,
       width,
       height: "auto",
     },
@@ -151,20 +152,31 @@ export async function runOpenTUILive(
     {
       id: STATUS_ROOT_ID,
       borderStyle: "round",
-      border: true,
+      border: false,
       width: w,
       height: "auto",
     },
-    Text({ content: "Loading..." }),
+    Text({ content: "Loading\n" }),
   );
   renderer.root.add(rootBox);
 
+  const progressBar = runLoadingProgressBar({
+    onTick: (content) => {
+      if (updateRootTextContent(renderer, STATUS_ROOT_ID, content)) {
+        renderer.root.requestRender?.();
+      }
+    },
+    getWidth: getTerminalWidth,
+  });
+
   process.on("SIGINT", () => {
+    progressBar.stop();
     renderer.destroy();
     process.exit(0);
   });
   renderer.prependInputHandler((sequence: string) => {
     if (sequence.toLowerCase() === "q" || sequence === "\x03") {
+      progressBar.stop();
       renderer.destroy();
       process.exit(0);
       return true;
@@ -187,46 +199,54 @@ export async function runOpenTUILive(
           getTerminalWidth(),
         );
       }
+      renderer.root.requestRender?.();
     } catch {
       // ignore
     }
   };
 
   let consecutiveErrors = 0;
-  const timer = setInterval(async () => {
-    if (renderer.isDestroyed) {
-      clearInterval(timer);
-      return;
-    }
-    const result = await fetchStatus(config, statusOptions);
-    result.match(
-      (data) => {
-        consecutiveErrors = 0;
-        refreshContent(data);
-      },
-      (e) => {
-        consecutiveErrors++;
-        if (consecutiveErrors >= 3) {
-          const msg = `[tg] DB refresh error: ${e.message}`;
-          if (!updateRootTextContent(renderer, STATUS_ROOT_ID, msg)) {
-            replaceRootWithNewBox(
-              renderer,
-              Box,
-              Text,
-              STATUS_ROOT_ID,
-              msg,
-              getTerminalWidth(),
-            );
+  let timer: ReturnType<typeof setInterval>;
+
+  const startRefreshInterval = () => {
+    timer = setInterval(async () => {
+      if (renderer.isDestroyed) {
+        clearInterval(timer);
+        return;
+      }
+      const result = await fetchStatus(config, statusOptions);
+      result.match(
+        (data) => {
+          consecutiveErrors = 0;
+          refreshContent(data);
+        },
+        (e) => {
+          consecutiveErrors++;
+          if (consecutiveErrors >= 3) {
+            const msg = `[tg] DB refresh error: ${e.message}`;
+            if (!updateRootTextContent(renderer, STATUS_ROOT_ID, msg)) {
+              replaceRootWithNewBox(
+                renderer,
+                Box,
+                Text,
+                STATUS_ROOT_ID,
+                msg,
+                getTerminalWidth(),
+              );
+            }
+            renderer.root.requestRender?.();
           }
-        }
-      },
-    );
-  }, REFRESH_MS);
+        },
+      );
+    }, REFRESH_MS);
+  };
 
   renderer.on("destroy", () => {
-    clearInterval(timer);
+    progressBar.stop();
+    if (timer) clearInterval(timer);
   });
 
+  // Run setupTerminal then initial fetch (no interval yet, so fetch isn't competing for DB).
   await Promise.race([
     renderer.setupTerminal(),
     new Promise<never>((_, reject) =>
@@ -237,9 +257,11 @@ export async function runOpenTUILive(
     ),
   ]);
 
-  fetchStatus(config, statusOptions).then((result) => {
-    result.match(refreshContent, () => {});
-  });
+  const result = await fetchStatus(config, statusOptions);
+  progressBar.stop();
+  result.match(refreshContent, () => {});
+  renderer.root.requestRender?.();
+  startRefreshInterval();
 
   return new Promise<void>((resolve) => {
     renderer.on("destroy", () => resolve());
@@ -285,20 +307,31 @@ export async function runOpenTUILiveDashboardTasks(
     {
       id: STATUS_ROOT_ID,
       borderStyle: "round",
-      border: true,
+      border: false,
       width: w,
       height: "auto",
     },
-    Text({ content: "Loading..." }),
+    Text({ content: "Loading\n" }),
   );
   renderer.root.add(rootBox);
 
+  const progressBarTasks = runLoadingProgressBar({
+    onTick: (content) => {
+      if (updateRootTextContent(renderer, STATUS_ROOT_ID, content)) {
+        renderer.root.requestRender?.();
+      }
+    },
+    getWidth: getTerminalWidth,
+  });
+
   process.on("SIGINT", () => {
+    progressBarTasks.stop();
     renderer.destroy();
     process.exit(0);
   });
   renderer.prependInputHandler((sequence: string) => {
     if (sequence.toLowerCase() === "q" || sequence === "\x03") {
+      progressBarTasks.stop();
       renderer.destroy();
       process.exit(0);
       return true;
@@ -323,6 +356,7 @@ export async function runOpenTUILiveDashboardTasks(
           width,
         );
       }
+      renderer.root.requestRender?.();
     } catch {
       // ignore
     }
@@ -369,6 +403,7 @@ export async function runOpenTUILiveDashboardTasks(
             getTerminalWidth(),
           );
         }
+        renderer.root.requestRender?.();
       }
     }
   }, REFRESH_MS);
@@ -376,6 +411,11 @@ export async function runOpenTUILiveDashboardTasks(
   renderer.on("destroy", () => {
     clearInterval(timer);
   });
+
+  const initialFetchPromise = Promise.all([
+    fetchStatusData(config, statusOptions),
+    fetchTasksTableData(config, activeOptions),
+  ]);
 
   await Promise.race([
     renderer.setupTerminal(),
@@ -387,26 +427,26 @@ export async function runOpenTUILiveDashboardTasks(
     ),
   ]);
 
-  Promise.all([
-    fetchStatusData(config, statusOptions),
-    fetchTasksTableData(config, activeOptions),
-  ]).then(([statusResult, activeResult]) => {
-    let data: StatusData | null = null;
-    let activeRows: TaskRow[] = [];
-    statusResult.match(
-      (d) => {
-        data = d;
-      },
-      () => {},
-    );
-    activeResult.match(
-      (rows) => {
-        activeRows = rows;
-      },
-      () => {},
-    );
-    if (data != null) refreshContent(data, activeRows);
-  });
+  const [statusResult, activeResult] = await initialFetchPromise;
+  progressBarTasks.stop();
+  let data: StatusData | null = null;
+  let activeRows: TaskRow[] = [];
+  statusResult.match(
+    (d) => {
+      data = d;
+    },
+    () => {},
+  );
+  activeResult.match(
+    (rows) => {
+      activeRows = rows;
+    },
+    () => {},
+  );
+  if (data != null) {
+    refreshContent(data, activeRows);
+    renderer.root.requestRender?.();
+  }
 
   return new Promise<void>((resolve) => {
     renderer.on("destroy", () => resolve());
@@ -451,20 +491,31 @@ export async function runOpenTUILiveDashboardProjects(
     {
       id: STATUS_ROOT_ID,
       borderStyle: "round",
-      border: true,
+      border: false,
       width: w,
       height: "auto",
     },
-    Text({ content: "Loading..." }),
+    Text({ content: "Loading\n" }),
   );
   renderer.root.add(rootBox);
 
+  const progressBarProjects = runLoadingProgressBar({
+    onTick: (content) => {
+      if (updateRootTextContent(renderer, STATUS_ROOT_ID, content)) {
+        renderer.root.requestRender?.();
+      }
+    },
+    getWidth: getTerminalWidth,
+  });
+
   process.on("SIGINT", () => {
+    progressBarProjects.stop();
     renderer.destroy();
     process.exit(0);
   });
   renderer.prependInputHandler((sequence: string) => {
     if (sequence.toLowerCase() === "q" || sequence === "\x03") {
+      progressBarProjects.stop();
       renderer.destroy();
       process.exit(0);
       return true;
@@ -489,6 +540,7 @@ export async function runOpenTUILiveDashboardProjects(
           width,
         );
       }
+      renderer.root.requestRender?.();
     } catch {
       // ignore
     }
@@ -520,6 +572,7 @@ export async function runOpenTUILiveDashboardProjects(
               getTerminalWidth(),
             );
           }
+          renderer.root.requestRender?.();
         }
       },
     );
@@ -528,6 +581,8 @@ export async function runOpenTUILiveDashboardProjects(
   renderer.on("destroy", () => {
     clearInterval(timer);
   });
+
+  const initialFetchPromise = fetchStatusData(config, statusOptions);
 
   await Promise.race([
     renderer.setupTerminal(),
@@ -539,9 +594,10 @@ export async function runOpenTUILiveDashboardProjects(
     ),
   ]);
 
-  fetchStatusData(config, statusOptions).then((result) => {
-    result.match(refreshContent, () => {});
-  });
+  const result = await initialFetchPromise;
+  progressBarProjects.stop();
+  result.match(refreshContent, () => {});
+  renderer.root.requestRender?.();
 
   return new Promise<void>((resolve) => {
     renderer.on("destroy", () => resolve());
@@ -606,7 +662,7 @@ export async function runOpenTUILiveProjects(
     {
       id: STATUS_ROOT_ID,
       borderStyle: "round",
-      border: true,
+      border: false,
       width: w,
       height: "auto",
     },
@@ -759,7 +815,7 @@ export async function runOpenTUILiveTasks(
     {
       id: STATUS_ROOT_ID,
       borderStyle: "round",
-      border: true,
+      border: false,
       width: w,
       height: "auto",
     },
@@ -911,7 +967,7 @@ export async function runOpenTUILiveInitiatives(
     {
       id: STATUS_ROOT_ID,
       borderStyle: "round",
-      border: true,
+      border: false,
       width: w,
       height: "auto",
     },

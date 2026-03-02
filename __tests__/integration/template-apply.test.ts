@@ -8,7 +8,7 @@ import {
   teardownIntegrationTest,
 } from "./test-utils";
 
-describe.serial("template apply integration", () => {
+describe("template apply integration", () => {
   let context: Awaited<ReturnType<typeof setupIntegrationTest>> | undefined;
   let templatePath: string;
 

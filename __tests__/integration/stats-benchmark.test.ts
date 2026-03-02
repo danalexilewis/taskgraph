@@ -13,7 +13,7 @@ function toDatetime(d: Date): string {
   return d.toISOString().slice(0, 19).replace("T", " ");
 }
 
-describe.serial("tg stats --timeline --benchmark filter", () => {
+describe("tg stats --timeline --benchmark filter", () => {
   let context: Awaited<ReturnType<typeof setupIntegrationTest>>;
   const benchTitle = "Benchmark Timeline Plan";
   const nonBenchTitle = "Regular Timeline Plan";

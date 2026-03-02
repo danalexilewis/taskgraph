@@ -112,9 +112,9 @@ export async function startDoltServerProcess(
 ): Promise<{ pid: number }> {
   const doltPath = process.env.DOLT_PATH || "dolt";
 
-  // Preflight: verify dolt binary exists
+  // Preflight: verify dolt binary exists and is executable
   try {
-    await execa(doltPath, ["--version"], { timeout: 3000 });
+    await execa(doltPath, ["version"], { timeout: 3000 });
   } catch (err: unknown) {
     const code = (err as NodeJS.ErrnoException).code;
     if (code === "ENOENT") {

@@ -51,56 +51,30 @@ export function loadRegistry(
     }
 
     const entries: RegistryEntry[] = [];
-    // load doc entries
+    // load doc entries — skip files that are missing or lack triggers frontmatter
     for (const { slug, file } of domains) {
       const fullPath = join(docsDir, file);
       let content: string;
       try {
         content = readFileSync(fullPath, "utf8");
-      } catch (e: unknown) {
-        return err(
-          buildError(
-            ErrorCode.FILE_READ_FAILED,
-            `Failed to read doc file: ${file}`,
-            e,
-          ),
-        );
+      } catch {
+        continue;
       }
       const triggers = parseFrontmatterTriggers(content);
-      if (!triggers) {
-        return err(
-          buildError(
-            ErrorCode.PARSE_FAILED,
-            `Missing or invalid triggers in doc file: ${file}`,
-          ),
-        );
-      }
+      if (!triggers) continue;
       entries.push({ slug, type: "doc", triggers });
     }
-    // load skill entries
+    // load skill entries — skip files that are missing or lack triggers frontmatter
     for (const { slug, file } of skills) {
       const fullPath = join(docsDir, "skills", file);
       let content: string;
       try {
         content = readFileSync(fullPath, "utf8");
-      } catch (e: unknown) {
-        return err(
-          buildError(
-            ErrorCode.FILE_READ_FAILED,
-            `Failed to read skill file: ${file}`,
-            e,
-          ),
-        );
+      } catch {
+        continue;
       }
       const triggers = parseFrontmatterTriggers(content);
-      if (!triggers) {
-        return err(
-          buildError(
-            ErrorCode.PARSE_FAILED,
-            `Missing or invalid triggers in skill file: ${file}`,
-          ),
-        );
-      }
+      if (!triggers) continue;
       entries.push({ slug, type: "skill", triggers });
     }
 

@@ -9,7 +9,7 @@ import {
 } from "./test-utils";
 
 // Serial: flaky under concurrency (DB-dependent; edge creation order-sensitive).
-describe.serial("Cursor format import integration", () => {
+describe("Cursor format import integration", () => {
   let context: Awaited<ReturnType<typeof setupIntegrationTest>> | undefined;
   let planFilePath: string;
 

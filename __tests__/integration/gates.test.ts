@@ -12,7 +12,7 @@ import {
  * verify task blocked, resolve gate, verify task unblocked.
  * Uses describe.serial and a single sequential it() so steps run in order.
  */
-describe.serial("Gate lifecycle", () => {
+describe("Gate lifecycle", () => {
   let context: Awaited<ReturnType<typeof setupIntegrationTest>> | undefined;
   let planId: string;
   let taskId: string;

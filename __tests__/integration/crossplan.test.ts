@@ -11,7 +11,7 @@ import {
  * Integration tests for tg crossplan: plans, domains, skills, files, summary.
  * Uses describe.serial so steps run in order against the same Dolt repo.
  */
-describe.serial("Crossplan integration", () => {
+describe("Crossplan integration", () => {
   let context: Awaited<ReturnType<typeof setupIntegrationTest>> | undefined;
 
   beforeAll(async () => {

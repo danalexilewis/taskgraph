@@ -5,7 +5,7 @@ import { checkRunnable } from "../../src/domain/invariants";
 import { setupIntegrationTest, teardownIntegrationTest } from "./test-utils";
 
 // Serial: flaky under concurrency (DB-dependent; order-sensitive with parallel files).
-describe.serial("Invariants (DB Dependent) Integration Tests", () => {
+describe("Invariants (DB Dependent) Integration Tests", () => {
   let context: Awaited<ReturnType<typeof setupIntegrationTest>> | undefined;
   const planId = "p1eebc99-9c0b-4ef8-bb6d-6bb9bd380a11";
   const taskId1 = "t1eebc99-9c0b-4ef8-bb6d-6bb9bd380a11";

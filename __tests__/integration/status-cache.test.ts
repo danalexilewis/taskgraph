@@ -18,117 +18,111 @@ import { setupIntegrationTest, teardownIntegrationTest } from "./test-utils";
 
 // ─── Group 1: Cache hit ───────────────────────────────────────────────────────
 
-describe.serial(
-  "fetchStatusData cache hit — cache is populated after first fetch",
-  () => {
-    let context: IntegrationTestContext | undefined;
+describe("fetchStatusData cache hit — cache is populated after first fetch", () => {
+  let context: IntegrationTestContext | undefined;
 
-    beforeAll(async () => {
-      context = await setupIntegrationTest();
-    }, 60_000);
+  beforeAll(async () => {
+    context = await setupIntegrationTest();
+  }, 60_000);
 
-    afterAll(async () => {
-      if (context) await teardownIntegrationTest(context);
-    }, 60_000);
+  afterAll(async () => {
+    if (context) await teardownIntegrationTest(context);
+  }, 60_000);
 
-    beforeEach(() => {
-      resetStatusCache();
-      resetSchemaFlagsCache();
-    });
+  beforeEach(() => {
+    resetStatusCache();
+    resetSchemaFlagsCache();
+  });
 
-    it("cache.size > 0 after first fetchStatusData call", async () => {
-      if (!context) throw new Error("Context not initialized");
-      const config = { doltRepoPath: context.doltRepoPath };
-      const cache = new QueryCache();
+  it("cache.size > 0 after first fetchStatusData call", async () => {
+    if (!context) throw new Error("Context not initialized");
+    const config = { doltRepoPath: context.doltRepoPath };
+    const cache = new QueryCache();
 
-      await fetchStatusData(config, {}, cache).match(
-        () => {},
-        (e) => {
-          throw new Error(String(e));
-        },
-      );
+    await fetchStatusData(config, {}, cache).match(
+      () => {},
+      (e) => {
+        throw new Error(String(e));
+      },
+    );
 
-      expect(cache.size).toBeGreaterThan(0);
-    });
+    expect(cache.size).toBeGreaterThan(0);
+  });
 
-    it("second fetchStatusData call does not grow the cache (served from memory)", async () => {
-      if (!context) throw new Error("Context not initialized");
-      const config = { doltRepoPath: context.doltRepoPath };
-      const cache = new QueryCache();
+  it("second fetchStatusData call does not grow the cache (served from memory)", async () => {
+    if (!context) throw new Error("Context not initialized");
+    const config = { doltRepoPath: context.doltRepoPath };
+    const cache = new QueryCache();
 
-      const result1 = await fetchStatusData(config, {}, cache).match(
-        (d) => d,
-        (e) => {
-          throw new Error(String(e));
-        },
-      );
-      const sizeAfterFirst = cache.size;
-      expect(sizeAfterFirst).toBeGreaterThan(0);
+    const result1 = await fetchStatusData(config, {}, cache).match(
+      (d) => d,
+      (e) => {
+        throw new Error(String(e));
+      },
+    );
+    const sizeAfterFirst = cache.size;
+    expect(sizeAfterFirst).toBeGreaterThan(0);
 
-      const result2 = await fetchStatusData(config, {}, cache).match(
-        (d) => d,
-        (e) => {
-          throw new Error(String(e));
-        },
-      );
+    const result2 = await fetchStatusData(config, {}, cache).match(
+      (d) => d,
+      (e) => {
+        throw new Error(String(e));
+      },
+    );
 
-      // Cache size unchanged — all reads served from the in-memory store.
-      expect(cache.size).toBe(sizeAfterFirst);
-      // Both calls return structurally identical data.
-      expect(JSON.stringify(result1)).toBe(JSON.stringify(result2));
-    });
-  },
-);
+    // Cache size unchanged — all reads served from the in-memory store.
+    expect(cache.size).toBe(sizeAfterFirst);
+    // Both calls return structurally identical data.
+    expect(JSON.stringify(result1)).toBe(JSON.stringify(result2));
+  });
+});
 
 // ─── Group 2: Invalidation ────────────────────────────────────────────────────
 
-describe.serial(
-  "fetchStatusData cache invalidation — clear() drains the cache and next fetch repopulates it",
-  () => {
-    let context: IntegrationTestContext | undefined;
+describe("fetchStatusData cache invalidation — clear() drains the cache and next fetch repopulates it", () => {
+  let context: IntegrationTestContext | undefined;
 
-    beforeAll(async () => {
-      context = await setupIntegrationTest();
-    }, 60_000);
+  beforeAll(async () => {
+    context = await setupIntegrationTest();
+  }, 60_000);
 
-    afterAll(async () => {
-      if (context) await teardownIntegrationTest(context);
-    }, 60_000);
+  afterAll(async () => {
+    if (context) await teardownIntegrationTest(context);
+  }, 60_000);
 
-    beforeEach(() => {
-      resetStatusCache();
-      resetSchemaFlagsCache();
-    });
+  beforeEach(() => {
+    resetStatusCache();
+    resetSchemaFlagsCache();
+  });
 
-    it("cache.size is 0 after clear() and grows again after next fetch", async () => {
-      if (!context) throw new Error("Context not initialized");
-      const config = { doltRepoPath: context.doltRepoPath };
-      const cache = new QueryCache();
+  it("cache.size is 0 after clear() and grows again after next fetch", async () => {
+    if (!context) throw new Error("Context not initialized");
+    const config = { doltRepoPath: context.doltRepoPath };
+    const cache = new QueryCache();
 
-      // First fetch: populates the cache.
-      await fetchStatusData(config, {}, cache).match(
-        () => {},
-        (e) => {
-          throw new Error(String(e));
-        },
-      );
-      expect(cache.size).toBeGreaterThan(0);
+    // First fetch: populates the cache.
+    await fetchStatusData(config, {}, cache).match(
+      () => {},
+      (e) => {
+        throw new Error(String(e));
+      },
+    );
+    expect(cache.size).toBeGreaterThan(0);
 
-      // Simulate what write commands do (tg start, tg done, etc.).
-      cache.clear();
-      expect(cache.size).toBe(0);
+    // Simulate what write commands do (tg start, tg done, etc.).
+    cache.clear();
+    expect(cache.size).toBe(0);
 
-      // Next fetch repopulates from DB.
-      await fetchStatusData(config, {}, cache).match(
-        () => {},
-        (e) => {
-          throw new Error(String(e));
-        },
-      );
-      expect(cache.size).toBeGreaterThan(0);
-    });
-  },
-);
+    // Next fetch repopulates from DB.
+    await fetchStatusData(config, {}, cache).match(
+      () => {},
+      (e) => {
+        throw new Error(String(e));
+      },
+    );
+    expect(cache.size).toBeGreaterThan(0);
+  });
+});
 
 // ─── Group 3: TG_DISABLE_CACHE flag ──────────────────────────────────────────
 // Unit-style: no DB required.

@@ -191,8 +191,8 @@ describe("dashboard format with mock data", () => {
       expect(plain).toContain("Active Projects");
       expect(plain).toContain("Active tasks and upcoming");
       expect(plain).toContain("done");
-      expect(plain).toContain("Plans:");
-      expect(plain).toContain("Tasks:");
+      expect(plain).toContain("Projects done");
+      expect(plain).toContain("Tasks done");
     });
 
     it("output contains footer line (agent/stats) when present in data", () => {
@@ -204,9 +204,9 @@ describe("dashboard format with mock data", () => {
       const out = formatStatusAsString(data, WIDTH, { dashboard: true });
       const plain = stripAnsi(out);
 
-      expect(plain).toContain("Types of Agents");
-      expect(plain).toContain("Total Agent Invocations");
-      expect(plain).toContain("Total Agent hours");
+      expect(plain).toContain("Agents (defined)");
+      expect(plain).toContain("Total invocations");
+      expect(plain).toContain("Agent hours");
       expect(plain).toContain("3");
       expect(plain).toContain("100");
       expect(plain).toContain("25");
@@ -244,7 +244,7 @@ describe("dashboard format with mock data", () => {
       expect(plain).toContain("Next 7 runnable");
       expect(plain).toContain("Last 7 completed");
       expect(plain).toContain("Types of Agents");
-      expect(plain).toContain("Total Agent hours");
+      expect(plain).toContain("Total Agent hours: 10.5");
       expect(normalized.endsWith("\n")).toBe(true);
       expect(normalized.endsWith("\n\n")).toBe(false);
     });
@@ -263,6 +263,64 @@ describe("dashboard format with mock data", () => {
         console.log("\n--- End dashboard ---\n");
       }
       expect(content.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe("TG_ASCII_DASHBOARD=1 (no Unicode symbols)", () => {
+    const unicodeStatusSymbols = ["✓", "●", "▲", "◆", "⚠"];
+
+    it("formatDashboardTasksView with TG_ASCII_DASHBOARD=1 has no Unicode status symbols in stripped output", () => {
+      const prev = process.env.TG_ASCII_DASHBOARD;
+      process.env.TG_ASCII_DASHBOARD = "1";
+      try {
+        const data = mockStatusData();
+        const [row1, row2] = mockActiveTaskRows();
+        const activeRows = [row1, { ...row2, owner: "-" }];
+        const out = formatDashboardTasksView(data, activeRows, WIDTH);
+        const plain = stripAnsi(out);
+        for (const sym of unicodeStatusSymbols) {
+          expect(plain).not.toContain(sym);
+        }
+        expect(plain).toContain("Active tasks");
+        expect(plain).toContain("*");
+      } finally {
+        if (prev === undefined) delete process.env.TG_ASCII_DASHBOARD;
+        else process.env.TG_ASCII_DASHBOARD = prev;
+      }
+    });
+
+    it("formatDashboardProjectsView with TG_ASCII_DASHBOARD=1 has no Unicode symbols in stripped output", () => {
+      const prev = process.env.TG_ASCII_DASHBOARD;
+      process.env.TG_ASCII_DASHBOARD = "1";
+      try {
+        const data = mockStatusData();
+        const out = formatDashboardProjectsView(data, WIDTH);
+        const plain = stripAnsi(out);
+        for (const sym of unicodeStatusSymbols) {
+          expect(plain).not.toContain(sym);
+        }
+        expect(plain).toContain("Active plans");
+      } finally {
+        if (prev === undefined) delete process.env.TG_ASCII_DASHBOARD;
+        else process.env.TG_ASCII_DASHBOARD = prev;
+      }
+    });
+
+    it("formatStatusAsString dashboard:true with TG_ASCII_DASHBOARD=1 has no Unicode symbols in stripped output", () => {
+      const prev = process.env.TG_ASCII_DASHBOARD;
+      process.env.TG_ASCII_DASHBOARD = "1";
+      try {
+        const data = mockStatusData();
+        const out = formatStatusAsString(data, WIDTH, { dashboard: true });
+        const plain = stripAnsi(out);
+        for (const sym of unicodeStatusSymbols) {
+          expect(plain).not.toContain(sym);
+        }
+        expect(plain).toContain("Active Projects");
+      } finally {
+        if (prev === undefined) delete process.env.TG_ASCII_DASHBOARD;
+        else process.env.TG_ASCII_DASHBOARD = prev;
+      }
     });
   });
 });

@@ -1,7 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { execa, execaSync } from "execa";
+import execa from "execa";
+
+const execaSync = execa.sync;
+
 import {
   runTgCli,
   setupIntegrationTest,
@@ -23,7 +26,7 @@ try {
  *
  * Raw git backend: worktrees at .taskgraph/worktrees/<taskId>, branch tg/<taskId>.
  */
-describe.serial("Worktree creation and cleanup (raw git backend)", () => {
+describe("Worktree creation and cleanup (raw git backend)", () => {
   let context: Awaited<ReturnType<typeof setupIntegrationTest>> | undefined;
   let planId: string;
   let taskId: string;
@@ -206,7 +209,7 @@ todos:
  * Worktrunk backend tests. Skipped when wt is not on PATH.
  * Worktrees are created via wt (path wherever wt puts it), branch tg-<hashId>.
  */
-describe.serial.skipIf(!wtAvailable)("Worktree with Worktrunk backend", () => {
+describe.skipIf(!wtAvailable)("Worktree with Worktrunk backend", () => {
   let context: Awaited<ReturnType<typeof setupIntegrationTest>> | undefined;
   let planId: string;
   let taskId: string;

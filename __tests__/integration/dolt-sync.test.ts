@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { execa } from "execa";
+import execa from "execa";
 import { writeConfig } from "../../src/cli/utils";
 import {
   runTgCli,
@@ -16,7 +16,7 @@ const DOLT_PATH = process.env.DOLT_PATH || "dolt";
  * Integration tests for tg sync with a file-based Dolt remote.
  * Uses describe.serial so setup, push, pull, and verify run in order.
  */
-describe.serial("Dolt sync with file-based remote", () => {
+describe("Dolt sync with file-based remote", () => {
   let context: Awaited<ReturnType<typeof setupIntegrationTest>> | undefined;
   let remoteDir: string;
   let planId: string;

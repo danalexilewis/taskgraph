@@ -8,7 +8,7 @@ import {
   teardownIntegrationTest,
 } from "./test-utils";
 
-describe.serial("tg recover integration", () => {
+describe("tg recover integration", () => {
   let context: Awaited<ReturnType<typeof setupIntegrationTest>> | undefined;
 
   const planId = "r0ebc99-9c0b-4ef8-bb6d-6bb9bd380a11";

@@ -3,7 +3,7 @@ import { tableExists } from "../../src/db/migrate";
 import { query } from "../../src/db/query";
 import { setupIntegrationTest, teardownIntegrationTest } from "./test-utils";
 
-describe.serial("Plan→project migration and idempotency", () => {
+describe("Plan→project migration and idempotency", () => {
   let context: Awaited<ReturnType<typeof setupIntegrationTest>>;
 
   beforeAll(async () => {

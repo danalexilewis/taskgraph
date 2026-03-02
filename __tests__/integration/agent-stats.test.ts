@@ -13,7 +13,7 @@ function toDatetime(d: Date): string {
   return d.toISOString().slice(0, 19).replace("T", " ");
 }
 
-describe.serial("Agent stats integration (tg stats)", () => {
+describe("Agent stats integration (tg stats)", () => {
   let context: Awaited<ReturnType<typeof setupIntegrationTest>> | undefined;
   let planId: string;
   let taskId1: string;
