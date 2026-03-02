@@ -175,33 +175,34 @@ export class TgClient {
     if (configResult.isErr()) return errAsync(configResult.error);
 
     const config = configResult.value;
-    const limit = Math.max(1, options.limit ?? 10);
     const q = query(config.doltRepoPath);
 
-    let planFilter = "";
-    if (options.plan) {
-      const isUUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(options.plan);
-      planFilter = isUUID
-        ? `AND p.plan_id = '${sqlEscape(options.plan)}'`
-        : `AND p.title = '${sqlEscape(options.plan)}'`;
-    }
-    let domainFilter = "";
-    if (options.domain) {
-      domainFilter = `AND EXISTS (SELECT 1 FROM \`task_doc\` td WHERE td.task_id = t.task_id AND td.doc = '${sqlEscape(options.domain)}')`;
-    }
-    let skillFilter = "";
-    if (options.skill) {
-      skillFilter = `AND EXISTS (SELECT 1 FROM \`task_skill\` ts WHERE ts.task_id = t.task_id AND ts.skill = '${sqlEscape(options.skill)}')`;
-    }
-    let changeTypeFilter = "";
-    if (options.changeType) {
-      changeTypeFilter = `AND t.\`change_type\` = '${sqlEscape(options.changeType)}'`;
-    }
-    const excludeCanceledAbandoned = options.all
-      ? ""
-      : " AND t.status != 'canceled' AND p.status != 'abandoned' ";
+    return recoverStaleTasks(config.doltRepoPath, 2).andThen(() => {
+      const limit = Math.max(1, options.limit ?? 10);
+      let planFilter = "";
+      if (options.plan) {
+        const isUUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(options.plan);
+        planFilter = isUUID
+          ? `AND p.plan_id = '${sqlEscape(options.plan)}'`
+          : `AND p.title = '${sqlEscape(options.plan)}'`;
+      }
+      let domainFilter = "";
+      if (options.domain) {
+        domainFilter = `AND EXISTS (SELECT 1 FROM \`task_doc\` td WHERE td.task_id = t.task_id AND td.doc = '${sqlEscape(options.domain)}')`;
+      }
+      let skillFilter = "";
+      if (options.skill) {
+        skillFilter = `AND EXISTS (SELECT 1 FROM \`task_skill\` ts WHERE ts.task_id = t.task_id AND ts.skill = '${sqlEscape(options.skill)}')`;
+      }
+      let changeTypeFilter = "";
+      if (options.changeType) {
+        changeTypeFilter = `AND t.\`change_type\` = '${sqlEscape(options.changeType)}'`;
+      }
+      const excludeCanceledAbandoned = options.all
+        ? ""
+        : " AND t.status != 'canceled' AND p.status != 'abandoned' ";
 
-    const sql = `
+      const sql = `
       SELECT t.task_id, t.hash_id, t.title, p.title as plan_title, t.risk, t.estimate_mins,
         (SELECT COUNT(*) FROM \`edge\` e
          JOIN \`task\` bt ON e.from_task_id = bt.task_id
@@ -220,8 +221,9 @@ export class TgClient {
         CASE WHEN t.estimate_mins IS NULL THEN 1 ELSE 0 END,
         t.estimate_mins ASC, t.created_at ASC
       LIMIT ${limit}
-    `;
-    return q.raw<NextTaskRow>(sql);
+      `;
+      return q.raw<NextTaskRow>(sql);
+    });
   }
 
   /**
