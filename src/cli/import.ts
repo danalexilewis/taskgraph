@@ -214,8 +214,7 @@ export function importCommand(program: Command) {
                     planUpdatePayload.initiative_id = options.initiative;
                   if (overview != null) planUpdatePayload.overview = overview;
                   if (objectives != null && objectives.length > 0)
-                    planUpdatePayload.objectives =
-                      JSON.stringify(objectives);
+                    planUpdatePayload.objectives = JSON.stringify(objectives);
                   if (outcomes != null && outcomes.length > 0)
                     planUpdatePayload.outcomes = JSON.stringify(outcomes);
                   if (outputs != null && outputs.length > 0)

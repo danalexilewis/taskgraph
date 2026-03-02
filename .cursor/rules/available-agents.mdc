@@ -11,18 +11,19 @@ Lead types and their docs are listed in **docs/leads/**.
 
 Quick-pick table — use this before deciding which agent to dispatch:
 
-| Agent                            | Read/Write | Dispatched when                                                     | Output                                    |
-| -------------------------------- | ---------- | ------------------------------------------------------------------- | ----------------------------------------- |
-| **implementer**                  | read-write | Normal task execution from `tg next`                                | Code changes + `tg done` evidence         |
-| **reviewer** (PASS/FAIL mode)    | read-only  | After implementer completes a task                                  | `VERDICT: PASS` or `FAIL` with issues     |
-| **reviewer** (research mode)     | read-only  | `/investigate` skill needs architectural research                   | Structured findings + suggested tasks     |
-| **investigator** (hunter-killer) | read-write | `gate:full` fails at plan end                                       | `STATUS` report: root cause + fix applied |
-| **debugger**                     | read-write | Fix build/compilation errors; unclear root cause; single debug task | `tg done` with root-cause evidence        |
-| **fixer**                        | read-write | Implementer has failed twice on same task                           | `tg done` with fix evidence               |
-| **planner-analyst**              | read-only  | Before writing any plan                                             | Structured analysis for orchestrator      |
-| **documenter**                   | read-write | Doc-only tasks (`agent: documenter` in plan)                        | Updated docs + `tg done`                  |
-| **spec-reviewer**                | read-only  | Two-stage review: spec compliance check                             | `VERDICT: PASS` or `FAIL`                 |
-| **quality-reviewer**             | read-only  | Two-stage review: code quality check                                | `VERDICT: PASS` or `FAIL`                 |
+| Agent                            | Read/Write | Dispatched when                                                     | Output                                             |
+| -------------------------------- | ---------- | ------------------------------------------------------------------- | -------------------------------------------------- |
+| **implementer**                  | read-write | Normal task execution from `tg next`                                | Code changes + `tg done` evidence                  |
+| **reviewer** (PASS/FAIL mode)    | read-only  | After implementer completes a task                                  | `VERDICT: PASS` or `FAIL` with issues              |
+| **reviewer** (research mode)     | read-only  | `/investigate` skill needs architectural research                   | Structured findings + suggested tasks              |
+| **investigator** (hunter-killer) | read-write | `gate:full` fails at plan end                                       | `STATUS` report: root cause + fix applied          |
+| **debugger**                     | read-write | Fix build/compilation errors; unclear root cause; single debug task | `tg done` with root-cause evidence                 |
+| **fixer**                        | read-write | Implementer has failed twice on same task                           | `tg done` with fix evidence                        |
+| **planner-analyst**              | read-only  | Before writing any plan                                             | Structured analysis for orchestrator               |
+| **documenter**                   | read-write | Doc-only tasks (`agent: documenter` in plan)                        | Updated docs + `tg done`                           |
+| **spec-reviewer**                | read-only  | Two-stage review: spec compliance check                             | `VERDICT: PASS` or `FAIL`                          |
+| **quality-reviewer**             | read-only  | Two-stage review: code quality check                                | `VERDICT: PASS` or `FAIL`                          |
+| **reprioritise**                 | read-write | User invokes reprioritise skill                                     | Prioritised project list; ≥10 Ready; actions taken |
 
 ### Key boundaries to avoid confusion
 
@@ -45,6 +46,32 @@ Quick-pick table — use this before deciding which agent to dispatch:
 
 - **implementer** — first attempt at a task (fast model)
 - **fixer** — escalation after 2 implementer failures (inherits session model = Sonnet/Opus); amends existing changes rather than redoing
+
+---
+
+## Lead Roles and Formation
+
+When `/work` is invoked without a specific plan, each instance **self-orients** using the situation report (sitrep) and **self-selects** a lead role. Lead roles have cardinality constraints:
+
+| Role              | Cardinality | Description                                                    | Self-selects when                                                          |
+| ----------------- | ----------- | -------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| execution-lead    | 1–N         | Grinds through plan tasks via implementer dispatch             | Runnable tasks exist; no other execution-lead on same plan (or slot open). |
+| overseer          | 0–1         | Monitors active agents, detects stalls, manages sitrep refresh | 2+ execution-leads active; no overseer claimed.                            |
+| investigator-lead | 0–1         | Handles gate:full failures, debug clusters                     | gate:full failed; no investigator-lead active.                             |
+| planner-lead      | 0–1         | Runs /plan for queued initiatives/requests                     | Unplanned initiatives exist; no planner-lead active.                       |
+
+**Self-selection algorithm** (for a `/work` instance reading the sitrep):
+
+1. Read the sitrep formation section.
+2. Read `tg status --tasks` to see which roles are currently filled (doing tasks, agent names).
+3. Pick the highest-priority unfilled role:
+   - If gate:full just failed and no investigator-lead → become investigator-lead.
+   - If 2+ execution-leads active and no overseer → become overseer.
+   - If runnable tasks exist for an unclaimed plan → become execution-lead for that plan.
+   - If nothing runnable but unplanned work exists → become planner-lead.
+   - If nothing to do → report "all clear" and exit.
+
+The human decides how many `/work` instances to spawn. Each instance reads the sitrep and self-selects. The first instance typically becomes execution-lead (most common need). See docs/leads/README.md (Sitrep and Formation).
 
 ---
 
@@ -116,6 +143,10 @@ Spec compliance check sub-agent (PASS/FAIL). First stage of two-stage review. Se
 
 Code quality check sub-agent (PASS/FAIL). Second stage of two-stage review. See `.cursor/agents/quality-reviewer.md`.
 
+## reprioritise
+
+**Orchestrator-direct (no sub-agents).** Read-write. Invoked when the user runs the reprioritise skill. Reviews active projects, answers "are these the right projects to be active?", produces a linear prioritised project list, and ensures at least 10 Ready (runnable) tasks by updating priority or activating tasks as needed. See `.cursor/skills/reprioritise/SKILL.md`. Lead doc: [docs/leads/reprioritise.md](../../docs/leads/reprioritise.md).
+
 ---
 
 ## Skills
@@ -130,3 +161,4 @@ Invokable skills (read `.cursor/skills/<name>/SKILL.md` and follow the workflow)
 | `/evolve`            | "/evolve", "evolve the last plan", after plan completion                                                             | Post-plan pattern mining; analyses task diffs to surface implementation anti-patterns and route learnings to agent templates and docs                                                 |
 | `/audit-performance` | "/audit-performance", "audit perf", "performance review", "find bottlenecks"                                         | Performance audit; dispatches parallel ferret-search scanners (schema, queries, hotpaths, anti-patterns, Dolt) with a pre-compute race agent that stores shared context in task notes |
 | `/clean-up-shop`     | "clean up shop", "clean house", "no jobs in flight", "clean up worktrees", "remove worktrees", after a /work session | Post-session housekeeping: return main checkout to `main`, merge completed worktrees, remove worktree directories, delete merged branches, process pending learnings                  |
+| reprioritise         | "reprioritise", "review priorities", "are these the right projects"                                                  | Reviews active projects; linear priority list; ensures ≥10 Ready tasks; updates order/activates as needed                                                                             |

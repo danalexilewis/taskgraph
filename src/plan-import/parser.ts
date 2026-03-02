@@ -323,14 +323,15 @@ export function frontmatterToParsedPlan(
     Array.isArray(fm.tests) && fm.tests.every((x) => typeof x === "string")
       ? fm.tests
       : null;
-  const overview =
-    typeof fm.overview === "string" ? fm.overview : null;
+  const overview = typeof fm.overview === "string" ? fm.overview : null;
   const objectives =
-    Array.isArray(fm.objectives) && fm.objectives.every((x) => typeof x === "string")
+    Array.isArray(fm.objectives) &&
+    fm.objectives.every((x) => typeof x === "string")
       ? fm.objectives
       : null;
   const outcomes =
-    Array.isArray(fm.outcomes) && fm.outcomes.every((x) => typeof x === "string")
+    Array.isArray(fm.outcomes) &&
+    fm.outcomes.every((x) => typeof x === "string")
       ? fm.outcomes
       : null;
   const outputs =

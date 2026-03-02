@@ -211,14 +211,15 @@ Optional: `blockedBy`, `suggestedChanges`, `changeType`, `docs`, `skill`.
 ## Phase 3: Validate and Present
 
 1. Summarize the plan to the user.
-2. **Pause and wait for review.** Do not import or execute until the user responds.
-3. Interpret the user's response:
+2. Ask: **Confirm loading initiative, projects and tasks into tg?** and present options below. **Yes (option 2) is the default:** if the user sends an empty reply (Enter with nothing) or a space, treat as Yes — load into tg only. The agent cannot detect raw keypresses; it only sees the message content, so "empty message" or "space" is how the user signals default.
+3. **Pause and wait for review.** Do not import or execute until the user responds.
+4. Interpret the user's response. **User may reply with the number only (e.g. 1, 2, or 3).** Option 2 is the suggested next thing (load into tg).
 
-| User says                            | Action                                                                                  |
-| ------------------------------------ | --------------------------------------------------------------------------------------- |
-| proceed, go ahead, execute, run it   | Import with `pnpm tg import plans/<file> --plan "<Name>" --format cursor`, then execute |
-| just add the tasks, add to taskgraph | Import only; do not execute                                                             |
-| thanks, looks good, ok               | Do nothing (acknowledgement only)                                                       |
+| #   | User says                             | Action                                                                                  |
+| --- | ------------------------------------- | --------------------------------------------------------------------------------------- |
+| 1   | proceed, go ahead, execute, run it    | Import with `pnpm tg import plans/<file> --plan "<Name>" --format cursor`, then execute |
+| 2   | yes, load into tg, just add the tasks | Import only; do not execute. **Default:** empty reply or space = this option.           |
+| 3   | no, thanks, looks good, do nothing    | Do nothing (acknowledgement only)                                                       |
 
 ### Import command
 

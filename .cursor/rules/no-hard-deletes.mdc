@@ -8,9 +8,10 @@ alwaysApply: true
 - **NEVER** execute `DELETE`, `DROP TABLE`, or `TRUNCATE` on the task graph database.
 - **NEVER** run raw `dolt sql` (or equivalent) that modifies or deletes data.
 
-To remove a project or task, use soft-deletes:
+To remove a project, initiative, or task, use soft-deletes:
 
 - **Project:** `tg cancel <projectId> --reason "..."` — marks the project as abandoned.
+- **Initiative:** `tg cancel <initiativeId> --type initiative --reason "..."` — marks the initiative as abandoned.
 - **Task:** `tg cancel <taskId> --reason "..."` — marks the task as canceled.
 
 If a user asks to "delete", "remove", or "clean up" projects or tasks, use `tg cancel` instead and explain that removal is done via soft-delete (abandoned/canceled).

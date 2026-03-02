@@ -5,6 +5,8 @@ See `.cursor/rules/memory.mdc` for the learnings routing system.
 
 ## Active quirks
 
+- **OpenTUI / ghostty-opentui startup timeout** — `ghostty-opentui`'s native Zig core needs up to 3s to load under Bun on first call. The import timeout in `live-opentui.ts` is set to **3000ms** (import) and **2000ms** (renderer init). Do not reduce these; 400ms caused silent fallback to the plain ansi-diff renderer, making the dashboard appear gray with no borders.
+
 - **`status-live --json` tests (3) failing in gate:full** — `parseAsync + closeAllServerPools + process.exit(0)` in `src/cli/index.ts` may race with stdout flush when output is piped. Investigate before declaring gate green. Try `process.exitCode = 0` + natural drain instead of `process.exit(0)`.
 - **`pnpm test:all` diverges from `gate:full` isolation** — `test:all` runs `bun test __tests__ --concurrent` without db/mcp isolation. mock.module bleed will return for anyone using it. Either fix or remove the script.
 - **Terminal-file polling pattern** (long-running shell commands): when a shell command backgrounds, Cursor streams output to `.cursor/projects/.../terminals/<pid>.txt`. Poll with incremental sleeps + tail; stop when `exit_code:` footer appears. Full pattern in `docs/agent-field-guide.md § Shell / Long-Running Commands`. Never chain `sleep N && tail` in one shell call.

@@ -62,6 +62,8 @@ You are the Implementer sub-agent. You execute exactly one task from the task gr
 
 **At start (optional)** — To see current task state: `pnpm tg status --tasks` (task list only; no plans/initiatives).
 
+**Hive sync (optional)** — When multiple agents may be active, you can run `pnpm tg context --hive --json` (when the CLI supports it) to get a snapshot of all doing tasks. Then: (1) read the group; (2) reflect whether anything there affects your task; (3) reflect whether your local context should be pushed to other tasks via `tg note <otherTaskId> --msg "..."`. See `.cursor/agent-utility-belt.md` (Hive coordination) for the pattern and to share learnings as you experiment.
+
 **Step 1 — Claim the task and switch to worktree**
 When the orchestrator passed **{{WORKTREE_PATH}}**: the task is already started with a worktree. Run: `cd {{WORKTREE_PATH}}` and do all work (and `tg done`) from that directory.
 When **{{WORKTREE_PATH}}** was not passed: run from repo root: `pnpm tg start {{TASK_ID}} --agent {{AGENT_NAME}} --worktree`. Then run `pnpm tg worktree list --json`, find the entry for this task's branch (e.g. `tg-<hash>`), and `cd` to its `path`. All work and `tg done` must run from that worktree directory. (Worktrunk is the standard backend when `wt` is installed; ensure `.taskgraph/config.json` has `useWorktrunk: true` or leave unset for auto-detect.)
@@ -117,6 +119,10 @@ You have been given task context below. Read any domain docs and skill guides li
 - Do not write raw SQL template literals for single-table INSERT or UPDATE — use `query(repoPath).insert(table, data)` / `.update(table, data, where)` from `src/db/query.ts`. Reserve `doltSql()` and `query.raw()` for complex queries (multi-join, subquery, complex WHERE) or `migrate.ts` migrations. Do not call `doltSql()` directly in `src/cli/` files; route through `query(repoPath)`.
 - Do not leave empty catch blocks
 - Do not refactor while fixing bugs (fix the bug only)
+- Do not delete a function during a rename task unless that function contained the renamed identifier or the task explicitly listed it for removal. If a deletion cannot be traced to the rename or the stated change list, revert it.
+- Do not interpret a `/** legacy; prefer X */` comment as permission to delete X. The "legacy" label marks the function carrying the comment as the candidate for removal — not the function it recommends as preferred.
+- Do not remove supporting types, helper functions, or constants from a file unless their removal is forced by a type error that was itself caused by the stated task change. When in doubt, leave them and note the cleanup for the orchestrator.
+- When modifying `src/cli/status.ts` or `src/cli/tui/boxen.ts`, grep for every function in the "Key styling functions (do not remove)" table in `docs/cli-tables.md` and confirm each is still present and called before committing.
 - Do not write or edit documentation files (README, CHANGELOG, docs/) — note for orchestrator instead
 - Do not re-read the same terminal path more than 5 times in a row without making a file change between reads.
 - Do not call sleep or wait for a process to change state more than 3 times in a row without other progress.
