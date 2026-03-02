@@ -1,5 +1,5 @@
 import type { ResultAsync } from "neverthrow";
-import { type Config, readConfig } from "../config";
+import { type Config, readConfig } from "../cli/utils";
 import { query } from "../db/query";
 import type { AppError } from "../domain/errors";
 import type { Edge, Task } from "../domain/types";
