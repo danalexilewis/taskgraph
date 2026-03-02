@@ -117,6 +117,44 @@ Then report back to the orchestrator: task done and the evidence you used.
 If you cannot complete (blocked, task requires code changes): use the structured failure format (VERDICT: FAIL, REASON: ..., SUGGESTED_FIX: ...) in your reply or in `tg note {{TASK_ID}} --msg "..."`.
 ```
 
+## Batch mode (N tasks in one session)
+
+When the orchestrator passes **{{TASK_IDS}}** (ordered list of task UUIDs) and **{{CONTEXT_BLOCKS}}** (one context block per task, in the same order), you execute **N documentation-only tasks** in one session. Use this section instead of the single-task template above.
+
+**Input contract (batch):**
+
+- `{{TASK_IDS}}` — ordered list of task UUIDs (e.g. `["id1", "id2", "id3"]`)
+- `{{CONTEXT_BLOCKS}}` — one block per task, in task order. Each block contains the same fields as the single-task template (title, intent, change type, doc paths, skill docs, suggested changes, file tree, risks, related done, explorer output, learnings) for that task only.
+- `{{AGENT_NAME}}` — unique name for this run (e.g. documenter-1)
+
+**Rules:**
+
+- Run from **repo root** only. Documenter does not use worktrees; do not pass or use `{{WORKTREE_PATH}}`.
+- **Do not mix scope between tasks.** For each task, load only that task's context block, do the doc work for that task, then complete it before moving to the next.
+- **Sequential cycle per task:** For each task ID in `{{TASK_IDS}}` in order:
+  1. `pnpm tg start <taskId> --agent {{AGENT_NAME}}`
+  2. Load context from the corresponding block in `{{CONTEXT_BLOCKS}}` (read any listed docs/skill guides).
+  3. Do the documentation work for that task only (edit/create only markdown/docs; stay in scope).
+  4. Commit: `git add -A && git commit -m "docs(task-<hash>): <brief description>"` from repo root.
+  5. `pnpm tg done <taskId> --evidence "<brief evidence>"`
+- Then report back to the orchestrator: all tasks done and the evidence for each.
+
+**Batch prompt (orchestrator injects):**
+
+```
+You are the Documenter sub-agent. You execute N documentation-only tasks in one session (batch mode).
+
+**Task IDs (in order):**
+{{TASK_IDS}}
+
+**Context block for each task (same order as TASK_IDS):**
+{{CONTEXT_BLOCKS}}
+
+**Agent name:** {{AGENT_NAME}}
+
+For each task in order: run `pnpm tg start <taskId> --agent {{AGENT_NAME}}`, load that task's context block only, do the doc work (markdown/docs only; commit before done), then `pnpm tg done <taskId> --evidence "..."`. Do not mix scope between tasks. Run all commands from repo root.
+```
+
 ## Learnings
 
 - **Doc-only.** Documenter edits only markdown/docs; never change code. If the task requires code changes, fail with VERDICT: FAIL and suggest re-assigning to implementer.
