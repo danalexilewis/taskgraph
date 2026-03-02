@@ -62,7 +62,7 @@ Use only when: a sub-agent has failed twice on the same task, or the task is exp
 1. `pnpm tg start <taskId> --agent <name> --worktree` (Worktrunk is used when `useWorktrunk: true` or `wt` on PATH; then `cd` to the worktree path from `tg worktree list --json`), or `pnpm tg start <taskId> --agent <name>` if not using a worktree
 2. `pnpm tg context <taskId>` — read and load docs
 3. Do the work (from the worktree directory if you used `--worktree`)
-4. **CRITICAL — `tg done` must run from the worktree directory.** Run `pnpm tg worktree list --json`, find the entry for this task's branch, `cd` to its `path`, then call `pnpm tg done <taskId> --evidence "..."` from there. Calling `tg done` from the main repo root silently skips the merge step and the worktree code is destroyed on cleanup.
+4. **CRITICAL — `tg done` requires both the worktree directory AND `--merge`.** Run `pnpm tg worktree list --json`, find the entry for this task's branch, `cd` to its `path`, then call `pnpm tg done <taskId> --merge --evidence "..."` from there. Two separate failure modes: (a) calling from repo root silently skips merge and destroys the branch; (b) omitting `--merge` also skips merge even from the correct directory. Both the directory and the flag are required.
 5. Log the reason: `pnpm tg note <taskId> --msg "Direct execution: <reason>"`
 
 Evidence: commands run, git ref; or "implemented; no test run". If the human ran the full suite: "gate:full run by human".
@@ -73,7 +73,11 @@ When executing N tasks in sequence, complete the full start→work→done cycle 
 
 ### Plan completion
 
-After marking the last task in a plan as done, run:
+After marking the last task in a plan as done:
+
+1. **Plan-merge (worktree plans — mandatory):** Run `wt merge main -C <plan-worktree-path>` to land all plan-branch commits onto main. Get `<plan-worktree-path>` from `pnpm tg worktree list --json` (the `plan-p-*` entry's `path` field). **Without this step, all task-branch work stays on the plan branch and never reaches main.**
+
+2. Export the plan summary:
 
 ```bash
 pnpm tg export markdown --plan <planId>

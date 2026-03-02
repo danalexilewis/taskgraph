@@ -15,7 +15,7 @@ export function noteCommand(program: Command) {
   program
     .command("note")
     .description(
-      "Append a note event to a task (breadcrumbs for other agents and the human)",
+      "Add a task-scoped note (visible in tg context and tg show). For path-scoped clues that survive task closure, use .breadcrumbs.json — see docs/breadcrumbs.md.",
     )
     .argument(
       "<taskIds...>",

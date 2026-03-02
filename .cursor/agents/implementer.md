@@ -31,7 +31,7 @@ The orchestrator must pass:
 
 ## Output contract
 
-- Run `tg done <taskId> --evidence "..."` with a short evidence string (commands run, git ref, or implemented; no test run).
+- Run `tg done <taskId> --merge --evidence "..."` (when running in a worktree — always). Without `--merge`, `tg done` cleans up the worktree branch without merging it, permanently orphaning your commits.
 - Return a brief completion message to the orchestrator (e.g. "Task X done. Evidence: ...").
 - **Self-report (optional):** If your environment exposes token usage, pass it to `tg done`:
   - `--tokens-in <n>` — input tokens for this session
@@ -73,6 +73,8 @@ Use a unique agent name (e.g. implementer-1) when running in parallel.
 You have been given task context below. Read any domain docs and skill guides listed — they are paths relative to the repo root (e.g. docs/backend.md, docs/skills/plan-authoring.md). Read those files before coding.
 
 **Also read `docs/agent-field-guide.md`** before any implementation work — it contains patterns and gotchas specific to this codebase (Dolt datetime coercion, JSON column read/write, table name branching, --json output shape conventions, worktree lifecycle, etc.).
+
+**Check breadcrumbs:** Read `.breadcrumbs.json` and filter for entries whose `path` matches or is a prefix of the files you will edit. Factor any relevant breadcrumbs into your approach before making changes. See `.cursor/agent-utility-belt.md` § Breadcrumbs.
 
 **Assess before following:** If the area you're working in has inconsistent patterns (mixed styles, conflicting approaches), note the inconsistency in your completion message rather than blindly following a bad pattern. Follow the *better* pattern when two conflict.
 
@@ -128,7 +130,7 @@ You have been given task context below. Read any domain docs and skill guides li
 - Do not call sleep or wait for a process to change state more than 3 times in a row without other progress.
 
 **Step 4 — Complete the task**
-When using a worktree, the commit in Step 3 must have happened before `tg done`, so that `tg done --merge` (when the orchestrator uses it) has a commit to squash. From the **worktree directory** (you must be in the worktree path when using worktree isolation), run: `pnpm tg done {{TASK_ID}} --evidence "<brief evidence: commands run, git ref, or implemented; no test run>"`. If the task was started with `--merge` intent, the orchestrator will run done with `--merge`; you only run `tg done` with evidence.
+When using a worktree, the commit in Step 3 must have happened before `tg done`. From the **worktree directory**, run: `pnpm tg done {{TASK_ID}} --merge --evidence "<brief evidence: commands run, git ref, or implemented; no test run>"`. The `--merge` flag is the **implementer's responsibility** — always include it when running in a worktree. Do not omit it; `tg done` without `--merge` marks the task done and cleans up the worktree without merging the task branch, permanently orphaning your commits (they exist in git's object store but are unreachable from any branch).
 
 If your environment exposes token usage, append the optional self-report flags (all optional, skip if unavailable — do not estimate):
 `--tokens-in <n> --tokens-out <n> --tool-calls <n> --attempt <n>`
@@ -163,7 +165,8 @@ If you cannot complete (blocked, unfixable gate/env issue): use the structured f
 - **[2026-03-01]** Stored spawned server PIDs only in the in-memory JS context object. If the test runner is force-killed (OOM, Ctrl-C, Bun's 10 s `beforeAll` timeout), all in-memory PIDs are lost with no recovery path. Any externally spawned server in test infrastructure must write its PID to a file immediately after spawn and teardown must read and clean up that file, not only the JS variable.
 - **[2026-03-01]** Test suite spawned external processes with no OS-level resource count assertions. 80 orphaned dolt processes accumulated across runs with no test reporter signal. Whenever a test suite starts external processes, add a pre/post process-count assertion around the full suite (e.g. `pgrep -c dolt` before and after). This is the cheapest invariant and the first to surface a teardown leak.
 - **[2026-03-01]** `ensureMigrations` creates a `new QueryCache()` on every call; each migration probe spawns a dolt subprocess. The cache deduplicates within a single call only — zero benefit across the process boundary. When adding a new migration: batch `tableExists`/`columnExists`/`viewExists` checks into as few probes as possible. Every new probe adds to every CLI command cold-start. Do not add speculative or redundant existence checks.
-- **[2026-03-01]** `tg done` called from the main repo root when the task used a worktree — the merge step was silently skipped, the worktree was cleaned up, and all implementation code was lost. Always run `pnpm tg worktree list --json`, `cd` to the worktree path for the task, and call `pnpm tg done` from that directory. Never call `tg done` from the main repo when a worktree exists.
+- **[2026-03-01]** `tg done` called from the main repo root when the task used a worktree — the merge step was silently skipped, the worktree was cleaned up, and all implementation code was lost. Always `cd` to the worktree path for the task and call `pnpm tg done {{TASK_ID}} --merge --evidence "..."` from there. Both the directory AND the `--merge` flag are required; neither alone is sufficient.
+- **[2026-03-02]** `tg done` called without `--merge` in a worktree context — commits became orphaned objects in git (findable via `git fsck --unreachable`) but unreachable from any branch and excluded from the plan-merge. `--merge` is the implementer's responsibility; the orchestrator has no mechanism to retroactively merge a task that `tg done` has already cleaned up.
 - **[2026-03-01]** A function that activates a mode via multiple env vars set only one of them. `getServerPool()` guards on both `TG_DOLT_SERVER_PORT` and `TG_DOLT_SERVER_DATABASE`; setting only `TG_DOLT_SERVER_PORT` caused it to return `null` silently. Before writing an env-var activation function, read the consuming function's entry guard to enumerate every required var; set them all in the same code path atomically.
 - **[2026-03-01]** `gate:full` run on a plan branch without a baseline failure count on `main` — ~80% of reported failures were pre-existing and unrelated to the plan, wasting investigator cycles. Before dispatching investigators, cross-check failures against the base branch (`git stash && pnpm gate:full`) or note "pre-existing" in evidence when failures are clearly in unchanged code.
 - **[2026-03-01]** `process.env.TG_DOLT_SERVER_PORT = value` assigned in test `beforeAll`/`beforeEach` without a matching `delete process.env.TG_DOLT_SERVER_PORT` in teardown. Bun runs all test files in the same process; stale env vars from integration tests leaked into E2E tests and caused `ECONNREFUSED`. Always `delete process.env.VAR` in the matching teardown for every env var set during test setup.

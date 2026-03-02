@@ -23,6 +23,36 @@ Shared learnings for all agent personas and sub-agents. When building prompts or
 
 ---
 
+## Breadcrumbs
+
+Path-scoped, committed clues in `.breadcrumbs.json`. Different from `tg note` (task-scoped) — breadcrumbs survive task closure and sessions.
+
+**Before editing files:** Read `.breadcrumbs.json` (small file, parse it), filter entries whose `path` matches or is a prefix of the files you are about to edit. Factor any relevant entries into your approach.
+
+**After a non-obvious fix, intentional workaround, security-critical pattern, or "this looks wrong but is intentional" code:** Add an entry to `.breadcrumbs.json` for that path. Use severity `"warn"` for things that must not be changed; `"info"` for context that is helpful but not safety-critical.
+
+Entry format:
+```json
+{
+  "id": "b_a1b2c3",
+  "path": "src/db/query.ts",
+  "message": "Short clue for future agents",
+  "severity": "info",
+  "added_by": { "agent_id": "implementer" },
+  "added_at": "2026-03-02T10:00:00Z",
+  "promoted": false
+}
+```
+Use `b_` + 6 hex chars for the id (e.g. first 6 chars of `Date.now().toString(16)`).
+
+**If a breadcrumb was critical to your decision:** Promote it — copy the message as a code comment at the relevant lines, then set `promoted: true` in the entry (or remove it). The comment is the durable form.
+
+**Do not create breadcrumbs for obvious, well-documented, or already-commented code.** Signal-to-noise matters.
+
+See `docs/breadcrumbs.md` for full format and guidance.
+
+---
+
 ## Result / error handling
 
 - **[2026-03-01]** Empty early-return inside a `.andThen()` chain — do not use `Promise.resolve({ isOk: () => true, value: [] }) as unknown as ResultAsync<T, E>`; that bypasses neverthrow's interface and will not chain. Use `okAsync(value)` (or `okAsync([])`) for trivially-known early returns inside `ResultAsync` chains.

@@ -162,6 +162,26 @@ tg plan list
 #   3cf8e2e2-7cbc-4d07-95a0-bf4871e780bf  tg plan list  (draft)
 ```
 
+### `tg plan set-priority <planIdOrTitle> <priority>`
+
+Sets the priority of a plan (project). Higher values are shown first in `tg status --projects` and when resolving `tg next` across plans.
+
+```bash
+tg plan set-priority <planIdOrTitle> <priority>
+```
+
+**Arguments:**
+
+- `<planIdOrTitle>`: Plan UUID or exact project title.
+- `<priority>`: Integer. Higher = higher in the list (e.g. 21 before 20).
+
+**Example:**
+
+```bash
+tg plan set-priority "Gate Full Triage" 21
+# Priority set to 21 for plan 88f2a555-7464-4be3-ab5d-419765d3fca7
+```
+
 ### `tg task new <title>`
 
 Creates a new task within an existing plan.

@@ -222,6 +222,7 @@ export function fetchStatusData(
       : `WHERE p.title = '${sqlEscape(options.plan)}'`
     : "";
 
+  /** Total completed projects in tg (project.status = 'done'); no plan/dimension filter. Used for dashboard "Projects done" stat. */
   const completedPlansSql = `SELECT COUNT(*) AS count FROM ${bt("project")} WHERE status = 'done'`;
   const completedTasksSql = `SELECT COUNT(*) AS count FROM ${bt("task")} WHERE status = 'done'`;
   const canceledTasksSql = `SELECT COUNT(*) AS count FROM ${bt("task")} WHERE status = 'canceled'`;

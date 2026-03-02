@@ -1,16 +1,21 @@
 import { Command } from "commander";
+import { errAsync } from "neverthrow";
 import { v4 as uuidv4 } from "uuid";
 import { doltCommit } from "../db/commit";
 import { now, query } from "../db/query";
-import type { AppError } from "../domain/errors";
+import { buildError, ErrorCode, type AppError } from "../domain/errors";
 import { type Config, readConfig, rootOpts } from "./utils";
+
+const UUID_REGEX =
+  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/i;
 
 export function planCommand(program: Command) {
   program
     .command("plan")
     .description("Manage plans")
     .addCommand(planNewCommand())
-    .addCommand(planListCommand());
+    .addCommand(planListCommand())
+    .addCommand(planSetPriorityCommand());
 }
 
 function planListCommand(): Command {
@@ -133,6 +138,93 @@ function planNewCommand(): Command {
         },
         (error: AppError) => {
           console.error(`Error creating plan: ${error.message}`);
+          if (rootOpts(cmd).json) {
+            console.log(
+              JSON.stringify({
+                status: "error",
+                code: error.code,
+                message: error.message,
+                cause: error.cause,
+              }),
+            );
+          }
+          process.exit(1);
+        },
+      );
+    });
+}
+
+function planSetPriorityCommand(): Command {
+  return new Command("set-priority")
+    .description(
+      "Set priority for a plan (higher = shown first in status/next)",
+    )
+    .argument("<planIdOrTitle>", "Plan ID (UUID) or exact project title")
+    .argument("<priority>", "Priority value (integer)", (val) =>
+      parseInt(val, 10),
+    )
+    .action(async (planIdOrTitle, priority, options, cmd) => {
+      if (Number.isNaN(priority)) {
+        console.error("Priority must be an integer.");
+        process.exit(1);
+      }
+      const result = await readConfig().asyncAndThen((config: Config) => {
+        const q = query(config.doltRepoPath);
+        const resolve = UUID_REGEX.test(planIdOrTitle)
+          ? q.select<{ plan_id: string }>("project", {
+              columns: ["plan_id"],
+              where: { plan_id: planIdOrTitle },
+            })
+          : q.select<{ plan_id: string }>("project", {
+              columns: ["plan_id"],
+              where: { title: planIdOrTitle },
+            });
+        return resolve.andThen((rows) => {
+          if (rows.length === 0) {
+            return errAsync(
+              buildError(
+                ErrorCode.VALIDATION_FAILED,
+                `No plan found for '${planIdOrTitle}'`,
+              ),
+            );
+          }
+          if (rows.length > 1) {
+            return errAsync(
+              buildError(
+                ErrorCode.VALIDATION_FAILED,
+                `Multiple plans matched '${planIdOrTitle}'`,
+              ),
+            );
+          }
+          const planId = rows[0].plan_id;
+          return q
+            .update(
+              "project",
+              { priority, updated_at: now() },
+              { plan_id: planId },
+            )
+            .andThen(() =>
+              doltCommit(
+                `plan: set-priority ${planIdOrTitle} -> ${priority}`,
+                config.doltRepoPath,
+                rootOpts(cmd).noCommit,
+              ),
+            )
+            .map(() => ({ plan_id: planId, priority }));
+        });
+      });
+
+      result.match(
+        (data: unknown) => {
+          const d = data as { plan_id: string; priority: number };
+          if (!rootOpts(cmd).json) {
+            console.log(`Priority set to ${d.priority} for plan ${d.plan_id}`);
+          } else {
+            console.log(JSON.stringify(d, null, 2));
+          }
+        },
+        (error: AppError) => {
+          console.error(`Error setting priority: ${error.message}`);
           if (rootOpts(cmd).json) {
             console.log(
               JSON.stringify({

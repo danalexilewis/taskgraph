@@ -34,7 +34,8 @@ The orchestrator must pass:
 
 ## Output contract
 
-- Run `tg done <taskId> --evidence "..."` with a short evidence string (files created/updated, or implemented; no test run).
+- Commit changes before `tg done` (see MUST NOT DO above — this is mandatory, not optional).
+- Run `tg done <taskId> --evidence "..."` with a short evidence string (files created/updated, git ref).
 - Return a brief completion message to the orchestrator (e.g. "Task X done. Evidence: ...").
 - If you hit environment or scope issues you could not fix (e.g. task requires code changes), run `tg note <taskId> --msg "..."` so the orchestrator can decide whether to re-scope or create follow-up tasks.
 
@@ -105,7 +106,7 @@ You have been given task context below. Read any domain docs and skill guides li
 - Do not modify source code, tests, or config files (no .ts, .js, .json code changes, etc.)
 - Do not modify files outside the task's scope
 - Do not run tests
-- Do not commit unless in a worktree context (documenter tasks do not use `--worktree` by default; if the orchestrator passes a `{{WORKTREE_PATH}}`, follow the worktree commit protocol: `git add -A && git commit -m "task(<hash_id>): <description>"` before `tg done`)
+- **Always commit your changes before `tg done`**: run `git add -A && git commit -m "docs(task-<hash_id>): <description>"` from the repo root (or the worktree if {{WORKTREE_PATH}} is provided). Uncommitted changes in the main working tree are not included in any branch merge and will be permanently lost when the plan-merge step runs. This applies even in the default no-worktree case.
 - Do not refactor code while documenting (document only)
 
 **Step 4 — Complete the task**

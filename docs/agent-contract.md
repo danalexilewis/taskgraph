@@ -66,9 +66,9 @@ Quick reference for the execution sequence and rules.
 
 **Rules:**
 
-- **`tg done` from repo root.** `pnpm tg done` requires `.taskgraph/config.json` at `process.cwd()`. Worktrunk worktrees are sibling dirs with no `.taskgraph/` — running `tg done` from the worktree fails. Always run `pnpm tg done <taskId> --evidence "..."` from the repo root. See [.cursor/rules/taskgraph-workflow.mdc](../.cursor/rules/taskgraph-workflow.mdc) (Fallback: direct execution).
+- **`tg done --merge` from worktree directory.** When using a worktree, `pnpm tg done <taskId> --merge --evidence "..."` must run from **inside the worktree directory**, and `--merge` is required. Two separate failure modes: (a) running from repo root silently skips the merge; (b) omitting `--merge` also skips the merge even from the correct directory. Both the directory and the flag are required. Implementers own `--merge` — the orchestrator has no mechanism to retroactively merge after `tg done` has already cleaned up the worktree.
 - **`gate:full` from plan worktree.** Run `pnpm gate:full` from inside the plan worktree where merged task changes are visible, not from repo root. See [gate:full Orchestration Rules](#gatefull-orchestration-rules) in this doc.
-- **WORKTREE_PATH for implementer.** The orchestrator injects `{{WORKTREE_PATH}}` and `{{REPO_PATH}}` into implementer prompts; file editing and git run from the worktree; all `pnpm tg` commands run from `{{REPO_PATH}}`. See [.cursor/rules/subagent-dispatch.mdc](../.cursor/rules/subagent-dispatch.mdc) (Worktrunk — standard for sub-agent worktrees).
+- **WORKTREE_PATH for implementer.** The orchestrator injects `{{WORKTREE_PATH}}` and `{{REPO_PATH}}` into implementer prompts; file editing and git run from the worktree; `tg done --merge` also runs from the worktree. See [.cursor/rules/subagent-dispatch.mdc](../.cursor/rules/subagent-dispatch.mdc) (Worktrunk — standard for sub-agent worktrees).
 
 ```mermaid
 flowchart LR
@@ -110,7 +110,7 @@ tg block <currentTaskId> --on <newBlockerTaskId> --reason "Requires human decisi
 
 **Never run `pnpm gate:full` directly from the repo root (`main`).** The correct pattern:
 
-1. Implementers run `tg done` from _inside the worktree directory_ — this auto-merges the task branch into the plan branch. Without this, task branch changes stay unmerged.
+1. Implementers run `pnpm tg done <taskId> --merge --evidence "..."` from _inside the worktree directory_. The `--merge` flag is required to merge the task branch into the plan branch — it does not happen automatically from the directory alone. Without `--merge`, `tg done` marks the task done and cleans up the worktree without merging, silently orphaning all commits.
 2. After all tasks in a wave are done, the orchestrator dispatches the `run-full-suite` task to an implementer sub-agent. That sub-agent runs `pnpm gate:full` from inside the plan worktree, where all merged task changes are visible.
 3. The orchestrator then runs the plan-merge step (`wt merge main` or `git merge`) to land everything on `main`.
 

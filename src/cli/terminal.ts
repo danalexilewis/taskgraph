@@ -1,6 +1,14 @@
 export const DEFAULT_TERMINAL_WIDTH = 80;
 export const DEFAULT_TERMINAL_HEIGHT = 24;
 
+export function enterAlternateScreen(): void {
+  process.stdout?.write("\x1b[?1049h");
+}
+
+export function exitAlternateScreen(): void {
+  process.stdout?.write("\x1b[?1049l");
+}
+
 export function getTerminalWidth(
   defaultWidth = DEFAULT_TERMINAL_WIDTH,
 ): number {
