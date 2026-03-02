@@ -74,7 +74,7 @@ Select the 3–5 most relevant for the current audit scope. List them explicitly
 
 ## Step 3 — Dispatch all agents in one turn
 
-**Emit all Task calls in the same response turn** — pre-compute agent plus all 5 scanners simultaneously. Cursor decides parallelism. (Dispatch all 5 scanners with `model="fast"` (explore type); omit `model` for the pre-compute setup agent so it inherits the session model.)
+**Emit all Task calls in the same response turn** — pre-compute agent plus all 5 scanners simultaneously (see `.cursor/agent-utility-belt.md` § Parallel sub-agent dispatch). Cursor decides parallelism. (Dispatch all 5 scanners with `model="fast"` (explore type); omit `model` for the pre-compute setup agent so it inherits the session model.)
 
 ### Pre-compute agent prompt
 

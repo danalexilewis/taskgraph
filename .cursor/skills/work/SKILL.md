@@ -81,7 +81,7 @@ When executing tasks from tg, **always structure work so Cursor surfaces the "Ta
 1. Get runnable tasks: `tg next [--plan <planId>] --json --limit 20` (feed all; Cursor decides concurrency)
 2. **Call TodoWrite with the task list** (see subagent-dispatch.mdc TodoWrite protocol) — pass the tasks from step 1 before dispatching any sub-agents. TodoWrite is the progress report for the orchestration panel; it surfaces the batch in Cursor's "Task orchestration for autonomous execution" UI.
 3. Keep `.cursor/agents/implementer.md` in context when starting the loop — the orchestration panel is often tied to that agent context.
-4. Dispatch sub-agents via the Task tool or mcp_task; **emit all Task/mcp_task calls for the current batch in the same turn** so the batch runs as intended. Cursor will populate the orchestration panel with task status as work progresses.
+4. Dispatch sub-agents via the Task tool or mcp_task; **emit all Task/mcp_task calls for the current batch in the same turn** so the batch runs as intended (see `.cursor/agent-utility-belt.md` § Parallel sub-agent dispatch). Cursor will populate the orchestration panel with task status as work progresses.
 
 ## Before the loop — plan import (context)
 

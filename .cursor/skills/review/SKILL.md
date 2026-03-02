@@ -72,7 +72,7 @@ Capture output and pass into sub-agent prompts where useful.
 
 ### 2. Dispatch sub-agents (parallel, read-only)
 
-Use **mcp_task** (or Task tool) with **readonly=true**. Emit all calls in the **same turn** so they run in parallel.
+Use **mcp_task** (or Task tool) with **readonly=true**. Emit all calls in the **same turn** so they run in parallel (see `.cursor/agent-utility-belt.md` § Parallel sub-agent dispatch; reviewers are read-only so no shared mutable state).
 
 **Code health** — dispatch **investigator** (or generalPurpose with investigator-style directive):
 

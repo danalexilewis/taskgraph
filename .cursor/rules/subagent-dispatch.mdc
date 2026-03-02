@@ -20,6 +20,8 @@ Before dispatching **any** sub-agents for tg tasks, you MUST call **TodoWrite** 
 
 **Single-task batch:** TodoWrite is still required. TodoWrite expects at least 2 items; when only one tg task is in the batch, add a second item (e.g. "Review & gate") so the list has 2 entries.
 
+**Parallel and shared resources:** When N sub-agents run in parallel and they share mutable state (e.g. one git repo working tree), give each agent isolated context (e.g. one git worktree per agent) so they don’t overwrite each other. See `.cursor/agent-utility-belt.md` § Parallel sub-agent dispatch.
+
 Keep `.cursor/agents/implementer.md` in context when starting the tg execution loop.
 
 ## Task prioritization (orchestrator)

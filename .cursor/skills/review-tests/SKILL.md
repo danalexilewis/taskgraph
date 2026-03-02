@@ -55,7 +55,7 @@ flowchart TD
 
 ### Phase 1: Dispatch (parallel)
 
-Launch all three scanner subagents simultaneously via the Task tool with `model="fast"`. Each returns a structured report.
+Launch all three scanner subagents simultaneously via the Task tool with `model="fast"` (emit all calls in the same turn; see `.cursor/agent-utility-belt.md` § Parallel sub-agent dispatch). Each returns a structured report.
 
 ```
 Task(description="scan test coverage gaps",
