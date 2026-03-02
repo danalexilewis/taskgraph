@@ -24,7 +24,7 @@ type PerIdResult =
 export function cancelOne(
   id: string,
   config: Config,
-  options: { type?: string; reason?: string },
+  options: { type?: string; reason?: string; includeDone?: boolean },
   cmd: Command,
 ): ResultAsync<CancelOneResult, AppError> {
   const currentTimestamp = now();
@@ -38,13 +38,21 @@ export function cancelOne(
         : options.type
       : "auto";
 
+  const includeDone = options.includeDone === true;
+
   return ResultAsync.fromPromise(
     (async (): Promise<CancelOneResult> => {
       const tryCancelProject = async (proj: ProjectRow) => {
-        if (proj.status === "done" || proj.status === "abandoned") {
+        if (proj.status === "abandoned") {
           throw buildError(
             ErrorCode.INVALID_TRANSITION,
-            `Project is in terminal state '${proj.status}'. Refusing to cancel.`,
+            `Project is already abandoned. Refusing to cancel.`,
+          );
+        }
+        if (proj.status === "done" && !includeDone) {
+          throw buildError(
+            ErrorCode.INVALID_TRANSITION,
+            `Project is in terminal state 'done'. Use --include-done to mark as abandoned.`,
           );
         }
         const updateResult = await q.update(
@@ -80,8 +88,7 @@ export function cancelOne(
           where: { title: id },
         });
         if (byTitle.isErr()) throw byTitle.error;
-        if (byTitle.value.length > 0)
-          return tryCancelProject(byTitle.value[0]);
+        if (byTitle.value.length > 0) return tryCancelProject(byTitle.value[0]);
 
         if (typeHint === "project") {
           throw buildError(
@@ -176,6 +183,10 @@ export function cancelCommand(program: Command) {
       "auto",
     )
     .option("--reason <reason>", "Reason for canceling")
+    .option(
+      "--include-done",
+      "Allow canceling projects that are already done (mark as abandoned)",
+    )
     .action(async (ids: string[], options, cmd) => {
       const configResult = await readConfig();
       if (configResult.isErr()) {
