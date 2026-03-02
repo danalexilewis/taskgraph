@@ -24,6 +24,9 @@ interface ExecaSemaphore {
 }
 const execaSemaphores = new Map<string, ExecaSemaphore>();
 
+/** Max wait (ms) to acquire the execa slot before failing. Prevents indefinite hang when another Dolt operation is stuck. */
+const EXECA_SLOT_WAIT_TIMEOUT_MS = 60_000;
+
 function acquireExecaSlot(repoPath: string): Promise<() => void> {
   let sem = execaSemaphores.get(repoPath);
   if (!sem) {
@@ -31,8 +34,9 @@ function acquireExecaSlot(repoPath: string): Promise<() => void> {
     execaSemaphores.set(repoPath, sem);
   }
   const s = sem;
-  return new Promise((resolve) => {
-    const tryAcquire = () => {
+  let tryAcquire!: () => void;
+  const acquirePromise = new Promise<() => void>((resolve) => {
+    tryAcquire = () => {
       if (s.running === 0) {
         s.running++;
         resolve(() => {
@@ -46,6 +50,22 @@ function acquireExecaSlot(repoPath: string): Promise<() => void> {
     };
     tryAcquire();
   });
+  const timeoutPromise = new Promise<() => void>((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      s.queue = s.queue.filter((cb) => cb !== tryAcquire);
+      reject(
+        buildError(
+          ErrorCode.DB_QUERY_FAILED,
+          `Failed to acquire exec slot within ${EXECA_SLOT_WAIT_TIMEOUT_MS / 1000} s. Another Dolt operation may be stuck or the repo is busy.`,
+        ),
+      );
+    }, EXECA_SLOT_WAIT_TIMEOUT_MS);
+    void acquirePromise.then((release) => {
+      clearTimeout(timeoutId);
+      resolve(release);
+    });
+  });
+  return Promise.race([acquirePromise, timeoutPromise]);
 }
 
 const SERVER_PORT_ENV = "TG_DOLT_SERVER_PORT";
@@ -275,6 +295,14 @@ export function doltSql(
         ).finally(release),
       ),
       (e) => {
+        if (
+          e &&
+          typeof e === "object" &&
+          (e as AppError).code !== undefined &&
+          (e as AppError).message
+        ) {
+          return e as AppError;
+        }
         const code = (e as NodeJS.ErrnoException).code;
         if (code === "ENOENT") {
           return buildError(
