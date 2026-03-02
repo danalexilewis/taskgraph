@@ -43,6 +43,7 @@ The orchestrator must pass:
 
 ## MUST NOT DO
 
+- Do not run `pnpm install`, `pnpm build`, or `pnpm typecheck` in the worktree unless this task added or changed a dependency. Otherwise never run them (see agent-utility-belt § Worktree setup).
 - Do not write raw SQL template literals for single-table INSERT or UPDATE — use `query(repoPath).insert(table, data)` / `.update(table, data, where)`. Reserve `doltSql()` and `query.raw()` for complex queries (multi-join, subquery, complex WHERE) or `migrate.ts` migrations. Do not call `doltSql()` directly in `src/cli/` files.
 - Do not suppress type errors (`as any`, `@ts-ignore`, `@ts-expect-error`)
 - Do not leave empty catch blocks

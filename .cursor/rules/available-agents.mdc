@@ -23,6 +23,11 @@ Quick-pick table — use this before deciding which agent to dispatch:
 | **documenter**                   | read-write | Doc-only tasks (`agent: documenter` in plan)                        | Updated docs + `tg done`                           |
 | **spec-reviewer**                | read-only  | Two-stage review: spec compliance check                             | `VERDICT: PASS` or `FAIL`                          |
 | **quality-reviewer**             | read-only  | Two-stage review: code quality check                                | `VERDICT: PASS` or `FAIL`                          |
+| **adversarial-security-reviewer** | read-only | Security / red-team review of change set                            | VERDICT: PASS / CONCERNS / FAIL + risks, severity  |
+| **risk-preparedness-reviewer**   | read-only  | Change-level risk scorecard (deployment, ops, rollback)              | Scorecard + top mitigations                        |
+| **factuality-traceability-reviewer** | read-only | Claims in code/docs vs reality; traceability                        | PASS / FAIL + specific inconsistencies            |
+| **fairness-equity-auditor**      | read-only  | Task graph and process balance (plans, agents, runnable set)         | Structured report: skews, rebalances               |
+| **rubric-driven-reviewer**      | read-only  | Multi-dimension rubric evaluation of change or plan                  | Per-dimension scores + overall pass/fail           |
 | **reprioritise**                 | read-write | User invokes reprioritise skill                                     | Prioritised project list; ≥10 Ready; actions taken |
 
 ### Key boundaries to avoid confusion
@@ -41,6 +46,8 @@ Quick-pick table — use this before deciding which agent to dispatch:
 
 - **reviewer** — general single-stage review; use when the task is clear and you want one PASS/FAIL verdict
 - **spec-reviewer + quality-reviewer** — two-stage: spec first, quality second; use when you want explicit separation of "did it do what it was asked" vs "is the code good"
+
+**Assessment specialists** (adversarial-security, risk-preparedness, factuality-traceability, fairness-equity, rubric-driven): Read-only specialists for security, change-level risk scorecard, factuality/docs consistency, process fairness, and rubric-based evaluation. Dispatched by the review skill or on demand when scope matches. See [reports/26-03-02_assessment_specialists_proposal.md](reports/26-03-02_assessment_specialists_proposal.md).
 
 **fixer vs implementer:** Escalation ladder:
 
@@ -142,6 +149,26 @@ Spec compliance check sub-agent (PASS/FAIL). First stage of two-stage review. Se
 ## quality-reviewer
 
 Code quality check sub-agent (PASS/FAIL). Second stage of two-stage review. See `.cursor/agents/quality-reviewer.md`.
+
+## adversarial-security-reviewer
+
+**Red-team style security reviewer. Read-only.** Looks for misuse, injection/escape risks, and subtle harmful behaviors. Questions: Could this code path be triggered by malicious input? Unescaped user/Dolt values? Could an agent or user game the task graph? Dispatch after spec+quality for security-sensitive areas (CLI, MCP, plan-import, db) or on demand. Output: VERDICT: PASS / CONCERNS / FAIL with risks and severity (low/medium/high). See `.cursor/agents/adversarial-security-reviewer.md`. Lead doc: [docs/leads/adversarial-security-reviewer.md](../../docs/leads/adversarial-security-reviewer.md).
+
+## risk-preparedness-reviewer
+
+**Change-level risk scorecard. Read-only.** For a given change or plan: what could go wrong in deployment, ops, or rollback? Rate impact and likelihood; suggest mitigations. Distinct from the risk skill (proposal-level); this is change-set-focused. Dispatch before merging high-impact work (schema, CLI contract, worktree) or as part of a release gate. Output: scorecard (Critical/High/Medium/Low per category) + 2–3 top mitigations. See `.cursor/agents/risk-preparedness-reviewer.md`. Lead doc: [docs/leads/risk-preparedness-reviewer.md](../../docs/leads/risk-preparedness-reviewer.md).
+
+## factuality-traceability-reviewer
+
+**Claims vs reality. Read-only.** Check that implementation and docs stay aligned: do code comments and docs match behavior? Do task intent and suggested_changes trace to the diff? Are domain rules (schema, glossary) reflected? Dispatch after spec pass for doc-heavy or domain-touching tasks, or any change touching `docs/` or critical comments. Output: PASS / FAIL with specific inconsistencies. See `.cursor/agents/factuality-traceability-reviewer.md`. Lead doc: [docs/leads/factuality-traceability-reviewer.md](../../docs/leads/factuality-traceability-reviewer.md).
+
+## fairness-equity-auditor
+
+**Task graph and process balance. Read-only.** Audit the task graph and process: Are some plans or agents systematically blocked or under-served? Ownership or priority skews? Is the runnable set representative? Input: `tg status --tasks`, `tg status --projects`, optionally initiative rollup. Dispatch on demand or periodically. Output: structured report (summary, skews, suggested rebalances). See `.cursor/agents/fairness-equity-auditor.md`. Lead doc: [docs/leads/fairness-equity-auditor.md](../../docs/leads/fairness-equity-auditor.md).
+
+## rubric-driven-reviewer
+
+**Multi-dimension rubric evaluation. Read-only.** Evaluate a change or plan against a configurable rubric (e.g. technical correctness, clarity, completeness, citation). Return per-dimension scores (e.g. 0–1) and pass/fail per criterion. Dispatch for benchmarking, plan comparison, or when a plan requests rubric-based evaluation. Output: JSON or structured report with dimensions and overall pass/fail. See `.cursor/agents/rubric-driven-reviewer.md`. Lead doc: [docs/leads/rubric-driven-reviewer.md](../../docs/leads/rubric-driven-reviewer.md).
 
 ## reprioritise
 

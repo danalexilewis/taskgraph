@@ -76,6 +76,8 @@ When the orchestrator passed **{{WORKTREE_PATH}}**: the task is already started 
 When **{{WORKTREE_PATH}}** was not passed: run from repo root: `pnpm tg start {{TASK_ID}} --agent {{AGENT_NAME}} --worktree`. Then run `pnpm tg worktree list --json`, find the entry for this task's branch (e.g. `tg-<hash>`), and `cd` to its `path`. All work and `tg done` must run from that worktree directory. (Worktrunk is the standard backend when `wt` is installed; ensure `.taskgraph/config.json` has `useWorktrunk: true` or leave unset for auto-detect.)
 Use a unique agent name (e.g. implementer-1) when running in parallel.
 
+**Worktree setup:** Do **not** run `pnpm install`, `pnpm build`, or `pnpm typecheck` in the worktree at start or at any time, unless this task explicitly added or changed a dependency (e.g. edited `package.json`). In that case run only `pnpm install` (and optionally build/typecheck to verify). Otherwise the worktree already has deps and build from the branch it was created from; no setup is needed.
+
 **Step 2 — Load context**
 You have been given task context below. Read any domain docs and skill guides listed — they are paths relative to the repo root (e.g. docs/backend.md, docs/skills/plan-authoring.md). Read those files before coding.
 
@@ -122,6 +124,7 @@ You have been given task context below. Read any domain docs and skill guides li
 - **Commit (worktree only):** When running in a worktree ({{WORKTREE_PATH}} passed or obtained in Step 1), after implementation work and before `tg done`, run from the worktree directory: `git add -A && git commit -m "task(<hash_id>): <brief one-line description of what was done>"`. If no worktree was used, skip this step. The contract is: always commit in a worktree so the merge in Step 4 has a commit to squash.
 
 **MUST NOT DO:**
+- Do not run `pnpm install`, `pnpm build`, or `pnpm typecheck` in the worktree unless this task added or changed a dependency (e.g. package.json). Otherwise never run them.
 - Do not modify files outside the task's scope
 - Do not run tests (dedicated plan-end tasks handle this)
 - Do not suppress type errors (`as any`, `@ts-ignore`, `@ts-expect-error`)
@@ -203,3 +206,4 @@ Single-task mode remains the default when `{{TASK_ID}}` is present (and `{{TASK_
 - **[2026-03-02]** Resolve initiative by ID or title via `resolveInitiativeId` before assigning to `project.initiative_id`; do not assign the raw `--initiative` CLI string when the project table is used.
 - **[2026-03-02]** Repeated initiative WHERE fragment inlined in multiple crossplan run* functions. Extract a single helper (e.g. `initiativeWhereClause(initiativeId?: string, tableAlias?: string)`) and reuse it in all crossplan run* queries.
 - **[2026-03-02]** CLI helpers that resolve options and can fail: either document them as the CLI boundary (and allow `process.exit` there) or return Result/ResultAsync and unwrap in the command action for consistency with `outputResult`.
+- **[2026-03-02]** Do not run `pnpm install`, `pnpm build`, or `pnpm typecheck` in the worktree at start or ever, unless this task added or changed a dependency (e.g. package.json). The worktree has deps and build from the branch it was created from; no setup is needed.

@@ -163,7 +163,7 @@ function planSetPriorityCommand(): Command {
     .argument("<priority>", "Priority value (integer)", (val) =>
       parseInt(val, 10),
     )
-    .action(async (planIdOrTitle, priority, options, cmd) => {
+    .action(async (planIdOrTitle, priority, _options, cmd) => {
       if (Number.isNaN(priority)) {
         console.error("Priority must be an integer.");
         process.exit(1);

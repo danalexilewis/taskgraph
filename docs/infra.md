@@ -51,6 +51,13 @@ The server state is tracked in `.taskgraph/tg-server.json`. On ungraceful shutdo
 
 If the Dolt server is started by a different OS user than the one running `tg`, set `TG_DOLT_SERVER_PORT` and `TG_DOLT_SERVER_DATABASE` environment variables manually to bypass automatic server detection.
 
+### Optimising gate:full
+
+- **Lint + typecheck in parallel**: `gate:full` runs Biome and full typecheck in parallel to reduce wall time.
+- **Test phases**: db/ and mcp/ run first in isolation (mock bleed); then cli, domain, e2e, export, integration, plan-import, skills. These phases are sequential by design; do not parallelise db/mcp/rest or mock isolation breaks.
+- **Faster integration runs**: For the "rest" group you can try `bun test ... --concurrency 4`; see [testing.md](testing.md) and `bunfig.toml`. Some integration tests are serial/flaky under concurrency; if you see flakiness, remove the flag.
+- **Reusing golden template**: After one full run, you can avoid re-running global setup for ad-hoc test runs by setting `TG_GOLDEN_TEMPLATE` to the path printed in setup (and skipping teardown). Not used by the gate script itself.
+
 ## Dolt
 
 - **Install**: `brew install dolt` (or from [dolthub](https://github.com/dolthub/dolt)).
@@ -78,16 +85,16 @@ TaskGraph supports an optional **sql-server mode** that replaces the default `do
 
 ## Environment variables
 
-| Variable | Type | Default | Description |
-|---|---|---|---|
-| `DOLT_PATH` | string (optional) | `dolt` | Path to the `dolt` binary. Set when `dolt` is not on PATH. |
-| `TG_QUERY_CACHE_TTL_MS` | number (optional) | `0` | Query result cache TTL in milliseconds. `0` = disabled (default). Dashboard mode uses a `1500 ms` floor regardless of this setting. |
-| `TG_DOLT_SERVER_PORT` | number (optional) | unset | Port of a running `dolt sql-server`. When set with `TG_DOLT_SERVER_DATABASE`, activates mysql2 pool mode for all queries. |
-| `TG_DOLT_SERVER_DATABASE` | string (optional) | unset | Database name to use with the mysql2 pool. Must be non-empty to enable pool mode. |
-| `TG_DOLT_SERVER_HOST` | string (optional) | `127.0.0.1` | Host for the Dolt SQL server (pool mode). |
-| `TG_DOLT_SERVER_USER` | string (optional) | `root` | MySQL user for the Dolt SQL server (pool mode). |
-| `TG_DOLT_SERVER_PASSWORD` | string (optional) | unset | MySQL password for the Dolt SQL server (pool mode). |
-| `TG_SKIP_MIGRATE` | flag (optional) | unset | When set, skips `ensureMigrations` in the CLI preAction hook. Intended for test environments where migrations have already been applied. CLI prints a warning when this flag is active. |
+| Variable                  | Type              | Default     | Description                                                                                                                                                                             |
+| ------------------------- | ----------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DOLT_PATH`               | string (optional) | `dolt`      | Path to the `dolt` binary. Set when `dolt` is not on PATH.                                                                                                                              |
+| `TG_QUERY_CACHE_TTL_MS`   | number (optional) | `0`         | Query result cache TTL in milliseconds. `0` = disabled (default). Dashboard mode uses a `1500 ms` floor regardless of this setting.                                                     |
+| `TG_DOLT_SERVER_PORT`     | number (optional) | unset       | Port of a running `dolt sql-server`. When set with `TG_DOLT_SERVER_DATABASE`, activates mysql2 pool mode for all queries.                                                               |
+| `TG_DOLT_SERVER_DATABASE` | string (optional) | unset       | Database name to use with the mysql2 pool. Must be non-empty to enable pool mode.                                                                                                       |
+| `TG_DOLT_SERVER_HOST`     | string (optional) | `127.0.0.1` | Host for the Dolt SQL server (pool mode).                                                                                                                                               |
+| `TG_DOLT_SERVER_USER`     | string (optional) | `root`      | MySQL user for the Dolt SQL server (pool mode).                                                                                                                                         |
+| `TG_DOLT_SERVER_PASSWORD` | string (optional) | unset       | MySQL password for the Dolt SQL server (pool mode).                                                                                                                                     |
+| `TG_SKIP_MIGRATE`         | flag (optional)   | unset       | When set, skips `ensureMigrations` in the CLI preAction hook. Intended for test environments where migrations have already been applied. CLI prints a warning when this flag is active. |
 
 ## Decisions / gotchas
 

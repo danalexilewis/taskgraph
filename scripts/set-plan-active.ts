@@ -2,9 +2,10 @@
  * One-off: set a plan (project) status to active by plan ID or title.
  * Run with: pnpm exec tsx scripts/set-plan-active.ts <planIdOrTitle>
  */
+
+import { readConfig } from "../src/cli/utils";
 import { doltCommit } from "../src/db/commit";
 import { now, query } from "../src/db/query";
-import { readConfig } from "../src/cli/utils";
 
 const UUID_REGEX =
   /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/i;

@@ -65,6 +65,8 @@ Integration tests live in `__tests__/integration/` and use a **golden template**
 pnpm test:integration
 ```
 
+**Process exit and piped output**: Do not use `process.exit(0)` on the CLI success path when stdout may be piped (e.g. `tg status --json`). Exiting immediately can truncate output before it is flushed. Use `process.exitCode = 0` and allow the process to exit naturally so stdout can drain. See `src/cli/index.ts` and the status-live integration tests.
+
 **Skipping migrations**: If the environment variable `TG_SKIP_MIGRATE` is set, the CLI will skip running migrations and print a warning `[tg] Skipping migrations (TG_SKIP_MIGRATE set)`. This can speed up tests when migrations are already applied.
 
 **In-process CLI**: By default, integration tests invoke the CLI **in-process** (no `node` subprocess): `runTgCli()` in test-utils calls `createProgram()` from `src/cli/index.ts`, captures stdout/stderr via console intercept, and uses Commander's `exitOverride()` so errors throw instead of exiting. Set `TG_IN_PROCESS_CLI=0` to use the subprocess path (e.g. for debugging or E2E coverage). Tests that require true subprocess behavior (e.g. `cursor-import.test.ts`, `setup-scaffold.test.ts`) use `runTgCliSubprocess()`.
