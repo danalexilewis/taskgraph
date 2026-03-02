@@ -9,25 +9,20 @@ triggers:
 
 ## Purpose
 
-Product-level and strategic analysis to support plan creation when the request is initiative-level, roadmap-oriented, or needs explicit scope/outcome classification. The product-analyst lead is **opt-in**: the /plan skill or orchestrator may dispatch the product-analyst sub-agent in **Strategic mode** (or when classification would help) to produce goals, outcome boundaries, and alignment with initiatives before the planner-analyst runs.
+Product-level and strategic analysis to support plan creation when **plan mode is Strategic**. The /plan skill classifies plan mode (Tactical vs Strategic); when Strategic, it **dispatches** the product-analyst sub-agent before the planner-analyst to produce options, outcomes, priorities, and scope framing.
 
 ## When
 
-**Opt-in.** Dispatch only when:
-
-- **Strategic mode** — The user's request is about initiatives, roadmap, prioritisation, or high-level "what to build next" rather than a single feature.
-- **Classification needed** — The request would benefit from explicit product framing: goals, success outcomes, scope-in/scope-out, or initiative alignment before technical breakdown.
-
-Do **not** dispatch for routine single-feature plans where the planner-analyst's codebase-focused analysis is sufficient. The lead doc and plan skill spell out this opt-in; the default /plan path does not require product-analyst.
+**Dispatched by the /plan skill when plan mode is Strategic.** Strategic signals: goals/outcomes/priorities unclear, "figure out what to do", "prioritise", "what should we build", "explore options", "roadmap", "strategy", initiative-level or cross-project scope. When plan mode is Tactical (clear single-feature or scoped request), the product analyst is not dispatched; planner-analyst remains mandatory for all plans.
 
 ## Pattern
 
-1. **Skill** (/plan) is invoked; orchestrator classifies the request.
-2. **If Strategic (or classification desired):** Skill or orchestrator optionally dispatches the product-analyst sub-agent using the prompt in `.cursor/agents/product-analyst.md`.
-3. **Product analyst** returns structured product/strategic analysis (goals, outcomes, scope boundaries, initiative alignment, optional classification).
-4. **Orchestrator** uses that output (if run) to frame the request, then proceeds with planner-analyst and plan authoring as usual.
+1. **Skill** (/plan) is invoked; orchestrator classifies **plan mode** (Tactical vs Strategic).
+2. **If Strategic:** Orchestrator dispatches the product-analyst sub-agent using the prompt in `.cursor/agents/product-analyst.md`.
+3. **Product analyst** returns structured output: options, outcomes, priorities, or recommended direction.
+4. **Orchestrator** uses that output as `{{STRATEGIC_CONTEXT}}` and proceeds with request-mode classification and planner-analyst, then plan authoring with the Strategic checklist.
 
-Product analyst is an optional pre-phase; planner-analyst remains mandatory before writing the plan.
+Product analyst is Phase 0 when Strategic; planner-analyst (Phase 1) remains mandatory before writing the plan.
 
 ## Agent file
 

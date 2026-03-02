@@ -160,6 +160,10 @@ tg import plans/onboarding-flow.md --plan "User Onboarding Flow"
 - **Task external_key**: Plan-scoped. Import appends a 6-char hex hash of `plan_id` to the todo `id` (e.g. `wt-integration-tests-a1b2c3`) so the same todo id in different plans does not violate the unique constraint. Re-import of the same plan upserts by this stable key; export strips the suffix so round-trip YAML uses stable ids.
 - **INSERT/UPDATE plan data**: After the plan→project rename migration, `plan` is a view. Dolt does not allow INSERT into a view. Use table **`project`** (not `plan`) for writes in import and template apply. See `src/cli/import.ts` and `src/cli/template.ts`.
 
+## Related
+
+- **Plan creation** (mode classification, product analyst, checklist) is defined by the [plan skill](.cursor/skills/plan/SKILL.md), not by import. Import consumes the resulting plan file.
+
 ## Related projects
 
 - Import pre-flight and duplicate prevention

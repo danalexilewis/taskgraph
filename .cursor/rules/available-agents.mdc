@@ -20,7 +20,7 @@ Quick-pick table — use this before deciding which agent to dispatch:
 | **debugger**                     | read-write | Fix build/compilation errors; unclear root cause; single debug task | `tg done` with root-cause evidence                 |
 | **fixer**                        | read-write | Implementer has failed twice on same task                           | `tg done` with fix evidence                        |
 | **planner-analyst**              | read-only  | Before writing any plan                                             | Structured analysis for orchestrator               |
-| **product-analyst**              | read-only  | Strategic mode / classification (opt-in; see plan skill)            | Goals, scope, initiative alignment, classification |
+| **product-analyst**              | read-only  | Plan skill Strategic mode: goals/options/priorities unclear         | Options, outcomes, priorities; structured product framing                 |
 | **documenter**                   | read-write | Doc-only tasks (`agent: documenter` in plan)                        | Updated docs + `tg done`                           |
 | **spec-reviewer**                | read-only  | Two-stage review: spec compliance check                             | `VERDICT: PASS` or `FAIL`                          |
 | **quality-reviewer**             | read-only  | Two-stage review: code quality check                                | `VERDICT: PASS` or `FAIL`                          |
@@ -111,7 +111,7 @@ Pre-plan analysis agent for gathering codebase context before plan creation (`.c
 
 ## product-analyst
 
-**Product/strategic analysis. Read-only. Opt-in.** Dispatched by the /plan skill in **Strategic mode** or when the orchestrator wants explicit goals, scope boundaries, and initiative alignment before the planner-analyst runs. Produces structured output: goals and success outcomes, scope-in/scope-out, initiative alignment, optional classification (e.g. mode or tags for planner-analyst). Does not explore the codebase or write the plan. See `.cursor/agents/product-analyst.md`. Lead doc: [docs/leads/product-analyst.md](../../docs/leads/product-analyst.md). When to dispatch: plan skill and lead doc spell out opt-in (Strategic mode, classification).
+**Product/strategic analysis. Read-only.** Dispatched by the /plan skill when **plan mode is Strategic** (goals, outcomes, or priorities unclear; multiple options; product/outcome framing needed). Runs before the planner-analyst. Returns structured output: options, outcomes, priorities, or recommended direction for the orchestrator to use when writing the plan. Does not explore the codebase or write the plan. See `.cursor/agents/product-analyst.md`. Lead doc: [docs/leads/product-analyst.md](../../docs/leads/product-analyst.md). When to dispatch: [.cursor/skills/plan/SKILL.md](../../.cursor/skills/plan/SKILL.md) § Plan mode and Phase 0.
 
 ## implementer
 

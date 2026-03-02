@@ -9,15 +9,15 @@ description: Create a rich project plan with codebase analysis, file trees, risk
 
 ## Architecture
 
-- **You (orchestrator / planner lead)**: Classifies request mode, dispatches analyst (and optional mode-specific sub-agents), applies critique checklist, writes the plan, presents for review.
+- **You (orchestrator / planner lead)**: Classifies plan mode (Tactical vs Strategic) and request mode, dispatches product analyst when Strategic, dispatches planner-analyst (and optional mode-specific sub-agents), applies critique checklist, writes the plan, presents for review.
 - **Sub-agents**:
 
-  | Agent           | Purpose                                           | Permission | Model            |
-  | --------------- | ------------------------------------------------- | ---------- | ---------------- |
-  | planner-analyst | Gathers codebase context and rough task breakdown | read-only  | default (Sonnet) |
-  | product-analyst | Goals, scope, initiative alignment (opt-in; Strategic mode) | read-only  | default (Sonnet) |
-  | spec-reviewer   | Assesses current impl vs intent (Pivot mode only) | read-only  | default (Sonnet) |
-  | explore         | Maps current behavior (Pivot/Refactor modes)      | read-only  | fast             |
+  | Agent            | Purpose                                                       | Permission | Model            |
+  | ---------------- | ------------------------------------------------------------- | ---------- | ---------------- |
+  | planner-analyst  | Gathers codebase context and rough task breakdown             | read-only  | default (Sonnet) |
+  | product-analyst  | Outcome framing, options, priorities (Strategic mode only)   | read-only  | default (Sonnet) |
+  | spec-reviewer    | Assesses current impl vs intent (Pivot mode only)              | read-only  | default (Sonnet) |
+  | explore          | Maps current behavior (Pivot/Refactor modes)                  | read-only  | fast             |
 
 The analyst gathers facts; the orchestrator owns architecture, dependencies, and task design.
 
@@ -27,9 +27,20 @@ The analyst gathers facts; the orchestrator owns architecture, dependencies, and
 - **Propagation**: Planner-analyst MUST use readonly=true, subagent_type="explore". Do NOT pass model="fast" — analyst uses the session model (Sonnet) for reasoning quality.
 - **Rule**: Analyst does not write files. Only the orchestrator writes the plan.
 
+## Plan mode: Tactical vs Strategic
+
+Classify the **plan mode** first. It determines whether the product analyst runs and which checklist applies.
+
+| Mode          | When                                                                 | Product analyst | Checklist focus |
+| ------------- | -------------------------------------------------------------------- | ---------------- | ---------------- |
+| **Tactical**  | Clear scope: feature, refactor, improvement, or bug fix; executor can proceed once plan is written | Not dispatched   | Standard critique checklist (below) |
+| **Strategic** | Goals, outcomes, or priorities are unclear; multiple options; product/outcome framing needed       | **Dispatch**     | Strategic checklist + standard checklist |
+
+**Strategic signals:** "figure out what to do", "prioritise", "what should we build", "explore options", "roadmap", "strategy", "outcomes", "goals", initiative-level or cross-project scope. When in doubt, use Tactical; use Strategic when the user explicitly asks for prioritisation, options, or outcome framing.
+
 ## Mode Classification (do this before Phase 1)
 
-Before dispatching the analyst, classify the request into one of these modes. The mode shapes the analyst prompt focus and whether additional sub-agents run.
+After plan mode (Tactical vs Strategic), classify the **request mode** into one of these. The request mode shapes the analyst prompt focus and whether additional sub-agents run.
 
 | Mode              | When                                                                                | Keywords / signals                                                                                                                     |
 | ----------------- | ----------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
@@ -40,13 +51,17 @@ Before dispatching the analyst, classify the request into one of these modes. Th
 | **Bug fix**       | Something is broken                                                                 | "fix", "broken", "not working", "bug", "error" → **redirect to `/investigate` or `/debug`** unless the fix is small and clearly scoped |
 | **Unclear**       | Request is ambiguous                                                                | Ask one clarifying question before dispatching analyst                                                                                 |
 
-### Strategic mode and product-analyst (opt-in)
-
-When the request is **initiative-level**, **roadmap-oriented**, or would benefit from explicit **product framing** (goals, success outcomes, scope-in/scope-out, initiative alignment), you may **optionally** dispatch the **product-analyst** sub-agent before Phase 1. Product-analyst is read-only and returns structured product/strategic analysis; use it to frame the request and optionally inject focus into the planner-analyst prompt. See [docs/leads/product-analyst.md](docs/leads/product-analyst.md) and `.cursor/agents/product-analyst.md`. Default: do not dispatch for routine single-feature plans; planner-analyst remains mandatory.
-
 ```mermaid
 flowchart TD
-    A[User: plan request] --> B{Classify mode}
+    A[User: plan request] --> B0{Plan mode?}
+    B0 -->|Clear scope| TACT[TACTICAL]
+    B0 -->|Goals/options/priorities unclear| STRAT[STRATEGIC]
+
+    STRAT --> PA[Dispatch product-analyst]
+    PA --> PA_OUT[Product analyst: options, outcomes, priorities]
+    PA_OUT --> B{Classify request mode}
+    TACT --> B
+
     B -->|New feature, no existing code| C[GREENFIELDS]
     B -->|Enhance/extend existing| D[IMPROVEMENT]
     B -->|Restructure, no behavior change| E[REFACTOR]
@@ -84,6 +99,18 @@ flowchart TD
 
 **Pivot/Rescope**: Focus on "current state vs desired state." Describe what exists and how it behaves today. Identify the gap between current behavior and the desired directive. Note which existing tasks are done that shipped the wrong behavior.
 
+### Phase 0 (Strategic only): Dispatch Product Analyst
+
+When **plan mode is Strategic**, dispatch the product analyst before the planner-analyst:
+
+1. Read `docs/leads/product-analyst.md` and `.cursor/agents/product-analyst.md`.
+2. Build the product-analyst prompt: `{{REQUEST}}` = user request; include any initiative/context the user gave.
+3. Dispatch via Task tool with `readonly=true`; do not pass `model="fast"` (session model).
+4. Wait for structured output: options, outcomes, priorities, or recommended direction.
+5. Use that output to narrow the request or set objectives before Phase 1 (e.g. inject into `{{REQUEST}}` or pass as `{{STRATEGIC_CONTEXT}}` to the planner-analyst).
+
+If plan mode is Tactical, skip Phase 0.
+
 ### Phase 1: Dispatch Planner-Analyst
 
 **Mandatory.** Do not write a plan without analyst output.
@@ -91,9 +118,10 @@ flowchart TD
 1. Read `.cursor/agents/planner-analyst.md` for the prompt template.
 2. Run `pnpm tg status --tasks` to capture current task list (full; not limited to 3).
 3. Build the analyst prompt:
-   - `{{REQUEST}}` = the user's feature/change request
-   - `{{MODE}}` = classified mode (Greenfields / Improvement / Refactor / Pivot / etc.)
+   - `{{REQUEST}}` = the user's feature/change request (or narrowed request + strategic context when Strategic mode ran)
+   - `{{MODE}}` = classified request mode (Greenfields / Improvement / Refactor / Pivot / etc.)
    - `{{MODE_FOCUS}}` = mode-specific focus paragraph from the table above
+   - When Strategic mode ran: add `{{STRATEGIC_CONTEXT}}` = product analyst output (options, outcomes, priorities) so the planner-analyst can align the breakdown
    - Include `tg status --tasks` output so the analyst can reference the full task list
    - Include `{{LEARNINGS}}` from the agent file's `## Learnings` section if non-empty
 4. Dispatch via Task tool (`subagent_type="explore"`) — do NOT pass `model="fast"`; analyst uses session model.
@@ -121,7 +149,15 @@ Use the analyst's output as input. **You own architecture, dependencies, and tas
 
 ### Orchestrator critique checklist
 
-Before writing, work through each item:
+Before writing, work through each item. **When plan mode was Strategic**, complete the Strategic checklist first, then the standard checklist.
+
+**Strategic checklist (Strategic mode only):**
+
+- **Objectives in plan**: Product analyst output (options, outcomes, priorities) is reflected in the plan's `overview` or `objectives` so the plan is traceable to the strategic direction.
+- **Scope bounded**: The plan addresses one chosen direction or option set; if the product analyst offered multiple options, the plan implements the chosen one (or an explicit "decide" task exists).
+- **Outcomes measurable**: If outcomes were given, at least one task or the plan body defines how success is measured or verified.
+
+**Standard checklist (all plans):**
 
 - **Existing data first**: Can metrics/insights be derived from what already exists (timestamps, event counts, existing fields) before designing new capture?
 - **Dependency minimization**: For each proposed `blockedBy`, ask "can the downstream task work without the upstream?" Prefer wide graphs over deep chains.
