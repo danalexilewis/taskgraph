@@ -7,7 +7,7 @@ triggers:
 
 # Dolt Schema Reference
 
-The Task Graph system leverages Dolt as its underlying data store, providing version control capabilities for all stored data. The schema consists of core tables (`plan`/`project`, `task`, `edge`, `event`, `decision`, `gate`) and optional strategic tables (`cycle`, `initiative`).
+The Task Graph system leverages Dolt as its underlying data store, providing version control capabilities for all stored data. The schema consists of core tables (`plan`/`project`, `task`, `edge`, `event`, `decision`, `gate`), optional strategic tables (`cycle`, `initiative`, `plan_worktree`), and optional instrumentation tables (`evolve_run_quality` for the evolve skill).
 
 **Auto-migrate**: Every CLI command (except `init` and `setup`) runs idempotent migrations at startup. Agents never encounter a stale schema. See [multi-agent](multi-agent.md) for event body conventions.
 
@@ -181,6 +181,19 @@ Tracks the per-plan git worktree created by `tg start --worktree` when the plan 
 | `worktree_branch` | `VARCHAR(128)` | `NOT NULL`                          | Git branch name for the plan worktree (e.g. `plan-p-a1b2c3`) |
 | `created_at`      | `DATETIME`     | `NOT NULL`                          | Timestamp when the plan worktree was created                 |
 
+## Table: `evolve_run_quality`
+
+Stores run-quality scorecards for the evolve skill (Evolve v2 baseline and instrumentation). Each row is one evolve run with metrics: sample size, confidence, and recurrence. Domain type: `EvolveRunQualityScorecard` in `src/domain/types.ts`.
+
+| Column        | Type           | Constraints   | Description                                                                 |
+| ------------- | -------------- | ------------- | --------------------------------------------------------------------------- |
+| `run_id`      | `CHAR(36)`     | `PRIMARY KEY` | Unique identifier for the evolve run                                       |
+| `plan_id`     | `CHAR(36)`     | `NULL`        | Optional plan that was evolved (no FK to avoid migration order dependency)  |
+| `sample_size` | `INT`          | `NOT NULL`    | Number of items (e.g. tasks or diffs) in the run                            |
+| `confidence`  | `DECIMAL(5,4)` | `NULL`        | Confidence in the run result, 0–1                                           |
+| `recurrence`  | `INT`          | `NULL`        | Recurrence count or strength (e.g. times pattern was observed)              |
+| `created_at`  | `DATETIME`     | `NOT NULL`    | Timestamp when the scorecard was recorded                                   |
+
 ## Invariants
 
 The following business logic invariants are enforced by the application to maintain graph integrity:
@@ -220,3 +233,4 @@ Columns whose Type is `ENUM` in the tables above have the following value lists 
 - Task Graph Implementation
 - Thin SQL Query Builder
 - Restructure package — src at root, standard npm layout
+- Evolve v2 P1 (run-quality scorecard schema)

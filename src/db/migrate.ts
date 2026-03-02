@@ -39,6 +39,7 @@ export const MIGRATION_CHAIN = [
   "applyIndexMigration",
   "applyEventKindIndex",
   "applyIsBenchmarkMigration",
+  "applyEvolveRunQualityMigration",
 ] as const;
 
 const MIGRATION_VERSION = createHash("sha1")
@@ -1054,6 +1055,34 @@ export function applyIsBenchmarkMigration(
   );
 }
 
+/** Create evolve_run_quality table for evolve skill run-quality scorecards (idempotent). */
+export function applyEvolveRunQualityMigration(
+  repoPath: string,
+  noCommit: boolean = false,
+  cache?: QueryCache,
+): ResultAsync<void, AppError> {
+  return tableExists(repoPath, "evolve_run_quality", cache).andThen(
+    (exists) => {
+      if (exists) return ResultAsync.fromSafePromise(Promise.resolve());
+      const create =
+        "CREATE TABLE IF NOT EXISTS `evolve_run_quality` (run_id CHAR(36) PRIMARY KEY, plan_id CHAR(36) NULL, sample_size INT NOT NULL, confidence DECIMAL(5,4) NULL, recurrence INT NULL, created_at DATETIME NOT NULL)";
+      return doltSql(create, repoPath)
+        .map(() => {
+          cache?.clear();
+          return undefined;
+        })
+        .andThen(() =>
+          doltCommit(
+            "db: add evolve_run_quality table for evolve scorecards",
+            repoPath,
+            noCommit,
+          ),
+        )
+        .map(() => undefined);
+    },
+  );
+}
+
 /** Chains all idempotent migrations. Safe to run on every command.
  *
  * Fast path: if `.tg-migration-version` in the parent of repoPath already
@@ -1092,6 +1121,7 @@ export function ensureMigrations(
     .andThen(() => applyIndexMigration(repoPath, noCommit, cache))
     .andThen(() => applyEventKindIndex(repoPath, noCommit, cache))
     .andThen(() => applyIsBenchmarkMigration(repoPath, noCommit, cache))
+    .andThen(() => applyEvolveRunQualityMigration(repoPath, noCommit, cache))
     .map(() => {
       writeSentinel(repoPath);
       return undefined;

@@ -61,6 +61,19 @@ export type GateType = z.infer<typeof GateTypeSchema>;
 export const GateStatusSchema = z.enum(["pending", "resolved", "expired"]);
 export type GateStatus = z.infer<typeof GateStatusSchema>;
 
+/** Run-quality scorecard for the evolve skill: sample size, confidence, recurrence. */
+export const EvolveRunQualityScorecardSchema = z.object({
+  /** Number of items (e.g. tasks or diffs) in the evolve run. */
+  sample_size: z.number().int().min(0),
+  /** Confidence in the run result, 0–1 (optional). */
+  confidence: z.number().min(0).max(1).nullable(),
+  /** Recurrence count or strength (e.g. times pattern was observed). */
+  recurrence: z.number().int().min(0).nullable(),
+});
+export type EvolveRunQualityScorecard = z.infer<
+  typeof EvolveRunQualityScorecardSchema
+>;
+
 // Risk entry for plan.risks (rich planning)
 export const PlanRiskEntrySchema = z.object({
   description: z.string(),
