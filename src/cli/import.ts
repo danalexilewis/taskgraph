@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import { ResultAsync } from "neverthrow";
+import { err, ok, type Result, ResultAsync } from "neverthrow";
 import { v4 as uuidv4 } from "uuid";
 import { doltCommit } from "../db/commit";
 import { sqlEscape } from "../db/escape";
@@ -21,6 +21,29 @@ import { type Config, readConfig } from "./utils";
 
 /** Default "Unassigned" initiative ID when --initiative is omitted. */
 const UNASSIGNED_INITIATIVE_ID = "00000000-0000-4000-8000-000000000000";
+
+/** Resolve initiative by ID or title to initiative_id. Returns error if not found. */
+async function resolveInitiativeId(
+  repoPath: string,
+  value: string,
+): Promise<Result<string, AppError>> {
+  const q = query(repoPath);
+  const escaped = sqlEscape(value.trim());
+  const rowResult = await q.raw<{ initiative_id: string }>(
+    `SELECT initiative_id FROM \`initiative\` WHERE initiative_id = '${escaped}' OR title = '${escaped}' LIMIT 1`,
+  );
+  if (rowResult.isErr()) return err(rowResult.error);
+  const rows = rowResult.value;
+  if (rows.length === 0) {
+    return err(
+      buildError(
+        ErrorCode.VALIDATION_FAILED,
+        `Initiative not found: '${value}'. Use an existing initiative ID or title from \`tg initiative list\`.`,
+      ),
+    );
+  }
+  return ok(rows[0].initiative_id);
+}
 
 export function importCommand(program: Command) {
   program
@@ -89,11 +112,49 @@ export function importCommand(program: Command) {
                 objectives,
                 outcomes,
                 outputs,
+                initiative: planInitiative,
               } = parsedPlan;
               const isBenchmark =
                 options.benchmark === true || parsedPlan.benchmark === true;
               let planId: string | null = null;
               let planJustCreated = false;
+
+              // Resolve initiative when using project table: plan frontmatter > CLI --initiative > Unassigned
+              let effectiveInitiativeId: string | undefined;
+              if (tableName === "project") {
+                if (
+                  planInitiative != null &&
+                  typeof planInitiative === "string" &&
+                  planInitiative.trim() !== ""
+                ) {
+                  const resolved = await resolveInitiativeId(
+                    config.doltRepoPath,
+                    planInitiative,
+                  );
+                  if (resolved.isErr()) throw resolved.error;
+                  effectiveInitiativeId = resolved.value;
+                } else if (
+                  options.initiative != null &&
+                  options.initiative !== ""
+                ) {
+                  effectiveInitiativeId = options.initiative;
+                } else {
+                  const defaultInitResult = await q.raw<{
+                    initiative_id: string;
+                  }>(
+                    `SELECT initiative_id FROM \`initiative\` WHERE initiative_id = '${sqlEscape(UNASSIGNED_INITIATIVE_ID)}' OR title = 'Unassigned' LIMIT 1`,
+                  );
+                  if (
+                    defaultInitResult.isOk() &&
+                    defaultInitResult.value.length > 0
+                  ) {
+                    effectiveInitiativeId =
+                      defaultInitResult.value[0].initiative_id;
+                  } else {
+                    effectiveInitiativeId = UNASSIGNED_INITIATIVE_ID;
+                  }
+                }
+              }
 
               // Try to find plan by ID first
               if (
@@ -142,26 +203,8 @@ export function importCommand(program: Command) {
                   created_at: currentTimestamp,
                   updated_at: currentTimestamp,
                 };
-                if (tableName === "project") {
-                  let initiativeId: string;
-                  if (options.initiative != null && options.initiative !== "") {
-                    initiativeId = options.initiative;
-                  } else {
-                    const defaultInitResult = await q.raw<{
-                      initiative_id: string;
-                    }>(
-                      `SELECT initiative_id FROM \`initiative\` WHERE initiative_id = '${sqlEscape(UNASSIGNED_INITIATIVE_ID)}' OR title = 'Unassigned' LIMIT 1`,
-                    );
-                    if (
-                      defaultInitResult.isOk() &&
-                      defaultInitResult.value.length > 0
-                    ) {
-                      initiativeId = defaultInitResult.value[0].initiative_id;
-                    } else {
-                      initiativeId = UNASSIGNED_INITIATIVE_ID;
-                    }
-                  }
-                  insertPayload.initiative_id = initiativeId;
+                if (tableName === "project" && effectiveInitiativeId !== undefined) {
+                  insertPayload.initiative_id = effectiveInitiativeId;
                   if (overview != null) insertPayload.overview = overview;
                   if (objectives != null && objectives.length > 0)
                     insertPayload.objectives = JSON.stringify(objectives);
@@ -209,9 +252,8 @@ export function importCommand(program: Command) {
                   planUpdatePayload.risks = JSON.stringify(risks);
                 if (tests != null)
                   planUpdatePayload.tests = JSON.stringify(tests);
-                if (tableName === "project") {
-                  if (options.initiative != null && options.initiative !== "")
-                    planUpdatePayload.initiative_id = options.initiative;
+                if (tableName === "project" && effectiveInitiativeId !== undefined) {
+                  planUpdatePayload.initiative_id = effectiveInitiativeId;
                   if (overview != null) planUpdatePayload.overview = overview;
                   if (objectives != null && objectives.length > 0)
                     planUpdatePayload.objectives = JSON.stringify(objectives);

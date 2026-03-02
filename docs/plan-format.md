@@ -62,7 +62,7 @@ Base fields (see [Plan Import](plan-import.md)): `id`, `content`, `status`, `blo
 | `intent`           | string | `task.intent`            | Detailed description of what this task involves and why. Can reference files, functions, or constraints.                                                                                                                                                                                                                                                                                                                                                                                |
 | `suggestedChanges` | string | `task.suggested_changes` | Proposed code snippets or diffs as a starting point for the agent. Directional, not prescriptive.                                                                                                                                                                                                                                                                                                                                                                                       |
 
-**Note:** `content` is used as the task title and must fit in the DB `title` column (VARCHAR(255)). Keep titles concise; put long descriptions in `intent`.
+**Note:** `content` is used as the task title and must fit in the DB `title` column (VARCHAR(255)). Keep titles concise; put long descriptions in `intent`. Tasks intended for batching should be atomic, same agent type, and not block each other within the batch.
 
 ---
 

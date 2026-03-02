@@ -59,6 +59,8 @@ export interface ParsedPlan {
   outcomes?: string[] | null;
   /** Outputs; maps to project.outputs (JSON). */
   outputs?: string[] | null;
+  /** Initiative ID or title; maps to project.initiative_id on import when present. */
+  initiative?: string | null;
 }
 
 const CHANGE_TYPES = [
@@ -221,6 +223,8 @@ export interface CursorFrontmatter {
   outcomes?: string[];
   /** Optional list of outputs; stored in project.outputs (JSON). */
   outputs?: string[];
+  /** Optional initiative ID or title; assigns project.initiative_id on import. */
+  initiative?: string;
 }
 
 /** Normalize risks from frontmatter to { description, severity, mitigation }[]. */
@@ -338,6 +342,10 @@ export function frontmatterToParsedPlan(
     Array.isArray(fm.outputs) && fm.outputs.every((x) => typeof x === "string")
       ? fm.outputs
       : null;
+  const initiative =
+    typeof fm.initiative === "string" && fm.initiative.trim() !== ""
+      ? fm.initiative.trim()
+      : null;
 
   return ok({
     planTitle: fm.name ?? null,
@@ -352,6 +360,7 @@ export function frontmatterToParsedPlan(
     objectives: objectives ?? undefined,
     outcomes: outcomes ?? undefined,
     outputs: outputs ?? undefined,
+    initiative: initiative ?? undefined,
   });
 }
 

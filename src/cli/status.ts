@@ -1,10 +1,10 @@
 import chalk from "chalk";
 import type { Command } from "commander";
-import { okAsync, ResultAsync } from "neverthrow";
+import { errAsync, okAsync, ResultAsync } from "neverthrow";
 import { sqlEscape } from "../db/escape";
 import { tableExists } from "../db/migrate";
 import { query } from "../db/query";
-import type { AppError } from "../domain/errors";
+import { buildError, type AppError, ErrorCode } from "../domain/errors";
 import { renderTable } from "./table";
 import {
   enterAlternateScreen,
@@ -18,6 +18,28 @@ import {
   getBoxInnerWidthDashboard,
 } from "./tui/boxen";
 import { type Config, readConfig, rootOpts } from "./utils";
+
+const UUID_REGEX =
+  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
+/**
+ * Resolve initiative id or title to initiative_id. When value is a UUID, returns it; otherwise looks up by title in initiative table.
+ */
+export function resolveInitiativeId(
+  repoPath: string,
+  value: string,
+): ResultAsync<string, AppError> {
+  if (UUID_REGEX.test(value)) return okAsync(value);
+  const q = query(repoPath);
+  const sql = `SELECT initiative_id FROM \`initiative\` WHERE title = '${sqlEscape(value)}' LIMIT 1`;
+  return q.raw<{ initiative_id: string }>(sql).andThen((rows) =>
+    rows[0]
+      ? okAsync(rows[0].initiative_id)
+      : errAsync(
+        buildError(ErrorCode.VALIDATION_FAILED, `Initiative not found: ${value}`),
+      ),
+  );
+}
 
 const INITIATIVES_STUB_MESSAGE =
   "Initiatives view requires the Initiative-Project hierarchy (initiative table). Add the initiative table and optional plan.initiative_id to enable this view.";
@@ -34,6 +56,8 @@ export interface StatusOptions {
   initiatives?: boolean;
   tasks?: boolean;
   filter?: string;
+  /** Resolved initiative ID when --initiative <id|title> is used (status --projects / --tasks). */
+  initiativeId?: string;
   /** Set by action from flags; when present, selects which fetch/print path to use. */
   view?: StatusViewMode;
   /** When true (e.g. tg dashboard --tasks), show three sections: Active, Next 7, Last 7. */
@@ -594,6 +618,9 @@ export function fetchProjectsTableData(
       ? `AND p.${bt("plan_id")} = '${sqlEscape(options.plan)}'`
       : `AND p.${bt("title")} = '${sqlEscape(options.plan)}'`
     : "";
+  const initiativeWhere = options.initiativeId
+    ? ` AND p.${bt("initiative_id")} = '${sqlEscape(options.initiativeId)}' `
+    : "";
 
   const dimJoin =
     (options.domain
@@ -618,7 +645,7 @@ export function fetchProjectsTableData(
       COALESCE(SUM(CASE WHEN t.status = 'done' THEN 1 ELSE 0 END), 0) AS done
     FROM ${bt("project")} p
     LEFT JOIN ${bt("task")} t ON t.plan_id = p.plan_id ${taskNotCanceled} ${dimJoin}
-    WHERE 1=1 ${planWhere} ${planNotAbandoned} ${filterActive}
+    WHERE 1=1 ${planWhere} ${planNotAbandoned} ${filterActive} ${initiativeWhere}
     GROUP BY p.plan_id, p.title, p.status, p.updated_at
     ORDER BY CASE WHEN p.status = 'draft' THEN 2 WHEN p.status = 'done' THEN 0 ELSE 1 END,
       CASE WHEN p.status = 'done' THEN p.updated_at END ASC,
@@ -657,6 +684,9 @@ export function fetchTasksTableData(
       ? `AND p.${bt("plan_id")} = '${sqlEscape(options.plan)}'`
       : `AND p.${bt("title")} = '${sqlEscape(options.plan)}'`
     : "";
+  const initiativeFilter = options.initiativeId
+    ? ` AND p.${bt("initiative_id")} = '${sqlEscape(options.initiativeId)}' `
+    : "";
 
   const dimFilter =
     (options.domain
@@ -682,7 +712,7 @@ export function fetchTasksTableData(
   const fromWhereOrder = `
     FROM ${bt("task")} t
     JOIN ${bt("project")} p ON t.plan_id = p.plan_id
-    WHERE 1=1 ${planFilter} ${dimFilter} ${excludeCanceledAbandoned} ${filterActive}
+    WHERE 1=1 ${planFilter} ${initiativeFilter} ${dimFilter} ${excludeCanceledAbandoned} ${filterActive}
     ORDER BY p.title ASC, t.created_at ASC
   `;
 
@@ -729,6 +759,10 @@ export function statusCommand(program: Command) {
       "Quick overview: plans count, tasks by status, next runnable tasks",
     )
     .option("--plan <planId>", "Filter by plan ID or title")
+    .option(
+      "--initiative <id|title>",
+      "Filter by initiative ID or title (--projects and --tasks only)",
+    )
     .option("--domain <domain>", "Filter by task domain")
     .option("--skill <skill>", "Filter by task skill")
     .option(
@@ -775,6 +809,42 @@ export function statusCommand(program: Command) {
         filter: options.filter,
         staleThreshold: Number.parseInt(options.staleThreshold, 10) || 2,
       };
+
+      if (options.initiative && (options.projects || options.tasks)) {
+        const configResult = await readConfig();
+        if (configResult.isErr()) {
+          console.error(configResult.error.message);
+          process.exit(1);
+        }
+        const config = configResult.value;
+        const existsResult = await tableExists(
+          config.doltRepoPath,
+          "initiative",
+        );
+        if (existsResult.isErr()) {
+          console.error(existsResult.error.message);
+          process.exit(1);
+        }
+        if (!existsResult.value) {
+          console.error(
+            "tg status --initiative requires the initiative table. Run migrations or tg init.",
+          );
+          process.exit(1);
+        }
+        const resolveResult = await resolveInitiativeId(
+          config.doltRepoPath,
+          options.initiative,
+        );
+        resolveResult.match(
+          (id) => {
+            statusOptions.initiativeId = id;
+          },
+          (e: AppError) => {
+            console.error(e.message);
+            process.exit(1);
+          },
+        );
+      }
 
       const viewCount = [
         options.tasks,

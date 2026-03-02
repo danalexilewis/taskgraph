@@ -158,6 +158,7 @@ Use the `skill` field to specify a specialized Cursor skill for the task, refere
 - Reference `id` values; they resolve to task IDs when importing.
 - Keep tasks scoped (~90 min or less); split large ones.
 - **Parallel-ready**: Plans MUST have ≥2 tasks with no `blockedBy` so the orchestrator can dispatch in parallel. If all tasks are serial, restructure: docs, tests, and independent features rarely need to block on each other. For each `blockedBy`, ask "can this task work without the upstream?" — if yes, remove the dependency.
+- **Batchable tasks**: Tasks intended to be dispatched together in a batch should be atomic, use the same agent type, and avoid blocking each other within the batch (no `blockedBy` between them).
 - Order todos to reflect dependency graph when possible.
 
 ## Required end-of-plan structure

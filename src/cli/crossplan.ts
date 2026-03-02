@@ -7,12 +7,14 @@ import {
   type Result,
   ResultAsync,
 } from "neverthrow";
+import { sqlEscape } from "../db/escape";
 import { doltCommit } from "../db/commit";
 import { query } from "../db/query";
 import { syncBlockedStatusForTask } from "../domain/blocked-status";
 import type { AppError } from "../domain/errors";
 import { checkNoBlockerCycle } from "../domain/invariants";
 import type { Edge } from "../domain/types";
+import { resolveInitiativeId } from "./status";
 import { type Config, readConfig, rootOpts } from "./utils";
 
 /** Parse plan file_tree into normalized file paths (no trailing slash, no (create)/(modify) suffix). */
@@ -30,6 +32,10 @@ export function crossplanCommand(program: Command) {
     .command("crossplan")
     .description(
       "Cross-project analysis: domains, skills, file overlaps, and proposed edges",
+    )
+    .option(
+      "--initiative <id|title>",
+      "Filter to projects under this initiative",
     );
 
   crossplan
@@ -39,8 +45,17 @@ export function crossplanCommand(program: Command) {
     )
     .option("--json", "Output as JSON")
     .action(async (options, cmd) => {
-      const result = readConfig().asyncAndThen((config: Config) =>
-        runDomains(config, rootOpts(cmd).json ?? options.json),
+      const configResult = await readConfig();
+      if (configResult.isErr()) {
+        console.error(configResult.error.message);
+        process.exit(1);
+      }
+      const config = configResult.value;
+      const initiativeId = await getInitiativeId(config, cmd);
+      const result = runDomains(
+        config,
+        rootOpts(cmd).json ?? options.json,
+        initiativeId,
       );
       return outputResult(result, cmd, (data) => {
         if (rootOpts(cmd).json) {
@@ -68,8 +83,17 @@ export function crossplanCommand(program: Command) {
     .description("Show skills shared across multiple projects with task counts")
     .option("--json", "Output as JSON")
     .action(async (options, cmd) => {
-      const result = readConfig().asyncAndThen((config: Config) =>
-        runSkills(config, rootOpts(cmd).json ?? options.json),
+      const configResult = await readConfig();
+      if (configResult.isErr()) {
+        console.error(configResult.error.message);
+        process.exit(1);
+      }
+      const config = configResult.value;
+      const initiativeId = await getInitiativeId(config, cmd);
+      const result = runSkills(
+        config,
+        rootOpts(cmd).json ?? options.json,
+        initiativeId,
       );
       return outputResult(result, cmd, (data) => {
         if (rootOpts(cmd).json) {
@@ -99,8 +123,17 @@ export function crossplanCommand(program: Command) {
     )
     .option("--json", "Output as JSON")
     .action(async (options, cmd) => {
-      const result = readConfig().asyncAndThen((config: Config) =>
-        runFiles(config, rootOpts(cmd).json ?? options.json),
+      const configResult = await readConfig();
+      if (configResult.isErr()) {
+        console.error(configResult.error.message);
+        process.exit(1);
+      }
+      const config = configResult.value;
+      const initiativeId = await getInitiativeId(config, cmd);
+      const result = runFiles(
+        config,
+        rootOpts(cmd).json ?? options.json,
+        initiativeId,
       );
       return outputResult(result, cmd, (data) => {
         if (rootOpts(cmd).json) {
@@ -129,8 +162,19 @@ export function crossplanCommand(program: Command) {
     .option("--json", "Output as JSON")
     .action(async (options, cmd) => {
       const dryRun = options.dryRun === true;
-      const result = readConfig().asyncAndThen((config: Config) =>
-        runEdges(config, dryRun, rootOpts(cmd).json ?? options.json, cmd),
+      const configResult = await readConfig();
+      if (configResult.isErr()) {
+        console.error(configResult.error.message);
+        process.exit(1);
+      }
+      const config = configResult.value;
+      const initiativeId = await getInitiativeId(config, cmd);
+      const result = runEdges(
+        config,
+        dryRun,
+        rootOpts(cmd).json ?? options.json,
+        cmd,
+        initiativeId,
       );
       return outputResult(result, cmd, (data) => {
         if (rootOpts(cmd).json) {
@@ -172,8 +216,17 @@ export function crossplanCommand(program: Command) {
     )
     .option("--json", "Output as JSON")
     .action(async (options, cmd) => {
-      const result = readConfig().asyncAndThen((config: Config) =>
-        runPlans(config, rootOpts(cmd).json ?? options.json),
+      const configResult = await readConfig();
+      if (configResult.isErr()) {
+        console.error(configResult.error.message);
+        process.exit(1);
+      }
+      const config = configResult.value;
+      const initiativeId = await getInitiativeId(config, cmd);
+      const result = runPlans(
+        config,
+        rootOpts(cmd).json ?? options.json,
+        initiativeId,
       );
       return outputResult(result, cmd, (data) => {
         if (rootOpts(cmd).json) {
@@ -207,13 +260,50 @@ export function crossplanCommand(program: Command) {
     )
     .option("--json", "Output as JSON")
     .action(async (options, cmd) => {
-      const result = readConfig().asyncAndThen((config: Config) =>
-        runSummary(config, rootOpts(cmd).json ?? options.json, cmd),
+      const configResult = await readConfig();
+      if (configResult.isErr()) {
+        console.error(configResult.error.message);
+        process.exit(1);
+      }
+      const config = configResult.value;
+      const initiativeId = await getInitiativeId(config, cmd);
+      const result = runSummary(
+        config,
+        rootOpts(cmd).json ?? options.json,
+        cmd,
+        initiativeId,
       );
       return outputResult(result, cmd, (data) => {
         console.log(JSON.stringify(data, null, 2));
       });
     });
+}
+
+/** Get resolved initiative ID from parent command option, or undefined if not set. */
+async function getInitiativeId(
+  config: Config,
+  cmd: Command,
+): Promise<string | undefined> {
+  const parentOpts =
+    (cmd.parent && typeof (cmd.parent as Command).opts === "function"
+      ? (cmd.parent as Command).opts()
+      : {}) as { initiative?: string };
+  if (!parentOpts.initiative) return undefined;
+  const result = await resolveInitiativeId(
+    config.doltRepoPath,
+    parentOpts.initiative,
+  );
+  let id: string | undefined;
+  result.match(
+    (v) => {
+      id = v;
+    },
+    (e: AppError) => {
+      console.error(e.message);
+      process.exit(1);
+    },
+  );
+  return id;
 }
 
 function outputResult<T>(
@@ -257,8 +347,12 @@ interface PlansRow {
 function runPlans(
   config: Config,
   _json: boolean,
+  initiativeId?: string,
 ): ResultAsync<PlansRow[], AppError> {
   const q = query(config.doltRepoPath);
+  const initiativeWhere = initiativeId
+    ? ` AND p.initiative_id = '${sqlEscape(initiativeId)}' `
+    : "";
   const sql = `
     SELECT
       p.plan_id,
@@ -272,7 +366,7 @@ function runPlans(
       SUM(CASE WHEN t.status = 'canceled' THEN 1 ELSE 0 END) AS canceled
     FROM \`project\` p
     LEFT JOIN \`task\` t ON p.plan_id = t.plan_id
-    WHERE p.status != 'abandoned'
+    WHERE p.status != 'abandoned' ${initiativeWhere}
     GROUP BY p.plan_id, p.title, p.status
     ORDER BY task_count DESC, p.title ASC
   `;
@@ -294,8 +388,12 @@ function runPlans(
 function runDomains(
   config: Config,
   _json: boolean,
+  initiativeId?: string,
 ): ResultAsync<unknown, AppError> {
   const q = query(config.doltRepoPath);
+  const initiativeWhere = initiativeId
+    ? ` AND p.initiative_id = '${sqlEscape(initiativeId)}' `
+    : "";
   const sql = `
     SELECT td.doc AS domain,
            COUNT(DISTINCT t.plan_id) AS plan_count,
@@ -304,7 +402,7 @@ function runDomains(
     FROM \`task_doc\` td
     JOIN \`task\` t ON td.task_id = t.task_id
     JOIN \`project\` p ON t.plan_id = p.plan_id
-    WHERE p.status != 'abandoned'
+    WHERE p.status != 'abandoned' ${initiativeWhere}
     GROUP BY td.doc
     HAVING plan_count > 1
     ORDER BY plan_count DESC, task_count DESC
@@ -332,8 +430,12 @@ function runDomains(
 function runSkills(
   config: Config,
   _json: boolean,
+  initiativeId?: string,
 ): ResultAsync<unknown, AppError> {
   const q = query(config.doltRepoPath);
+  const initiativeWhere = initiativeId
+    ? ` AND p.initiative_id = '${sqlEscape(initiativeId)}' `
+    : "";
   const sql = `
     SELECT ts.skill,
            COUNT(DISTINCT t.plan_id) AS plan_count,
@@ -342,7 +444,7 @@ function runSkills(
     FROM \`task_skill\` ts
     JOIN \`task\` t ON ts.task_id = t.task_id
     JOIN \`project\` p ON t.plan_id = p.plan_id
-    WHERE p.status != 'abandoned'
+    WHERE p.status != 'abandoned' ${initiativeWhere}
     GROUP BY ts.skill
     HAVING plan_count > 1
     ORDER BY plan_count DESC, task_count DESC
@@ -370,15 +472,19 @@ function runSkills(
 function runFiles(
   config: Config,
   _json: boolean,
+  initiativeId?: string,
 ): ResultAsync<unknown, AppError> {
   const q = query(config.doltRepoPath);
+  const initiativeWhere = initiativeId
+    ? ` AND initiative_id = '${sqlEscape(initiativeId)}' `
+    : "";
   return q
     .raw<{
       plan_id: string;
       title: string;
       file_tree: string | null;
     }>(
-      "SELECT plan_id, title, file_tree FROM `project` WHERE status != 'abandoned'",
+      `SELECT plan_id, title, file_tree FROM \`project\` WHERE status != 'abandoned' ${initiativeWhere}`,
     )
     .map((plans) => {
       const fileToPlans = new Map<
@@ -423,6 +529,7 @@ function runEdges(
   dryRun: boolean,
   _json: boolean,
   cmd: Command,
+  initiativeId?: string,
 ): ResultAsync<
   {
     proposed: ProposedEdge[];
@@ -431,6 +538,12 @@ function runEdges(
   AppError
 > {
   const q = query(config.doltRepoPath);
+  const initiativeWhereP1P2 = initiativeId
+    ? ` AND p1.initiative_id = '${sqlEscape(initiativeId)}' AND p2.initiative_id = '${sqlEscape(initiativeId)}' `
+    : "";
+  const projectWhereInitiative = initiativeId
+    ? ` AND initiative_id = '${sqlEscape(initiativeId)}' `
+    : "";
   return ResultAsync.fromPromise(
     (async (): Promise<
       Result<
@@ -453,7 +566,7 @@ function runEdges(
     JOIN \`project\` p2 ON t2.plan_id = p2.plan_id
     WHERE t1.plan_id != t2.plan_id
       AND p1.status != 'abandoned'
-      AND p2.status != 'abandoned'
+      AND p2.status != 'abandoned' ${initiativeWhereP1P2}
   `;
       const domainRows = await q.raw<{
         from_id: string;
@@ -475,7 +588,7 @@ function runEdges(
         title: string;
         file_tree: string | null;
       }>(
-        "SELECT plan_id, title, file_tree FROM `project` WHERE status != 'abandoned'",
+        `SELECT plan_id, title, file_tree FROM \`project\` WHERE status != 'abandoned' ${projectWhereInitiative}`,
       );
       if (planRows.isErr()) return err(planRows.error);
       const plans = planRows.value.filter((p) => p.file_tree);
@@ -488,7 +601,9 @@ function runEdges(
         }
       }
       const taskByPlanRes = await q.raw<{ plan_id: string; task_id: string }>(
-        "SELECT plan_id, task_id FROM `task` ORDER BY created_at ASC",
+        plans.length > 0
+          ? `SELECT plan_id, task_id FROM \`task\` WHERE plan_id IN (${plans.map((p) => `'${sqlEscape(p.plan_id)}'`).join(",")}) ORDER BY created_at ASC`
+          : "SELECT plan_id, task_id FROM `task` WHERE 1=0",
       );
       if (taskByPlanRes.isErr()) return err(taskByPlanRes.error);
       const planToFirstTask = new Map<string, string>();
@@ -612,15 +727,19 @@ function runSummary(
   config: Config,
   _json: boolean,
   cmd: Command,
+  initiativeId?: string,
 ): ResultAsync<unknown, AppError> {
   const q = query(config.doltRepoPath);
+  const projectWhereInitiative = initiativeId
+    ? ` AND initiative_id = '${sqlEscape(initiativeId)}' `
+    : "";
   return ResultAsync.fromPromise(
     (async (): Promise<Result<unknown, AppError>> => {
       const [domainsRes, skillsRes, plansRes] = await Promise.all([
-        runDomains(config, true),
-        runSkills(config, true),
+        runDomains(config, true, initiativeId),
+        runSkills(config, true, initiativeId),
         q.raw<{ plan_id: string; title: string; file_tree: string | null }>(
-          "SELECT plan_id, title, file_tree FROM `project` WHERE status != 'abandoned'",
+          `SELECT plan_id, title, file_tree FROM \`project\` WHERE status != 'abandoned' ${projectWhereInitiative}`,
         ),
       ]);
       const domains = domainsRes.isOk() ? domainsRes.value : [];
@@ -642,7 +761,7 @@ function runSummary(
           plan_titles,
         }));
 
-      const edgesRes = await runEdges(config, true, true, cmd);
+      const edgesRes = await runEdges(config, true, true, cmd, initiativeId);
       const edges = edgesRes.isOk()
         ? (edgesRes.value as { proposed: ProposedEdge[] }).proposed
         : [];
