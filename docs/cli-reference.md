@@ -719,6 +719,20 @@ tg dashboard [--tasks] [--projects]
 
 **Deprecation:** Use `tg dashboard` instead of `tg status --dashboard`. The latter prints a deprecation warning to stderr and then runs the same dashboard; it will be removed in a future version.
 
+### `tg evolve health`
+
+Baseline dashboard query for evolve health: reports scorecard metrics (plans/tasks done, done events, gate pass/fail from evidence) and an optional backfilled baseline for comparison. Intended for the /evolve skill and dashboard instrumentation.
+
+```bash
+tg evolve health [--json]
+```
+
+**Options:**
+
+- `--json`: Output machine-readable JSON. Shape: `{ metrics: { completed_plans, completed_tasks, canceled_tasks, done_events_total, done_events_gate_pass, done_events_gate_fail }, baseline: object | null }`. When no baseline is stored, `baseline` is `null`.
+
+**Output (human):** One-off summary: plans done, tasks done, tasks canceled, done events count, gate pass/fail counts and pass rate. When a baseline is present, a note is printed.
+
 ### `tg status`
 
 Quick overview: plans count, task counts by status, next runnable tasks.

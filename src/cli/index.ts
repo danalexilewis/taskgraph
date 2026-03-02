@@ -11,6 +11,7 @@ import { cycleCommand } from "./cycle";
 import { dashboardCommand } from "./dashboard";
 import { doneCommand } from "./done";
 import { edgeCommand } from "./edge";
+import { evolveCommand } from "./evolve-health";
 import { exportCommand } from "./export";
 import { gateCommand } from "./gate";
 import { importCommand } from "./import";
@@ -109,6 +110,7 @@ export function createProgram(): Command {
   importCommand(program);
   statusCommand(program);
   dashboardCommand(program);
+  evolveCommand(program);
   noteCommand(program);
   agentsCommand(program);
   contextCommand(program);
