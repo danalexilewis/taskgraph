@@ -1329,7 +1329,12 @@ const SUB_AGENT_TYPES_DEFINED = 12;
 /** Dashboard box padding for table sections: top 1, bottom 0; left/right 2. */
 export const DASHBOARD_BOX_PADDING = { top: 1, bottom: 0, left: 2, right: 2 };
 /** Stats footer: same as table boxes but bottom 1 so the footer has breathing room. */
-export const DASHBOARD_FOOTER_BOX_PADDING = { top: 1, bottom: 1, left: 2, right: 2 };
+export const DASHBOARD_FOOTER_BOX_PADDING = {
+  top: 1,
+  bottom: 1,
+  left: 2,
+  right: 2,
+};
 
 /** Min width per column in the footer stats grid so columns stay readable; allows up to 5 columns on wide screens. */
 const FOOTER_COL_MIN = 20;
@@ -1384,7 +1389,10 @@ const STATS_LABEL = chalk.yellow;
  * Dashboard footer content as a borderless table so stats line up and fill full width.
  * Responsive: 1–5 columns depending on terminal width.
  */
-export function getDashboardFooterContent(d: StatusData, innerWidth: number): string {
+export function getDashboardFooterContent(
+  d: StatusData,
+  innerWidth: number,
+): string {
   const activeAgents = d.statusCounts.doing ?? 0;
   const bright = (s: string) => chalk.white(s);
   const pairs: [string, string][] = [
@@ -1518,13 +1526,30 @@ export function sortActivePlansForDashboard(
   });
 }
 
-export function getActivePlansSectionContent(
+/** Table data for Active Plans (same data as passed to renderTable). Used by OpenTUI TextTable. */
+export function getActivePlansTableData(
   d: StatusData,
   w: number,
   maxRows?: number,
   innerWidthOverride?: number,
-): string {
-  if (d.activePlans.length === 0) return "";
+): { headers: string[]; rows: string[][] } | null {
+  const t = buildActivePlansTable(d, w, maxRows, innerWidthOverride);
+  return t ? { headers: t.headers, rows: t.rows } : null;
+}
+
+function buildActivePlansTable(
+  d: StatusData,
+  w: number,
+  maxRows?: number,
+  innerWidthOverride?: number,
+): {
+  headers: string[];
+  rows: string[][];
+  innerW: number;
+  minWidths: number[];
+  maxWidths: (number | undefined)[];
+} | null {
+  if (d.activePlans.length === 0) return null;
   const sym = getDashboardSymbols();
   const innerW = innerWidthOverride ?? getBoxInnerWidth(w);
   const narrow = innerW < NARROW_PLAN_WIDTH;
@@ -1562,7 +1587,6 @@ export function getActivePlansSectionContent(
   const aggRow = showInitiative
     ? [chalk.dim("Total"), "", ...countCells]
     : [chalk.dim("Total"), ...countCells];
-  // Pad to fixed height when maxRows is set (dashboard) so the section always renders the same height.
   const dataRowCap =
     maxRows != null && maxRows > 0 ? maxRows - 1 : planRows.length;
   while (planRows.length < dataRowCap) {
@@ -1615,12 +1639,29 @@ export function getActivePlansSectionContent(
         numericColW,
         numericColW,
       ];
-  return renderTable({
+  return {
     headers,
     rows: [...planRows, aggRow],
-    maxWidth: innerW,
+    innerW,
     minWidths,
     maxWidths,
+  };
+}
+
+export function getActivePlansSectionContent(
+  d: StatusData,
+  w: number,
+  maxRows?: number,
+  innerWidthOverride?: number,
+): string {
+  const t = buildActivePlansTable(d, w, maxRows, innerWidthOverride);
+  if (!t) return "";
+  return renderTable({
+    headers: t.headers,
+    rows: t.rows,
+    maxWidth: t.innerW,
+    minWidths: t.minWidths,
+    maxWidths: t.maxWidths,
   });
 }
 
@@ -1656,18 +1697,30 @@ function truncatePlan(s: string): string {
   return `${s.slice(0, PLAN_TITLE_MAX_LEN - 1)}${sym.ellipsis}`;
 }
 
-/**
- * Single merged section: active work (doing) first, then next runnable (todo).
- * Table headers: Id, Task, Project, Stale, Status, Agent. Id is thin (max 10); Task is flex; Project truncated.
- * Stale column: yellow ▲ for doing tasks started >2h ago; yellow ▲ for todo tasks unchanged >2h.
- * When maxRows is set (dashboard), slice to that many rows so the screen does not scroll.
- */
-export function getMergedActiveNextContent(
+/** Table data for Active tasks and upcoming (same data as passed to renderTable). Used by OpenTUI TextTable. */
+export function getMergedActiveNextTableData(
   d: StatusData,
   w: number,
   maxRows?: number,
   innerWidthOverride?: number,
-): string {
+): { headers: string[]; rows: string[][] } {
+  const t = buildMergedActiveNextTable(d, w, maxRows, innerWidthOverride);
+  return { headers: t.headers, rows: t.rows };
+}
+
+function buildMergedActiveNextTable(
+  d: StatusData,
+  w: number,
+  maxRows?: number,
+  innerWidthOverride?: number,
+): {
+  headers: string[];
+  rows: string[][];
+  innerW: number;
+  minWidths: number[];
+  flexColumnIndex: number;
+  maxWidths: (number | undefined)[];
+} {
   const sym = getDashboardSymbols();
   const innerW = innerWidthOverride ?? getBoxInnerWidth(w);
   const staleDoingSet = new Set(d.staleDoingTasks.map((t) => t.task_id));
@@ -1706,7 +1759,6 @@ export function getMergedActiveNextContent(
   let rows = [...doingRows, ...todoRows];
   if (maxRows != null && maxRows > 0) {
     rows = rows.slice(0, maxRows);
-    // Pad to fixed height so the section always renders the same height.
     const emptyTaskRow: string[] = [
       sym.emDash,
       "",
@@ -1732,13 +1784,36 @@ export function getMergedActiveNextContent(
             sym.emDash,
           ],
         ];
-  return renderTable({
+  return {
     headers: ["Id", "Task", "Project", "Stale", "Status", "Agent"],
     rows: tableRows,
-    maxWidth: innerW,
+    innerW,
     minWidths: [10, 15, 9, 1, 6, 12],
     flexColumnIndex: 1,
     maxWidths: [10, undefined, undefined, 1],
+  };
+}
+
+/**
+ * Single merged section: active work (doing) first, then next runnable (todo).
+ * Table headers: Id, Task, Project, Stale, Status, Agent. Id is thin (max 10); Task is flex; Project truncated.
+ * Stale column: yellow ▲ for doing tasks started >2h ago; yellow ▲ for todo tasks unchanged >2h.
+ * When maxRows is set (dashboard), slice to that many rows so the screen does not scroll.
+ */
+export function getMergedActiveNextContent(
+  d: StatusData,
+  w: number,
+  maxRows?: number,
+  innerWidthOverride?: number,
+): string {
+  const t = buildMergedActiveNextTable(d, w, maxRows, innerWidthOverride);
+  return renderTable({
+    headers: t.headers,
+    rows: t.rows,
+    maxWidth: t.innerW,
+    minWidths: t.minWidths,
+    flexColumnIndex: t.flexColumnIndex,
+    maxWidths: t.maxWidths,
   });
 }
 
@@ -1817,9 +1892,7 @@ export function formatTasksAsString(
     ? ["Id", "Title", "Project", "Stale", "Owner", "Status"]
     : ["Id", "Title", "Project", "Status", "Owner"];
   const emptyRow = withStale
-    ? [
-        [sym.emDash, "No tasks", sym.emDash, sym.emDash, sym.emDash, sym.emDash],
-      ]
+    ? [[sym.emDash, "No tasks", sym.emDash, sym.emDash, sym.emDash, sym.emDash]]
     : [[sym.emDash, "No tasks", sym.emDash, sym.emDash, sym.emDash]];
   const table = renderTable({
     headers,
@@ -1915,15 +1988,7 @@ export function formatDashboardTasksView(
             staleRunnable ? chalk.yellow(sym.triangle) : sym.emDash,
           ];
         })
-      : [
-          [
-            sym.emDash,
-            "No runnable tasks",
-            sym.emDash,
-            sym.emDash,
-            sym.emDash,
-          ],
-        ];
+      : [[sym.emDash, "No runnable tasks", sym.emDash, sym.emDash, sym.emDash]];
   const next7Table = renderTable({
     headers: ["", "Id", "Task", "Project", "Stale"],
     rows: next7Rows,
@@ -2000,15 +2065,7 @@ export function formatDashboardProjectsView(
         })
       : [
           showInitiative
-            ? [
-                "No active plans",
-                sym.emDash,
-                "0",
-                "0",
-                "0",
-                "0",
-                "0",
-              ]
+            ? ["No active plans", sym.emDash, "0", "0", "0", "0", "0"]
             : ["No active plans", "0", "0", "0", "0", "0"],
         ];
   const sumTodo = d.activePlans.reduce((s, p) => s + Number(p.todo), 0);
@@ -2081,14 +2138,7 @@ export function formatDashboardProjectsView(
             p.updated_at ?? sym.emDash,
           ];
         })
-      : [
-          [
-            sym.emDash,
-            "No completed plans",
-            sym.emDash,
-            sym.emDash,
-          ],
-        ];
+      : [[sym.emDash, "No completed plans", sym.emDash, sym.emDash]];
   const last7Table = renderTable({
     headers: ["", "Project name", "Status", "Updated"],
     rows: last7Rows,
@@ -2125,15 +2175,7 @@ export function formatInitiativesAsString(
     rows:
       initiativeRows.length > 0
         ? initiativeRows
-        : [
-            [
-              "No initiatives",
-              sym.emDash,
-              sym.emDash,
-              sym.emDash,
-              "0",
-            ],
-          ],
+        : [["No initiatives", sym.emDash, sym.emDash, sym.emDash, "0"]],
     maxWidth: innerW,
     minWidths: [12, 8, 12, 10, 8],
   });

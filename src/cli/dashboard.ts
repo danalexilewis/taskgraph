@@ -13,8 +13,8 @@ import {
   type StatusOptions,
   type StatusViewMode,
 } from "./status";
-import { runLoadingProgressBar } from "./tui/loading-progress";
 import { getTerminalWidth } from "./terminal";
+import { runLoadingProgressBar } from "./tui/loading-progress";
 import type { Config } from "./utils";
 import { readConfig } from "./utils";
 

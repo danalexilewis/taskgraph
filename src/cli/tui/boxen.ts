@@ -4,7 +4,10 @@ import boxen from "boxen";
 export const ASCII_DASHBOARD_ENV = "TG_ASCII_DASHBOARD";
 
 export function useAsciiBorders(): boolean {
-  return process.env[ASCII_DASHBOARD_ENV] === "1" || process.env[ASCII_DASHBOARD_ENV] === "true";
+  return (
+    process.env[ASCII_DASHBOARD_ENV] === "1" ||
+    process.env[ASCII_DASHBOARD_ENV] === "true"
+  );
 }
 
 /** Chars taken by box per side: 1 border + 1 padding = 2. Both sides = 4. */

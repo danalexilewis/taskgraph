@@ -38,9 +38,9 @@ export type RunLoadingProgressBarOptions = {
  * Runs a 4-second progress bar, calling onTick with the current bar string every TICK_MS.
  * Returns stop() to clear the interval (call when content is ready).
  */
-export function runLoadingProgressBar(
-  options: RunLoadingProgressBarOptions,
-): { stop: () => void } {
+export function runLoadingProgressBar(options: RunLoadingProgressBarOptions): {
+  stop: () => void;
+} {
   const durationMs = options.durationMs ?? DASHBOARD_LOADING_DURATION_MS;
   const start = Date.now();
   let cleared = false;

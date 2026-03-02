@@ -5,6 +5,7 @@
  */
 
 import { ResultAsync } from "neverthrow";
+import stripAnsi from "strip-ansi";
 import type {
   InitiativeRow,
   ProjectRow,
@@ -23,20 +24,20 @@ import {
   formatDashboardTasksView,
   formatInitiativesAsString,
   formatProjectsAsString,
-  formatSectionTitleRow,
-  formatStatusAsString,
   formatTasksAsString,
   getActivePlansSectionContent,
+  getActivePlansTableData,
   getDashboardFooterContent,
   getDashboardFooterLine,
   getDashboardRowLimitsDynamic,
   getMergedActiveNextContent,
+  getMergedActiveNextTableData,
   sortActivePlansForDashboard,
 } from "../status.js";
-import { getBoxInnerWidthDashboard } from "./boxen.js";
-import { runLoadingProgressBar } from "./loading-progress.js";
 import { getTerminalHeight, getTerminalWidth } from "../terminal.js";
 import type { Config } from "../utils.js";
+import { getBoxInnerWidthDashboard } from "./boxen.js";
+import { runLoadingProgressBar } from "./loading-progress.js";
 
 const STATUS_ROOT_ID = "tg-status-root";
 const REFRESH_MS = 2000;
@@ -74,6 +75,15 @@ type OpenTUIMod = {
   createCliRenderer: (config?: object) => Promise<OpenTUIRenderer>;
   Box: (props: object, ...children: unknown[]) => unknown;
   Text: (props: { content: string }) => unknown;
+  /** Optional: for TextTable section content. */
+  h?: (type: unknown, props?: object, ...children: unknown[]) => unknown;
+  TextTableRenderable?: new (
+    ctx: unknown,
+    options: { content?: unknown },
+  ) => unknown;
+  RGBA?: {
+    fromHex: (hex: string) => { r: number; g: number; b: number; a: number };
+  };
 };
 
 /**
@@ -130,8 +140,9 @@ const SECTION_ID_TASKS = "tg-dash-tasks";
 const SECTION_ID_STATS = "tg-dash-stats";
 
 /**
- * Build section content strings for the default dashboard (OpenTUI path).
- * Uses same helpers as formatStatusAsString so content matches fallback.
+ * Build section content for the default dashboard (OpenTUI path).
+ * Uses same status helpers as fallback but strips chalk ANSI; section titles
+ * and frame styling come from Box title + borderColor, not embedded ANSI.
  */
 function getDefaultDashboardSectionContent(
   data: StatusData,
@@ -155,34 +166,105 @@ function getDefaultDashboardSectionContent(
   const tasksContent = getMergedActiveNextContent(data, w, maxTaskRows, innerW);
   const statsContent = getDashboardFooterContent(data, innerW);
   return {
-    projects: plansContent
-      ? `${formatSectionTitleRow("Active Projects")}\n${plansContent}`
-      : "",
-    tasks: `${formatSectionTitleRow("Active tasks and upcoming")}\n${tasksContent}`,
-    stats: `${formatSectionTitleRow("Stats")}\n${statsContent}`,
+    projects: plansContent ? stripAnsi(plansContent) : "",
+    tasks: stripAnsi(tasksContent),
+    stats: stripAnsi(statsContent),
   };
+}
+
+/**
+ * Build OpenTUI TextTableContent from headers + rows (same data as renderTable).
+ * Header row gets distinct fg; body cells use plain text (ANSI stripped).
+ */
+function buildTextTableContent(
+  headers: string[],
+  rows: string[][],
+  headerFg: unknown,
+): unknown[] {
+  const headerRow: unknown[][] = headers.map((h) => [
+    { __isChunk: true as const, text: stripAnsi(h), fg: headerFg },
+  ]);
+  const bodyRows: unknown[][] = rows.map((row) =>
+    row.map((cell) => [{ __isChunk: true as const, text: stripAnsi(cell) }]),
+  );
+  return [...headerRow, ...bodyRows];
 }
 
 /**
  * Build root Box with three section Boxes (Active Projects, Active tasks, Stats).
  * When data is undefined, each section shows "Loading...".
+ * When mod exposes h + TextTableRenderable + RGBA, Projects and Tasks use TextTable; Stats stays Text.
  */
 function buildDefaultDashboardRoot(
-  Box: OpenTUIMod["Box"],
-  Text: OpenTUIMod["Text"],
+  mod: OpenTUIMod,
   w: number,
   data?: StatusData,
 ): unknown {
+  const { Box, Text } = mod;
   const loading = "Loading...";
-  const projectsContent = data
-    ? getDefaultDashboardSectionContent(data, w).projects || loading
-    : loading;
-  const tasksContent = data
-    ? getDefaultDashboardSectionContent(data, w).tasks
-    : loading;
-  const statsContent = data
-    ? getDefaultDashboardSectionContent(data, w).stats
-    : loading;
+  const sectionContent = data
+    ? getDefaultDashboardSectionContent(data, w)
+    : { projects: loading, tasks: loading, stats: loading };
+  const projectsContent = sectionContent.projects || loading;
+  const tasksContent = sectionContent.tasks;
+  const statsContent = sectionContent.stats;
+
+  const useTextTable =
+    typeof mod.h === "function" &&
+    mod.TextTableRenderable != null &&
+    mod.RGBA != null;
+
+  let projectsChild: unknown = Text({ content: projectsContent });
+  let tasksChild: unknown = Text({ content: tasksContent });
+
+  if (useTextTable && data) {
+    const innerW = getBoxInnerWidthDashboard(w);
+    const sortedPlans = sortActivePlansForDashboard(data.activePlans);
+    const actualTaskRows = data.activeWork.length + data.nextTasks.length;
+    const actualPlanRows = data.activePlans.length;
+    const { maxTaskRows } = getDashboardRowLimitsDynamic(
+      actualTaskRows,
+      actualPlanRows,
+      getTerminalHeight(),
+    );
+    const headerFg = mod.RGBA?.fromHex("#6b7280");
+    const plansTableData = getActivePlansTableData(
+      { ...data, activePlans: sortedPlans },
+      w,
+      DASHBOARD_MAX_PLANS,
+      innerW,
+    );
+    const tasksTableData = getMergedActiveNextTableData(
+      data,
+      w,
+      maxTaskRows,
+      innerW,
+    );
+    const h = mod.h;
+    const TextTableRenderable = mod.TextTableRenderable;
+    if (headerFg && h && TextTableRenderable) {
+      if (plansTableData) {
+        projectsChild = h(TextTableRenderable, {
+          content: buildTextTableContent(
+            plansTableData.headers,
+            plansTableData.rows,
+            headerFg,
+          ),
+          showBorders: false,
+          border: false,
+        });
+      }
+      tasksChild = h(TextTableRenderable, {
+        content: buildTextTableContent(
+          tasksTableData.headers,
+          tasksTableData.rows,
+          headerFg,
+        ),
+        showBorders: false,
+        border: false,
+      });
+    }
+  }
 
   return Box(
     {
@@ -198,28 +280,31 @@ function buildDefaultDashboardRoot(
         id: SECTION_ID_PROJECTS,
         borderStyle: "round",
         border: true,
+        borderColor: "cyan",
         title: "Active Projects",
         padding: 1,
         width: w,
       },
-      Text({ content: projectsContent }),
+      projectsChild,
     ),
     Box(
       {
         id: SECTION_ID_TASKS,
         borderStyle: "round",
         border: true,
+        borderColor: "cyan",
         title: "Active tasks and upcoming",
         padding: 1,
         width: w,
       },
-      Text({ content: tasksContent }),
+      tasksChild,
     ),
     Box(
       {
         id: SECTION_ID_STATS,
         borderStyle: "round",
         border: true,
+        borderColor: "yellow",
         title: "Stats",
         padding: 1,
         width: w,
@@ -230,10 +315,12 @@ function buildDefaultDashboardRoot(
 }
 
 /**
- * Update the three section Text nodes in place. Returns true if updated, false if structure doesn't match.
+ * Update the three section content nodes in place (Text or TextTable).
+ * Returns true if updated, false if structure doesn't match.
  */
 function updateDefaultDashboardSections(
   renderer: OpenTUIRenderer,
+  mod: OpenTUIMod,
   rootId: string,
   data: StatusData,
 ): boolean {
@@ -242,19 +329,67 @@ function updateDefaultDashboardSections(
   const children = root.getChildren();
   if (children.length !== 3) return false;
   const w = getTerminalWidth();
-  const { projects, tasks, stats } = getDefaultDashboardSectionContent(
-    data,
-    w,
+  const sectionContent = getDefaultDashboardSectionContent(data, w);
+  const useTextTable =
+    typeof mod.h === "function" &&
+    mod.TextTableRenderable != null &&
+    mod.RGBA != null;
+
+  const innerW = getBoxInnerWidthDashboard(w);
+  const sortedPlans = sortActivePlansForDashboard(data.activePlans);
+  const actualTaskRows = data.activeWork.length + data.nextTasks.length;
+  const actualPlanRows = data.activePlans.length;
+  const { maxTaskRows } = getDashboardRowLimitsDynamic(
+    actualTaskRows,
+    actualPlanRows,
+    getTerminalHeight(),
   );
-  const sectionIds = [SECTION_ID_PROJECTS, SECTION_ID_TASKS, SECTION_ID_STATS];
-  const contents = [projects || "Loading...", tasks, stats];
+  const headerFg = useTextTable ? mod.RGBA?.fromHex("#6b7280") : null;
+  const plansTableData = useTextTable
+    ? getActivePlansTableData(
+        { ...data, activePlans: sortedPlans },
+        w,
+        DASHBOARD_MAX_PLANS,
+        innerW,
+      )
+    : null;
+  const tasksTableData = useTextTable
+    ? getMergedActiveNextTableData(data, w, maxTaskRows, innerW)
+    : null;
+
+  const stringContents = [
+    sectionContent.projects || "Loading...",
+    sectionContent.tasks,
+    sectionContent.stats,
+  ];
+
   for (let i = 0; i < 3; i++) {
     const sectionBox = children[i];
     if (!sectionBox?.getChildren) return false;
-    const textNode = sectionBox.getChildren()[0];
-    if (!textNode || typeof (textNode as { content?: string }).content === "undefined")
-      return false;
-    (textNode as { content: string }).content = contents[i];
+    const contentNode = sectionBox.getChildren()[0];
+    if (!contentNode) return false;
+    const node = contentNode as { content?: string | unknown[] };
+    if (typeof node.content === "undefined") return false;
+    if (Array.isArray(node.content)) {
+      if (!headerFg || !tasksTableData) return false;
+      if (i === 0) {
+        if (!plansTableData) return false;
+        node.content = buildTextTableContent(
+          plansTableData.headers,
+          plansTableData.rows,
+          headerFg,
+        );
+      } else if (i === 1) {
+        node.content = buildTextTableContent(
+          tasksTableData.headers,
+          tasksTableData.rows,
+          headerFg,
+        );
+      }
+      // i === 2 is Stats, always string
+    } else {
+      node.content = stringContents[i];
+    }
   }
   renderer.root.requestRender?.();
   return true;
@@ -265,8 +400,7 @@ function updateDefaultDashboardSections(
  */
 function replaceRootWithDashboardSections(
   renderer: OpenTUIRenderer,
-  Box: OpenTUIMod["Box"],
-  Text: OpenTUIMod["Text"],
+  mod: OpenTUIMod,
   rootId: string,
   data: StatusData | undefined,
   w: number,
@@ -276,7 +410,7 @@ function replaceRootWithDashboardSections(
     child.destroy();
     renderer.root.remove(rootId);
   }
-  const newRoot = buildDefaultDashboardRoot(Box, Text, w, data);
+  const newRoot = buildDefaultDashboardRoot(mod, w, data);
   renderer.root.add(newRoot);
 }
 
@@ -311,7 +445,7 @@ export async function runOpenTUILive(
 
   const w = getTerminalWidth();
   const { Box, Text } = mod;
-  const rootBox = buildDefaultDashboardRoot(Box, Text, w, undefined);
+  const rootBox = buildDefaultDashboardRoot(mod, w, undefined);
   renderer.root.add(rootBox);
 
   const progressBar = runLoadingProgressBar({
@@ -340,11 +474,12 @@ export async function runOpenTUILive(
 
   const refreshContent = (data: StatusData) => {
     try {
-      if (!updateDefaultDashboardSections(renderer, STATUS_ROOT_ID, data)) {
+      if (
+        !updateDefaultDashboardSections(renderer, mod, STATUS_ROOT_ID, data)
+      ) {
         replaceRootWithDashboardSections(
           renderer,
-          Box,
-          Text,
+          mod,
           STATUS_ROOT_ID,
           data,
           getTerminalWidth(),
