@@ -16,23 +16,36 @@ This skill is **read-only**: no file edits, no database writes, no destructive c
 
 ## Scope
 
-| User intent                     | Code health | System health | Risk assessment |
-| ------------------------------- | ----------- | ------------- | --------------- |
-| General review / health check   | Yes         | Yes           | No              |
-| Review + new feature / proposal | Yes         | Yes           | Yes             |
+| User intent                     | Code health | System health | Risk assessment | Assessment specialists      |
+| ------------------------------- | ----------- | ------------- | --------------- | --------------------------- |
+| General review / health check   | Yes         | Yes           | No              | Optional (see below)         |
+| Review + new feature / proposal | Yes         | Yes           | Yes             | Optional (see below)         |
+| Review + security / fairness / rubric | Yes   | Yes           | As above        | Yes — match specialist to ask |
 
 **New feature potential** = user mentions a new feature, proposal, or "what if we add X"; or explicitly asks for risk assessment. When in doubt, include risk.
+
+**Assessment specialists** = include when user asks for "security review", "risk scorecard", "factuality check", "fairness audit", "rubric evaluation"; or when the review target is security-sensitive (CLI, MCP, db) or high-impact (schema, worktree). See Architecture table for which specialist to dispatch.
 
 ## Architecture
 
 - **You (orchestrator / review lead)**: Gathers baseline, dispatches sub-agents, synthesizes report.
-- **Sub-agents**:
+- **Core sub-agents**:
 
   | Agent                          | Purpose                                          | Permission |
   | ------------------------------ | ------------------------------------------------ | ---------- |
   | investigator                   | Code health analysis                             | read-only  |
   | investigator                   | System health analysis                           | read-only  |
   | generalPurpose (or risk skill) | Risk assessment (when feature/proposal in scope) | read-only  |
+
+- **Assessment specialists** (dispatch when scope or user intent matches; all read-only):
+
+  | Specialist                       | Main question                               | Dispatch when |
+  | -------------------------------- | ------------------------------------------- | ------------- |
+  | **adversarial-security-reviewer** | Is this safe and hard to abuse?             | Security-sensitive areas (CLI, MCP, plan-import, db); or user asks for security review |
+  | **risk-preparedness-reviewer**   | What could go wrong if we ship this?         | High-impact work (schema, CLI contract, worktree); release gate; or user asks for scorecard |
+  | **factuality-traceability-reviewer** | Do claims in code/docs match reality?  | Doc-heavy or domain-touching tasks; any change touching `docs/` or critical comments |
+  | **fairness-equity-auditor**      | Is the task graph and process balanced?     | User asks to audit fairness; periodic process audit; input = `tg status --tasks` / `--projects` |
+  | **rubric-driven-reviewer**       | How does this score on each dimension?       | Benchmarking, plan comparison, or user asks for rubric evaluation |
 
 ## Permissions
 
@@ -52,10 +65,21 @@ flowchart TD
     D --> E
     D --> F
     D --> G[Run risk or dispatch generalPurpose]
-    E --> H[Synthesize report]
+    E --> H{Assessment specialist requested?}
     F --> H
     G --> H
-    H --> I[Deliver: chat + optional reports/]
+    H -->|Security| I1[adversarial-security-reviewer]
+    H -->|Scorecard| I2[risk-preparedness-reviewer]
+    H -->|Factuality/docs| I3[factuality-traceability-reviewer]
+    H -->|Fairness| I4[fairness-equity-auditor]
+    H -->|Rubric| I5[rubric-driven-reviewer]
+    H -->|No| J[Synthesize report]
+    I1 --> J
+    I2 --> J
+    I3 --> J
+    I4 --> J
+    I5 --> J
+    J --> K[Deliver: chat + optional reports/]
 ```
 
 ## Workflow
@@ -93,7 +117,17 @@ Use **mcp_task** (or Task tool) with **readonly=true**. Emit all calls in the **
   - **Option B**: Dispatch a **generalPurpose** sub-agent with readonly=true and a prompt that includes the risk skill content plus the current scope (plans, fileTree, crossplan summary if available). Ask it to produce the Risk Assessment Report per the template in CODE_RISK_ASSESSMENT.md.
 - Use the same output template (Summary table, Cross-Plan Interactions, Mitigation Strategies, Recommended Execution Order) as in risk.
 
-### 3. Synthesize report (orchestrator)
+### 3. Optionally dispatch assessment specialists
+
+When user intent or scope matches (security-sensitive area, high-impact change, "security review", "fairness audit", "rubric evaluation", etc.), dispatch the relevant specialist with **readonly=true** in the same parallel batch or after core agents. Use the agent templates in `.cursor/agents/` and lead docs in `docs/leads/`:
+
+- **adversarial-security-reviewer** — Pass diff/change set; request VERDICT: PASS / CONCERNS / FAIL with risks and severity.
+- **risk-preparedness-reviewer** — Pass change or plan; request scorecard (Critical/High/Medium/Low) + top mitigations.
+- **factuality-traceability-reviewer** — Pass diff + docs; request PASS/FAIL with specific inconsistencies.
+- **fairness-equity-auditor** — Pass `tg status --tasks` and `--projects` (and optionally initiative rollup); request structured report (skews, rebalances).
+- **rubric-driven-reviewer** — Pass change or plan + rubric dimensions; request per-dimension scores and overall pass/fail.
+
+### 4. Synthesize report (orchestrator)
 
 Merge sub-agent outputs into one report. Suggested structure:
 
@@ -112,6 +146,10 @@ Merge sub-agent outputs into one report. Suggested structure:
 
 [Summary table and narrative from risk; link to full risk report if produced separately.]
 
+### Assessment specialists (if dispatched)
+
+[Security / scorecard / factuality / fairness / rubric findings per specialist used.]
+
 ### Summary and next steps
 
 - Overall health: ...
@@ -121,7 +159,7 @@ Merge sub-agent outputs into one report. Suggested structure:
 
 Resolve conflicts (e.g. one agent says "tests adequate", another "gaps in X") by noting both and stating which you treat as authoritative and why.
 
-### 4. Deliver
+### 5. Deliver
 
 - Post the report in chat.
 - Optionally write to `reports/review-YYYY-MM-DD.md` (create `reports/` if needed). If risk was in scope, you can write the full risk section to `reports/risk-assessment-YYYY-MM-DD.md` or keep it inside the main review file.
@@ -137,4 +175,6 @@ Resolve conflicts (e.g. one agent says "tests adequate", another "gaps in X") by
 - **Lead doc**: [docs/leads/review.md](../../docs/leads/review.md)
 - **Risk**: `.cursor/skills/risk/SKILL.md`, `.cursor/skills/risk/CODE_RISK_ASSESSMENT.md`
 - **Investigator**: `.cursor/agents/investigator.md`
+- **Assessment specialists**: `.cursor/agents/adversarial-security-reviewer.md`, `risk-preparedness-reviewer.md`, `factuality-traceability-reviewer.md`, `fairness-equity-auditor.md`, `rubric-driven-reviewer.md`; lead docs in `docs/leads/`
+- **Proposal**: [reports/26-03-02_assessment_specialists_proposal.md](../../reports/26-03-02_assessment_specialists_proposal.md)
 - **Dispatch**: `.cursor/rules/subagent-dispatch.mdc` (use readonly and parallel batch in one turn)
