@@ -260,13 +260,16 @@ export function fetchStatusData(
       (SELECT COUNT(DISTINCT JSON_UNQUOTE(JSON_EXTRACT(body, '$.agent'))) FROM ${bt("event")} WHERE kind = 'started' AND JSON_EXTRACT(body, '$.agent') IS NOT NULL) AS agent_count,
       (SELECT COUNT(*) FROM ${bt("event")} WHERE kind = 'done') AS sub_agent_runs,
       (SELECT COUNT(*) FROM ${bt("event")} WHERE kind = 'done' AND JSON_UNQUOTE(JSON_EXTRACT(body, '$.agent')) = 'investigator') AS investigator_runs,
-      (SELECT COALESCE(SUM(sec), 0) / 3600 FROM (
-        SELECT TIMESTAMPDIFF(SECOND,
-          (SELECT created_at FROM ${bt("event")} e2 WHERE e2.task_id = d.task_id AND e2.kind = 'started' ORDER BY e2.created_at DESC LIMIT 1),
-          d.created_at
-        ) AS sec
-        FROM ${bt("event")} d WHERE d.kind = 'done'
-      ) x) AS total_agent_minutes
+      (SELECT COALESCE(SUM(TIMESTAMPDIFF(SECOND, s.created_at, d.created_at)), 0) / 3600
+        FROM ${bt("event")} d
+        JOIN (
+          SELECT task_id, MAX(created_at) AS created_at
+          FROM ${bt("event")}
+          WHERE kind = 'started'
+          GROUP BY task_id
+        ) s ON s.task_id = d.task_id
+        WHERE d.kind = 'done'
+      ) AS total_agent_minutes
   `;
 
   const activePlansSql = `
