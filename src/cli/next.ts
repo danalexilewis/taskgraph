@@ -97,7 +97,7 @@ export function nextCommand(program: Command) {
           ${changeTypeFilter}
           ${excludeCanceledAbandoned}
           HAVING unmet_blockers = 0
-          ORDER BY p.priority DESC, t.risk ASC, 
+          ORDER BY p.priority ASC, t.risk ASC, 
             CASE WHEN t.estimate_mins IS NULL THEN 1 ELSE 0 END,
             t.estimate_mins ASC, t.created_at ASC
           LIMIT ${limit}

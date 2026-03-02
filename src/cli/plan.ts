@@ -157,7 +157,7 @@ function planNewCommand(): Command {
 function planSetPriorityCommand(): Command {
   return new Command("set-priority")
     .description(
-      "Set priority for a plan (higher = shown first in status/next)",
+      "Set priority for a plan (1 = most important, shown first in status/dashboard; lower number = higher in queue)",
     )
     .argument("<planIdOrTitle>", "Plan ID (UUID) or exact project title")
     .argument("<priority>", "Priority value (integer)", (val) =>
