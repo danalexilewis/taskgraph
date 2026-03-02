@@ -1,8 +1,8 @@
 ---
 triggers:
-  files: ["src/cli/table.ts", "src/cli/tui/boxen.ts", "src/cli/status.ts"]
+  files: ["src/cli/table.ts", "src/cli/tui/boxen.ts", "src/cli/tui/live-opentui.ts", "src/cli/status.ts"]
   change_types: ["create", "modify"]
-  keywords: ["table", "boxen", "renderTable", "column", "width", "padding"]
+  keywords: ["table", "boxen", "renderTable", "column", "width", "padding", "dashboard", "OpenTUI"]
 ---
 
 # CLI Table Rendering
@@ -83,14 +83,14 @@ Set per-column minimums so columns don't collapse below readable widths. Falls b
 
 | Location                       | Table                                                                                                   | Flex Col       | maxWidths (numeric cols = `numericColW`) |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------- | -------------- | ---------------------------------------- |
-| `getActivePlansSectionContent` | Active Plans + Total row (6–7 cols: Plan, [Initiative], Todo, Blocked, Ready, Doing, Done)              | 0 (Plan)       | `[_, (Initiative?), N, N, N, N, N]`      |
+| `getActivePlansSectionContent` | Active Plans + Total row (7–8 cols: Plan, Priority, [Initiative], Todo, Blocked, Ready, Doing, Done)     | 0 (Plan)       | `[_, Prio, (Initiative?), N, N, N, N, N]` |
 | `getMergedActiveNextContent`   | Active & next (6 cols: Id, Task, Plan, Stale, Status, Agent)                                            | 1 (Task)       | `[10, _, _, 1]`                          |
 | `formatProjectsAsString`       | Projects (6 cols)                                                                                       | 0 (Project)    | `[_, _, _, 4, 6, 4]`                     |
 | `formatTasksAsString`          | Tasks: 5 cols (Id, Title, Project, Status, Owner); or 6 when `staleTaskIds` passed (adds Stale)         | 1 (Title)      | `[10]` or `[10, _, 10, 1, 6, 1]`         |
 | `formatDashboardTasksView`     | Active tasks (6 cols: Id, Title, Plan, Stale, Owner, Status) — full width                               | 1 (Title)      | `[10, _, 10, 1, 6, 1]`                   |
 | `formatDashboardTasksView`     | Next 7 runnable (5 cols: icon, Id, Task, Plan, Stale)                                                   | 2 (Task)       | `[1, 10, _, _, 1]`                       |
 | `formatDashboardTasksView`     | Last 7 completed (5 cols: icon, Id, Task, Plan, Updated)                                                | 2 (Task)       | `[1, 10]`                                |
-| `formatDashboardProjectsView`  | Active plans + Total row (6–7 cols: Plan, [Initiative], Todo, Blocked, Ready, Doing, Done) — full width | 0 (Plan)       | `[_, (Initiative?), N, N, N, N, N]`      |
+| `formatDashboardProjectsView`  | Active plans + Total row (7–8 cols: Plan, Priority, [Initiative], Todo, Blocked, Ready, Doing, Done) — full width | 0 (Plan)       | `[_, Prio, (Initiative?), N, N, N, N, N]` |
 | `formatDashboardProjectsView`  | Next 7 upcoming (3 cols)                                                                                | 0 (Plan)       | —                                        |
 | `formatDashboardProjectsView`  | Last 7 completed (4 cols: status icon, Plan, Status, Updated)                                           | 1 (Plan)       | `[1]` (icon)                             |
 | `formatInitiativesAsString`    | Initiatives (5 cols)                                                                                    | 0 (Initiative) | —                                        |
@@ -155,6 +155,17 @@ The changed-files typecheck builds a temporary `tsconfig.changed.json` that only
 
 Fix: add `/// <reference path="../ansi-diff.d.ts" />` at the top of `dashboard.ts` so the changed-files path always includes it.
 
+## Dashboard TUI: architecture and intent
+
+**What we want:** The live dashboard (`tg dashboard`) should feel responsive and stable: in-place updates when possible (no full-screen clear), three clearly separated sections (Projects, Tasks, Stats), and a reliable fallback when the primary renderer is unavailable.
+
+- **Primary path (OpenTUI):** When the runtime supports it (e.g. Bun), we use OpenTUI (`@opentui/core`, `createCliRenderer`) in `src/cli/tui/live-opentui.ts`. The root is a single Box with `border: false`; three child Boxes (Active Projects, Active tasks, Stats) use round borders, themed backgrounds, and when available OpenTUI TextTable for the two data sections so only changed cells are redrawn. Content is updated in place via `updateDefaultDashboardSections` so the terminal does not flash or clear.
+- **Fallback path (Node / init failure):** When OpenTUI is unavailable (e.g. Node) or dynamic import/init fails (timeout or error), the dashboard falls back to a minimal TUI: `setInterval` at 2s, ANSI clear + the same status content produced by `formatStatusAsString(..., { dashboard: true })` with boxen section boxes. Output is diffed (ansi-diff) so only changed regions are written; no full-screen clear.
+- **Do not simplify or remove the three sections** — the layout is intentional and hard to reconstruct from scratch. Refactors must preserve Active Projects, Active tasks, and Stats footer.
+- **Timeouts:** OpenTUI's native Zig core can take several seconds to load under Bun on first call. The dynamic import timeout is **3000 ms** and the renderer init (e.g. `setupTerminal`) timeout is **2000 ms**. Do not reduce these; shorter values cause silent fallback to the plain ansi-diff renderer. See `.cursor/memory.md` and `live-opentui.ts`.
+- **ASCII-safe mode:** When the terminal shows garbled box-drawing or symbols, set `TG_ASCII_DASHBOARD=1`. Documented in [infra.md](infra.md). Borders and table chars use ASCII in that case; status symbols (✓ ● ▲) may still be Unicode unless a future change adds symbol fallback in status formatting.
+- **Typecheck:** OpenTUI is Bun-only and must stay out of Node-based typecheck. See [Testing — Typecheck and OpenTUI](testing.md#typecheck-and-opentui) and [research/cheap-gate-typecheck-lint-failures.md](research/cheap-gate-typecheck-lint-failures.md).
+
 ## Dashboard layout (two stacked tables + stats footer)
 
 The default dashboard (`tg dashboard` with no flags) shows three stacked sections. **Do not simplify or remove any of these components during refactors — the visual design is intentional and hard to reconstruct from scratch.**
@@ -163,7 +174,7 @@ The default dashboard (`tg dashboard` with no flags) shows three stacked section
 
 1. **Active Projects** — cyan double-line bordered box, `fullWidth: true`, `DASHBOARD_BOX_PADDING`. Section title rendered inside the box via `formatSectionTitleRow("Active Projects")`. Plan rows (Plan, Todo, Ready, Doing, Blocked, Done) plus a **Total** row. Plans sorted by doing count → actionable count → todo count.
 
-2. **Active tasks and upcoming** — same cyan box treatment. Merged doing + next runnable tasks (Id, Task, Plan, Stale, Status, Agent). `DASHBOARD_BOX_PADDING` applied.
+2. **Active tasks** — same cyan box treatment. Doing tasks only (Id, Task, Project, Stale, Status, Agent); placeholder row “No tasks being worked on atm” when none. `DASHBOARD_BOX_PADDING` applied.
 
 3. **Stats footer** (`getDashboardFooterBox`) — yellow double-line bordered box, `fullWidth: true`, `DASHBOARD_BOX_PADDING`. "Stats" title in yellow bold. Contains `getDashboardFooterContent`: a responsive borderless grid (1–5 columns, `FOOTER_COL_MIN = 20` per column) of KPIs: Projects done, Tasks done, Active agents, Agents (defined), Sub-agents (defined), Total invocations, Agent hours, Investigator runs, Investigator fix rate. Stale doing count appended when > 0.
 

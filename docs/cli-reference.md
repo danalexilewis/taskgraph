@@ -164,7 +164,7 @@ tg plan list
 
 ### `tg plan set-priority <planIdOrTitle> <priority>`
 
-Sets the priority of a plan (project). Higher values are shown first in `tg status --projects` and when resolving `tg next` across plans.
+Sets the queue priority of a plan (project). **1 = most important** (shown first); lower number = higher in the queue. Used by `tg status --projects`, the dashboard Active plans table, and `tg next` when ordering across plans.
 
 ```bash
 tg plan set-priority <planIdOrTitle> <priority>
@@ -173,13 +173,13 @@ tg plan set-priority <planIdOrTitle> <priority>
 **Arguments:**
 
 - `<planIdOrTitle>`: Plan UUID or exact project title.
-- `<priority>`: Integer. Higher = higher in the list (e.g. 21 before 20).
+- `<priority>`: Integer. **1 = most important** (first in queue); 2, 3, … = less important.
 
 **Example:**
 
 ```bash
-tg plan set-priority "Gate Full Triage" 21
-# Priority set to 21 for plan 88f2a555-7464-4be3-ab5d-419765d3fca7
+tg plan set-priority "Gate Full Triage" 1
+# Priority set to 1 for plan 88f2a555-7464-4be3-ab5d-419765d3fca7
 ```
 
 ### `tg task new <title>`
@@ -711,7 +711,7 @@ tg dashboard [--tasks] [--projects]
 
 **Options:**
 
-- **Default (no options):** Simplified dashboard with two stacked tables (refreshed every 2s): **Active Projects** (top) and **Active tasks and upcoming** (bottom). Row counts are capped from terminal height so the screen does not scroll. One-line completed summary at the end; stale doing count shown there if any. The footer line shows **Types of Agents** (distinct agent names from `started` events in `event`), **Total Agent Invocations** (count of `done` events), and **Total Agent hours** (elapsed time from matching `started` to `done` per task, summed and converted to hours).
+- **Default (no options):** Simplified dashboard with two stacked tables (refreshed every 2s): **Active Projects** (top) and **Active tasks** (bottom; doing only, or “No tasks being worked on atm” when none). Row counts are capped from terminal height so the screen does not scroll. One-line completed summary at the end; stale doing count shown there if any. The footer line shows **Types of Agents** (distinct agent names from `started` events in `event`), **Total Agent Invocations** (count of `done` events), and **Total Agent hours** (elapsed time from matching `started` to `done` per task, summed and converted to hours).
 - `--tasks`: Live tasks view with three boxed sections — Active tasks, Next 7 runnable, Last 7 completed. Only one of `--tasks` or `--projects` is allowed.
 - `--projects`: Live projects view with three boxed sections — Active plans, Next 7 upcoming, Last 7 completed.
 
@@ -757,7 +757,7 @@ Use `tg done <taskId> --evidence "completed previously" --force` to clear stale 
 
 **Output (human):**
 
-- **Dashboard (default):** Two section boxes (via boxen): **Active Projects** (top) and **Active tasks and upcoming** (bottom). Each is wrapped in a rounded box; row counts are limited by terminal height. One-line completed summary (and stale count if any) at the end. Inner text uses chalk for colors.
+- **Dashboard (default):** Two section boxes (via boxen): **Active Projects** (top) and **Active tasks** (bottom; doing only, or placeholder when none). Each is wrapped in a rounded box; row counts are limited by terminal height. One-line completed summary (and stale count if any) at the end. Inner text uses chalk for colors.
 - **Tasks view (`--tasks`):** A single boxen-wrapped table with columns Id, Title, Project, Status, Owner. One-shot or with `--dashboard` (refreshes every 2s).
 - **Projects view (`--projects`):** A single boxen-wrapped table with columns Project name, Status, Todo, Doing, Blocked, Done. One-shot or with `--dashboard` (refreshes every 2s).
 - **Initiatives view (`--initiatives`):** If the `initiative` table does not exist, prints a stub message (e.g. "Initiatives view requires the Initiative-Project hierarchy...") and exits 0. If it exists, a single boxen-wrapped table with columns Initiative, Status, Cycle Start, Cycle End, Projects; one-shot or with `--dashboard` (refreshes every 2s).
@@ -771,7 +771,7 @@ With `--json` (one-shot only; not with `--dashboard`): default view outputs an o
 **Live mode behavior** (`--dashboard`):
 
 - **Deprecation.** Using `tg status --dashboard` prints a deprecation warning to stderr and then runs the same dashboard as `tg dashboard`. Prefer `tg dashboard`; `tg status --dashboard` will be removed in a future version.
-- **Two stacked tables.** Active Projects then Active tasks and upcoming (in boxen boxes), with height-based row limits. Terminal resize is reflected on the next refresh.
+- **Two stacked tables.** Active Projects then Active tasks (in boxen boxes), with height-based row limits. Terminal resize is reflected on the next refresh.
 - **OpenTUI when available.** When the runtime supports it (e.g. Bun), the live view may use OpenTUI (`@opentui/core`, `createCliRenderer`) for rendering. When OpenTUI is not available or init fails (e.g. Node), the implementation falls back to Node only: `setInterval`, ANSI clear (e.g. `\x1b[2J\x1b[H`), and the existing human status printer (with boxen section boxes).
 - **Polling.** The status query chain is re-run every 2 seconds. Dolt is invoked via execa per call. File watching is out of scope.
 - **Raw mode and exit.** On entering live mode, `process.stdin.setRawMode(true)` is set so that the "q" key can quit. On **SIGINT**, **SIGTERM**, or key **"q"**: clear the refresh interval, call `setRawMode(false)`, then `process.exit(0)`. **Ctrl+C** and **"q"** both quit live mode.
