@@ -180,7 +180,7 @@ isProject: false
     const { exitCode, stdout } = await runTgCli("status", context.tempDir);
     expect(exitCode).toBe(0);
     expect(stdout).toContain("Completed");
-    expect(stdout).toMatch(/Plans: \d+ done/);
+    expect(stdout).toMatch(/Projects: \d+ done/);
     expect(stdout).toMatch(/Tasks: \d+ done/);
     expect(stdout).toMatch(/Canceled: \d+/);
   }, 30000);

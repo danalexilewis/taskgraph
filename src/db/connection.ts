@@ -211,7 +211,7 @@ export function doltSql(
       (e) =>
         buildError(
           ErrorCode.DB_QUERY_FAILED,
-          `Dolt SQL query failed: ${query}`,
+          `Dolt SQL query failed: ${query}${e instanceof Error ? ` — ${e.message}` : ""}`,
           e,
         ),
     ).andThen((result) => {

@@ -319,4 +319,35 @@ todos:
     expect(err.message).toMatch(/unclosed|quote|expected|line|column|YAML/i);
     unlinkSync(testFilePath);
   });
+
+  it("should parse initiative, overview, objectives, outcomes, outputs from frontmatter", () => {
+    const content = `---
+name: Plan With Hierarchy
+overview: "Multi-line overview for the project."
+initiative: Unassigned
+objectives:
+  - Deliver X
+  - Deliver Y
+outcomes:
+  - Outcome A
+outputs:
+  - Output 1
+todos:
+  - id: t1
+    content: "Single task"
+    status: pending
+---
+`;
+    writeFileSync(testFilePath, content);
+    const result = parseCursorPlan(testFilePath);
+    expect(result.isOk()).toBe(true);
+    const parsed = result._unsafeUnwrap();
+    expect(parsed.planTitle).toBe("Plan With Hierarchy");
+    expect(parsed.overview).toBe("Multi-line overview for the project.");
+    expect(parsed.objectives).toEqual(["Deliver X", "Deliver Y"]);
+    expect(parsed.outcomes).toEqual(["Outcome A"]);
+    expect(parsed.outputs).toEqual(["Output 1"]);
+    expect(parsed.tasks.length).toBe(1);
+    unlinkSync(testFilePath);
+  });
 });

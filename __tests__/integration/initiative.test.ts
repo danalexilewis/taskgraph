@@ -151,6 +151,40 @@ todos:
     expect(exitCode).toBe(0);
     expect(stdout).toMatch(/Cycle:|Sprint 1|initiatives|Active Plans/);
   }, 15000);
+
+  it("tg import --initiative <id> assigns new project to that initiative", async () => {
+    if (!context || !initiativeId)
+      throw new Error("context or initiativeId not set");
+    const plansDir = path.join(context.tempDir, "plans");
+    const planPath = path.join(plansDir, "import-initiative-plan.md");
+    const planContent = `---
+name: Import With Initiative
+overview: "Plan imported with --initiative flag."
+todos:
+  - id: imp1
+    content: "Task under initiative"
+    status: pending
+---
+`;
+    fs.writeFileSync(planPath, planContent);
+    const { exitCode, stdout } = await runTgCli(
+      `import plans/import-initiative-plan.md --plan "Import With Initiative" --format cursor --initiative ${initiativeId} --no-commit`,
+      context.tempDir,
+    );
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(/Created new project|Import With Initiative/i);
+    const listRes = await runTgCli(
+      `initiative show ${initiativeId} --json`,
+      context.tempDir,
+    );
+    const show = JSON.parse(listRes.stdout) as {
+      projects?: Array<{ title: string }>;
+    };
+    const hasProject = show.projects?.some(
+      (p) => p.title === "Import With Initiative",
+    );
+    expect(hasProject).toBe(true);
+  }, 15000);
 });
 
 describe("tg initiative commands without init", () => {
