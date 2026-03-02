@@ -117,6 +117,7 @@ function bt(name: string): string {
 interface ActivePlanRow {
   plan_id: string;
   title: string;
+  priority: number;
   status: string;
   count: number;
 }
@@ -144,6 +145,7 @@ export interface PlanSummaryRow {
   plan_id: string;
   title: string;
   status: string;
+  priority?: number;
   updated_at: string | null;
 }
 
@@ -163,6 +165,7 @@ export interface StatusData {
   activePlans: Array<{
     plan_id: string;
     title: string;
+    priority: number;
     todo: number;
     doing: number;
     blocked: number;
@@ -178,7 +181,7 @@ export interface StatusData {
   next7RunnableTasks: NextTaskRow[];
   /** Last 7 completed tasks (plan not abandoned), ordered by updated_at DESC. */
   last7CompletedTasks: LastCompletedTaskRow[];
-  /** Next 7 upcoming plans (status in draft/active/paused), ordered by priority DESC, updated_at DESC. */
+  /** Next 7 upcoming plans (status in draft/active/paused), ordered by priority ASC (1 = first), updated_at DESC. */
   next7UpcomingPlans: PlanSummaryRow[];
   /** Last 7 completed plans (status = done), ordered by updated_at DESC. */
   last7CompletedPlans: PlanSummaryRow[];
@@ -274,7 +277,7 @@ export function fetchStatusData(
   `;
 
   const activePlansSql = `
-    SELECT p.plan_id, p.title, t.status, COUNT(*) AS count
+    SELECT p.plan_id, p.title, p.priority, t.status, COUNT(*) AS count
     FROM ${bt("project")} p
     JOIN ${bt("task")} t ON t.plan_id = p.plan_id
     WHERE p.status NOT IN ('done', 'abandoned')
@@ -282,7 +285,7 @@ export function fetchStatusData(
     ${options.plan ? (isUUID ? `AND p.plan_id = '${sqlEscape(options.plan)}'` : `AND p.title = '${sqlEscape(options.plan)}'`) : ""}
     ${dimFilter}
     GROUP BY p.plan_id, p.title, p.status, p.priority, p.updated_at, t.status
-    ORDER BY CASE WHEN p.status = 'draft' THEN 1 ELSE 0 END, p.priority DESC, p.updated_at DESC, p.title ASC
+    ORDER BY CASE WHEN p.status = 'draft' THEN 1 ELSE 0 END, p.priority ASC, p.updated_at DESC, p.title ASC
   `;
 
   const actionablePerPlanSql = `
@@ -334,7 +337,7 @@ export function fetchStatusData(
     ${options.plan ? (isUUID ? `AND p.plan_id = '${sqlEscape(options.plan)}'` : `AND p.title = '${sqlEscape(options.plan)}'`) : ""}
     ${dimFilter}
     ${excludeCanceledAbandoned}
-    ORDER BY p.priority DESC, t.created_at ASC
+    ORDER BY p.priority ASC, t.created_at ASC
     LIMIT 3
   `;
   const next7Sql = `
@@ -349,7 +352,7 @@ export function fetchStatusData(
     ${options.plan ? (isUUID ? `AND p.plan_id = '${sqlEscape(options.plan)}'` : `AND p.title = '${sqlEscape(options.plan)}'`) : ""}
     ${dimFilter}
     ${excludeCanceledAbandoned}
-    ORDER BY p.priority DESC, t.risk ASC, CASE WHEN t.estimate_mins IS NULL THEN 1 ELSE 0 END, t.estimate_mins ASC, t.created_at ASC
+    ORDER BY p.priority ASC, t.risk ASC, CASE WHEN t.estimate_mins IS NULL THEN 1 ELSE 0 END, t.estimate_mins ASC, t.created_at ASC
     LIMIT 7
   `;
   const last7CompletedSql = `
@@ -364,11 +367,11 @@ export function fetchStatusData(
     LIMIT 7
   `;
   const next7UpcomingPlansSql = `
-    SELECT plan_id, title, status, updated_at
+    SELECT plan_id, title, status, priority, updated_at
     FROM ${bt("project")}
     WHERE status IN ('draft', 'active', 'paused')
     ${options.plan ? (isUUID ? `AND plan_id = '${sqlEscape(options.plan)}'` : `AND title = '${sqlEscape(options.plan)}'`) : ""}
-    ORDER BY CASE WHEN status = 'draft' THEN 1 ELSE 0 END, priority DESC, updated_at DESC
+    ORDER BY CASE WHEN status = 'draft' THEN 1 ELSE 0 END, priority ASC, updated_at DESC
     LIMIT 7
   `;
   const last7CompletedPlansSql = `
@@ -463,6 +466,7 @@ export function fetchStatusData(
           {
             plan_id: string;
             title: string;
+            priority: number;
             todo: number;
             doing: number;
             blocked: number;
@@ -475,6 +479,7 @@ export function fetchStatusData(
             planMap.set(row.plan_id, {
               plan_id: row.plan_id,
               title: row.title,
+              priority: row.priority,
               todo: 0,
               doing: 0,
               blocked: 0,
@@ -1462,7 +1467,11 @@ export function formatSectionTitleRow(sectionName: string): string {
 /** Projects section: 6 project rows + 1 Total row = 7 rows; empty lines pad when fewer than 6 projects. */
 export const DASHBOARD_MAX_PLANS = 7;
 const DASHBOARD_MAX_TASKS = 13;
+/** On large screens (e.g. 16" MBP), allow more rows so tables fill the view. */
+const DASHBOARD_MAX_PLANS_LARGE = 22;
+const DASHBOARD_MAX_TASKS_LARGE = 42;
 const DASHBOARD_MIN_TASK_ROWS = 7;
+const LARGE_SCREEN_ROW_THRESHOLD = 36;
 const _DASHBOARD_MAX_TOTAL = DASHBOARD_MAX_PLANS + DASHBOARD_MAX_TASKS;
 
 /**
@@ -1491,17 +1500,23 @@ export function getDashboardRowLimitsDynamic(
   actualPlanRows: number,
   terminalRows?: number,
 ): { maxPlanRows: number; maxTaskRows: number } {
-  let taskCap = DASHBOARD_MAX_TASKS;
-  let planCap = DASHBOARD_MAX_PLANS;
+  const useLargeCaps =
+    terminalRows != null && terminalRows >= LARGE_SCREEN_ROW_THRESHOLD;
+  const maxPlanCap = useLargeCaps ? DASHBOARD_MAX_PLANS_LARGE : DASHBOARD_MAX_PLANS;
+  const maxTaskCap = useLargeCaps ? DASHBOARD_MAX_TASKS_LARGE : DASHBOARD_MAX_TASKS;
+  let taskCap = maxTaskCap;
+  let planCap = maxPlanCap;
 
   // Also constrain by terminal height so content fits without scrolling.
   if (terminalRows != null && terminalRows > 0) {
     const dataLines = Math.max(4, terminalRows - DASHBOARD_RESERVED_LINES);
+    const taskShare = useLargeCaps ? 0.65 : 0.6;
+    const planShare = useLargeCaps ? 0.35 : 0.4;
     taskCap = Math.min(
       taskCap,
-      Math.max(DASHBOARD_MIN_TASK_ROWS, Math.floor(dataLines * 0.6)),
+      Math.max(DASHBOARD_MIN_TASK_ROWS, Math.floor(dataLines * taskShare)),
     );
-    planCap = Math.min(planCap, Math.max(2, Math.floor(dataLines * 0.4)));
+    planCap = Math.min(planCap, Math.max(2, Math.floor(dataLines * planShare)));
   }
 
   const taskRows = Math.max(
@@ -1514,16 +1529,12 @@ export function getDashboardRowLimitsDynamic(
 }
 
 /**
- * Sort active plans for dashboard priority: doing first, then most ready (actionable), then most todo.
+ * Sort active plans for dashboard by queue priority: 1 = most important (first), then 2, 3, ...
  */
 export function sortActivePlansForDashboard(
   plans: StatusData["activePlans"],
 ): StatusData["activePlans"] {
-  return [...plans].sort((a, b) => {
-    if (b.doing !== a.doing) return b.doing - a.doing;
-    if (b.actionable !== a.actionable) return b.actionable - a.actionable;
-    return b.todo - a.todo;
-  });
+  return [...plans].sort((a, b) => a.priority - b.priority);
 }
 
 /** Table data for Active Plans (same data as passed to renderTable). Used by OpenTUI TextTable. */
@@ -1558,7 +1569,7 @@ function buildActivePlansTable(
     plans = plans.slice(0, maxRows - 1);
   }
   const showInitiative = plans.some((p) => p.initiative !== undefined);
-  const colCount = showInitiative ? 7 : 6;
+  const colCount = showInitiative ? 8 : 7;
   const emptyPlanRow = (): string[] => Array(colCount).fill("");
   const planRows = plans.map((p) => {
     const countCells = [
@@ -1568,9 +1579,10 @@ function buildActivePlansTable(
       p.doing > 0 ? chalk.cyan(String(p.doing)) : "0",
       p.done > 0 ? chalk.green(String(p.done)) : "0",
     ];
+    const priorityCell = String(p.priority);
     return showInitiative
-      ? [p.title, p.initiative ?? sym.emDash, ...countCells]
-      : [p.title, ...countCells];
+      ? [p.title, priorityCell, p.initiative ?? sym.emDash, ...countCells]
+      : [p.title, priorityCell, ...countCells];
   });
   const sumTodo = d.activePlans.reduce((s, p) => s + Number(p.todo), 0);
   const sumDoing = d.activePlans.reduce((s, p) => s + Number(p.doing), 0);
@@ -1585,32 +1597,31 @@ function buildActivePlansTable(
     sumDone > 0 ? chalk.green(String(sumDone)) : "0",
   ];
   const aggRow = showInitiative
-    ? [chalk.dim("Total"), "", ...countCells]
-    : [chalk.dim("Total"), ...countCells];
+    ? [chalk.dim("Total"), "", "", ...countCells]
+    : [chalk.dim("Total"), "", ...countCells];
   const dataRowCap =
     maxRows != null && maxRows > 0 ? maxRows - 1 : planRows.length;
   while (planRows.length < dataRowCap) {
     planRows.push(emptyPlanRow());
   }
+  const priorityColW = narrow ? 3 : 8;
   const headers = (() => {
     const countHeaders = narrow
       ? ["To", "Blk", "Rdy", "Do", "Done"]
       : ["Todo", "Blocked", "Ready", "Doing", "Done"];
+    const priorityHeader = narrow ? "Prio" : "Priority";
     return showInitiative
-      ? narrow
-        ? ["Project name", "Initiative", ...countHeaders]
-        : ["Project name", "Initiative", ...countHeaders]
-      : narrow
-        ? ["Project name", ...countHeaders]
-        : ["Project name", ...countHeaders];
+      ? ["Project name", priorityHeader, "Initiative", ...countHeaders]
+      : ["Project name", priorityHeader, ...countHeaders];
   })();
-  const numericHeaders = headers.slice(showInitiative ? 2 : 1);
+  const numericHeaders = headers.slice(showInitiative ? 3 : 2);
   const numericColW = Math.max(...numericHeaders.map((h) => h.length));
   const minWidths = showInitiative
     ? narrow
-      ? [8, 10, numericColW, numericColW, numericColW, numericColW, numericColW]
+      ? [8, priorityColW, 10, numericColW, numericColW, numericColW, numericColW, numericColW]
       : [
           12,
+          priorityColW,
           12,
           numericColW,
           numericColW,
@@ -1619,11 +1630,12 @@ function buildActivePlansTable(
           numericColW,
         ]
     : narrow
-      ? [8, numericColW, numericColW, numericColW, numericColW, numericColW]
-      : [12, numericColW, numericColW, numericColW, numericColW, numericColW];
+      ? [8, priorityColW, numericColW, numericColW, numericColW, numericColW, numericColW]
+      : [12, priorityColW, numericColW, numericColW, numericColW, numericColW, numericColW];
   const maxWidths = showInitiative
     ? [
         undefined,
+        priorityColW,
         undefined,
         numericColW,
         numericColW,
@@ -1633,6 +1645,7 @@ function buildActivePlansTable(
       ]
     : [
         undefined,
+        priorityColW,
         numericColW,
         numericColW,
         numericColW,
@@ -1697,7 +1710,7 @@ function truncatePlan(s: string): string {
   return `${s.slice(0, PLAN_TITLE_MAX_LEN - 1)}${sym.ellipsis}`;
 }
 
-/** Table data for Active tasks and upcoming (same data as passed to renderTable). Used by OpenTUI TextTable. */
+/** Table data for Active tasks (doing only; placeholder row when none). Used by OpenTUI TextTable. */
 export function getMergedActiveNextTableData(
   d: StatusData,
   w: number,
@@ -1724,7 +1737,6 @@ function buildMergedActiveNextTable(
   const sym = getDashboardSymbols();
   const innerW = innerWidthOverride ?? getBoxInnerWidth(w);
   const staleDoingSet = new Set(d.staleDoingTasks.map((t) => t.task_id));
-  const now = Date.now();
   const doingRows = d.activeWork.map((work) => {
     const body =
       work.body == null
@@ -1743,33 +1755,9 @@ function buildMergedActiveNextTable(
       agent,
     ];
   });
-  const todoRows = d.nextTasks.map((t) => {
-    const staleRunnable =
-      t.updated_at != null &&
-      now - new Date(t.updated_at).getTime() >= STALE_HOURS_MS;
-    return [
-      displayId(t.task_id, t.hash_id),
-      t.title,
-      truncatePlan(t.plan_title),
-      staleRunnable ? chalk.yellow(sym.triangle) : sym.emDash,
-      "todo",
-      sym.emDash,
-    ];
-  });
-  let rows = [...doingRows, ...todoRows];
+  let rows = doingRows;
   if (maxRows != null && maxRows > 0) {
     rows = rows.slice(0, maxRows);
-    const emptyTaskRow: string[] = [
-      sym.emDash,
-      "",
-      sym.emDash,
-      sym.emDash,
-      sym.emDash,
-      sym.emDash,
-    ];
-    while (rows.length < maxRows) {
-      rows.push(emptyTaskRow);
-    }
   }
   const tableRows =
     rows.length > 0
@@ -1777,7 +1765,7 @@ function buildMergedActiveNextTable(
       : [
           [
             sym.emDash,
-            "No active or runnable tasks",
+            "No tasks being worked on atm",
             sym.emDash,
             sym.emDash,
             sym.emDash,
@@ -1795,10 +1783,9 @@ function buildMergedActiveNextTable(
 }
 
 /**
- * Single merged section: active work (doing) first, then next runnable (todo).
- * Table headers: Id, Task, Project, Stale, Status, Agent. Id is thin (max 10); Task is flex; Project truncated.
- * Stale column: yellow ▲ for doing tasks started >2h ago; yellow ▲ for todo tasks unchanged >2h.
- * When maxRows is set (dashboard), slice to that many rows so the screen does not scroll.
+ * Active tasks section: only tasks in "doing" (no todos). Table headers: Id, Task, Project, Stale, Status, Agent.
+ * When there are no doing tasks, shows a single placeholder row: "No tasks being worked on atm".
+ * Stale column: yellow ▲ for doing tasks started >2h ago. When maxRows is set (dashboard), slice to that many rows.
  */
 export function getMergedActiveNextContent(
   d: StatusData,
@@ -2046,9 +2033,10 @@ export function formatDashboardProjectsView(
   const showInitiative = d.activePlans.some((p) => p.initiative !== undefined);
   const countHeaders = ["Todo", "Blocked", "Ready", "Doing", "Done"];
   const planHeaders = showInitiative
-    ? ["Project name", "Initiative", ...countHeaders]
-    : ["Project name", ...countHeaders];
+    ? ["Project name", "Priority", "Initiative", ...countHeaders]
+    : ["Project name", "Priority", ...countHeaders];
   const numericColW = Math.max(...countHeaders.map((h) => h.length));
+  const priorityColW = 8;
   const activePlanRows =
     d.activePlans.length > 0
       ? d.activePlans.map((p) => {
@@ -2059,14 +2047,15 @@ export function formatDashboardProjectsView(
             p.doing > 0 ? chalk.cyan(String(p.doing)) : "0",
             p.done > 0 ? chalk.green(String(p.done)) : "0",
           ];
+          const priorityCell = String(p.priority);
           return showInitiative
-            ? [p.title, p.initiative ?? sym.emDash, ...countCells]
-            : [p.title, ...countCells];
+            ? [p.title, priorityCell, p.initiative ?? sym.emDash, ...countCells]
+            : [p.title, priorityCell, ...countCells];
         })
       : [
           showInitiative
-            ? ["No active plans", sym.emDash, "0", "0", "0", "0", "0"]
-            : ["No active plans", "0", "0", "0", "0", "0"],
+            ? ["No active plans", "0", sym.emDash, "0", "0", "0", "0", "0"]
+            : ["No active plans", "0", "0", "0", "0", "0", "0"],
         ];
   const sumTodo = d.activePlans.reduce((s, p) => s + Number(p.todo), 0);
   const sumDoing = d.activePlans.reduce((s, p) => s + Number(p.doing), 0);
@@ -2081,8 +2070,8 @@ export function formatDashboardProjectsView(
     sumDone > 0 ? chalk.green(String(sumDone)) : "0",
   ];
   const totalRow = showInitiative
-    ? [chalk.dim("Total"), "", ...totalCountCells]
-    : [chalk.dim("Total"), ...totalCountCells];
+    ? [chalk.dim("Total"), "", "", ...totalCountCells]
+    : [chalk.dim("Total"), "", ...totalCountCells];
   const activeRows =
     d.activePlans.length > 0 ? [...activePlanRows, totalRow] : activePlanRows;
   const colCount = planHeaders.length;
@@ -2092,13 +2081,15 @@ export function formatDashboardProjectsView(
     maxWidth: innerW,
     minWidths: [
       12,
+      priorityColW,
       ...(showInitiative ? [12] : []),
-      ...Array(colCount - (showInitiative ? 2 : 1)).fill(numericColW),
+      ...Array(colCount - (showInitiative ? 3 : 2)).fill(numericColW),
     ],
     maxWidths: [
       undefined,
+      priorityColW,
       ...(showInitiative ? [undefined] : []),
-      ...Array(colCount - (showInitiative ? 2 : 1)).fill(numericColW),
+      ...Array(colCount - (showInitiative ? 3 : 2)).fill(numericColW),
     ],
   });
   parts.push(boxedSection("Active plans", activeTable, w, { fullWidth: true }));
@@ -2106,16 +2097,17 @@ export function formatDashboardProjectsView(
   const next7Rows =
     d.next7UpcomingPlans.length > 0
       ? d.next7UpcomingPlans.map((p) => [
+          String(p.priority ?? ""),
           p.title,
           p.status,
           p.updated_at ?? sym.emDash,
         ])
-      : [["No upcoming plans", sym.emDash, sym.emDash]];
+      : [["", "No upcoming plans", sym.emDash, sym.emDash]];
   const next7Table = renderTable({
-    headers: ["Project name", "Status", "Updated"],
+    headers: ["#", "Project name", "Status", "Updated"],
     rows: next7Rows,
     maxWidth: innerW,
-    minWidths: [12, 8, 16],
+    minWidths: [3, 12, 8, 16],
   });
   parts.push(
     boxedSection("Next 7 upcoming", next7Table, w, { fullWidth: true }),
@@ -2183,7 +2175,7 @@ export function formatInitiativesAsString(
 }
 
 export interface FormatStatusOptions {
-  /** When true, show only two stacked tables (Active Projects, Active tasks and upcoming) plus one-line summary (for tg dashboard). */
+  /** When true, show only two stacked tables (Active Projects, Active tasks) plus one-line summary (for tg dashboard). */
   dashboard?: boolean;
   /** When true, format three sections: Active tasks, Next 7 runnable, Last 7 completed (for tg dashboard --tasks). */
   tasksView?: boolean;
@@ -2209,7 +2201,7 @@ export function formatStatusAsString(
   }
 
   if (dashboard) {
-    const actualTaskRows = d.activeWork.length + d.nextTasks.length;
+    const actualTaskRows = d.activeWork.length;
     const actualPlanRows = d.activePlans.length;
     const { maxTaskRows } = getDashboardRowLimitsDynamic(
       actualTaskRows,
@@ -2246,7 +2238,7 @@ export function formatStatusAsString(
     parts.push(
       boxedSection(
         "",
-        `${formatSectionTitleRow("Active tasks and upcoming")}\n${tasksContent}`,
+        `${formatSectionTitleRow("Active tasks")}\n${tasksContent}`,
         w,
         {
           borderColor: "cyan",
@@ -2351,7 +2343,7 @@ function printHumanStatus(
   }
 
   if (dashboard) {
-    const actualTaskRows = d.activeWork.length + d.nextTasks.length;
+    const actualTaskRows = d.activeWork.length;
     const actualPlanRows = d.activePlans.length;
     const { maxTaskRows } = getDashboardRowLimitsDynamic(
       actualTaskRows,
@@ -2376,7 +2368,7 @@ function printHumanStatus(
       );
     }
     console.log(
-      `\n${boxedSection("", `${formatSectionTitleRow("Active tasks and upcoming")}\n${getMergedActiveNextContent(d, w, maxTaskRows, innerW)}`, w, { borderColor: "cyan", fullWidth: true, padding: DASHBOARD_BOX_PADDING })}`,
+      `\n${boxedSection("", `${formatSectionTitleRow("Active tasks")}\n${getMergedActiveNextContent(d, w, maxTaskRows, innerW)}`, w, { borderColor: "cyan", fullWidth: true, padding: DASHBOARD_BOX_PADDING })}`,
     );
     console.log(`\n${getDashboardFooterBox(d, w)}\n`);
     return;

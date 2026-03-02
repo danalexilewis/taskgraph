@@ -115,7 +115,7 @@ describe("status-live integration tests", () => {
         const hasSection =
           stdout.includes("Completed") ||
           stdout.includes("Active Projects") ||
-          stdout.includes("Active tasks and upcoming");
+          stdout.includes("Active tasks");
         expect(hasSection).toBe(true);
       }
     }, 10000);

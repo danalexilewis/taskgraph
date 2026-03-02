@@ -15,6 +15,7 @@ const mockData: StatusData = {
     {
       plan_id: "p1",
       title: "Dashboard polish",
+      priority: 10,
       todo: 2,
       doing: 1,
       blocked: 0,
@@ -24,6 +25,7 @@ const mockData: StatusData = {
     {
       plan_id: "p2",
       title: "Agent sync improvements",
+      priority: 5,
       todo: 0,
       doing: 0,
       blocked: 0,
@@ -33,6 +35,7 @@ const mockData: StatusData = {
     {
       plan_id: "p3",
       title: "Status dashboard focused views",
+      priority: 0,
       todo: 3,
       doing: 0,
       blocked: 1,

@@ -30,6 +30,7 @@ function mockStatusData(overrides?: Partial<StatusData>): StatusData {
       {
         plan_id: "p-1",
         title: "Test Plan A",
+        priority: 10,
         todo: 3,
         doing: 1,
         blocked: 0,
@@ -39,6 +40,7 @@ function mockStatusData(overrides?: Partial<StatusData>): StatusData {
       {
         plan_id: "p-2",
         title: "Test Plan B",
+        priority: 5,
         todo: 1,
         doing: 2,
         blocked: 1,
@@ -170,11 +172,13 @@ describe("dashboard format with mock data", () => {
       expect(plain).toContain("Finished plan");
     });
 
-    it("output contains Todo, Ready, Doing, Blocked, Done columns", () => {
+    it("output contains Priority and Todo, Ready, Doing, Blocked, Done columns", () => {
       const data = mockStatusData();
-      const out = formatDashboardProjectsView(data, WIDTH);
+      const wideWidth = 100;
+      const out = formatDashboardProjectsView(data, wideWidth);
       const plain = stripAnsi(out);
 
+      expect(plain).toContain("Priority");
       expect(plain).toContain("Todo");
       expect(plain).toContain("Doing");
       expect(plain).toContain("Blocked");
@@ -183,13 +187,13 @@ describe("dashboard format with mock data", () => {
   });
 
   describe("formatStatusAsString with dashboard: true", () => {
-    it("output contains Active Projects, Active tasks and upcoming, and completed summary", () => {
+    it("output contains Active Projects, Active tasks, and completed summary", () => {
       const data = mockStatusData();
       const out = formatStatusAsString(data, WIDTH, { dashboard: true });
       const plain = stripAnsi(out);
 
       expect(plain).toContain("Active Projects");
-      expect(plain).toContain("Active tasks and upcoming");
+      expect(plain).toContain("Active tasks");
       expect(plain).toContain("done");
       expect(plain).toContain("Projects done");
       expect(plain).toContain("Tasks done");
