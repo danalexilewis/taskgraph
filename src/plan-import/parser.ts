@@ -51,6 +51,14 @@ export interface ParsedPlan {
   tests?: string[] | null;
   /** Markdown body below frontmatter (for display/export) */
   body?: string | null;
+  /** Overview text; maps to project.overview */
+  overview?: string | null;
+  /** Objectives; maps to project.objectives (JSON). */
+  objectives?: string[] | null;
+  /** Outcomes; maps to project.outcomes (JSON). */
+  outcomes?: string[] | null;
+  /** Outputs; maps to project.outputs (JSON). */
+  outputs?: string[] | null;
 }
 
 const CHANGE_TYPES = [
@@ -207,6 +215,12 @@ export interface CursorFrontmatter {
   tests?: string[];
   /** Whether the plan is a benchmark. Mapped from frontmatter 'benchmark' */
   benchmark?: boolean;
+  /** Optional list of objectives; stored in project.objectives (JSON). */
+  objectives?: string[];
+  /** Optional list of outcomes; stored in project.outcomes (JSON). */
+  outcomes?: string[];
+  /** Optional list of outputs; stored in project.outputs (JSON). */
+  outputs?: string[];
 }
 
 /** Normalize risks from frontmatter to { description, severity, mitigation }[]. */
@@ -309,16 +323,34 @@ export function frontmatterToParsedPlan(
     Array.isArray(fm.tests) && fm.tests.every((x) => typeof x === "string")
       ? fm.tests
       : null;
+  const overview =
+    typeof fm.overview === "string" ? fm.overview : null;
+  const objectives =
+    Array.isArray(fm.objectives) && fm.objectives.every((x) => typeof x === "string")
+      ? fm.objectives
+      : null;
+  const outcomes =
+    Array.isArray(fm.outcomes) && fm.outcomes.every((x) => typeof x === "string")
+      ? fm.outcomes
+      : null;
+  const outputs =
+    Array.isArray(fm.outputs) && fm.outputs.every((x) => typeof x === "string")
+      ? fm.outputs
+      : null;
 
   return ok({
     planTitle: fm.name ?? null,
     benchmark: typeof fm.benchmark === "boolean" ? fm.benchmark : undefined,
-    planIntent: fm.overview ?? null,
+    planIntent: overview ?? null,
     tasks,
     fileTree: fileTree ?? undefined,
     risks: risks ?? undefined,
     tests: tests ?? undefined,
     body: undefined,
+    overview: overview ?? undefined,
+    objectives: objectives ?? undefined,
+    outcomes: outcomes ?? undefined,
+    outputs: outputs ?? undefined,
   });
 }
 

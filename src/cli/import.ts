@@ -3,6 +3,7 @@ import { ResultAsync } from "neverthrow";
 import { v4 as uuidv4 } from "uuid";
 import { doltCommit } from "../db/commit";
 import { sqlEscape } from "../db/escape";
+import { tableExists } from "../db/migrate";
 import { now, query, type SqlValue } from "../db/query";
 import { type AppError, buildError, ErrorCode } from "../domain/errors";
 import {
@@ -17,6 +18,9 @@ import {
 import { cancelOne } from "./cancel";
 import { getStatusCache } from "./status-cache";
 import { type Config, readConfig } from "./utils";
+
+/** Default "Unassigned" initiative ID when --initiative is omitted. */
+const UNASSIGNED_INITIATIVE_ID = "00000000-0000-4000-8000-000000000000";
 
 export function importCommand(program: Command) {
   program
@@ -52,6 +56,10 @@ export function importCommand(program: Command) {
       "--replace",
       "Cancel existing tasks that would not be matched by this import, then upsert",
     )
+    .option(
+      "--initiative <id>",
+      "Initiative ID to assign the project to. When omitted, project.initiative_id is set to the default Unassigned initiative.",
+    )
     .action(async (filePath, options, cmd) => {
       const result = await readConfig().asyncAndThen((config: Config) => {
         const currentTimestamp = now();
@@ -64,6 +72,12 @@ export function importCommand(program: Command) {
           return ResultAsync.fromPromise(
             (async () => {
               const q = query(config.doltRepoPath);
+              const hasProject = await tableExists(
+                config.doltRepoPath,
+                "project",
+              ).then((r) => (r.isOk() ? r.value : false));
+              const tableName = hasProject ? "project" : "plan";
+
               const {
                 planTitle,
                 planIntent,
@@ -71,6 +85,10 @@ export function importCommand(program: Command) {
                 fileTree,
                 risks,
                 tests,
+                overview,
+                objectives,
+                outcomes,
+                outputs,
               } = parsedPlan;
               const isBenchmark =
                 options.benchmark === true || parsedPlan.benchmark === true;
@@ -85,7 +103,7 @@ export function importCommand(program: Command) {
                 )
               ) {
                 const planResult = await q.select<{ plan_id: string }>(
-                  "project",
+                  tableName,
                   {
                     columns: ["plan_id"],
                     where: { plan_id: options.plan },
@@ -99,7 +117,7 @@ export function importCommand(program: Command) {
               // If not found by ID, try to find by title
               if (!planId) {
                 const planResult = await q.select<{ plan_id: string }>(
-                  "project",
+                  tableName,
                   {
                     columns: ["plan_id"],
                     where: { title: options.plan },
@@ -124,6 +142,34 @@ export function importCommand(program: Command) {
                   created_at: currentTimestamp,
                   updated_at: currentTimestamp,
                 };
+                if (tableName === "project") {
+                  let initiativeId: string;
+                  if (options.initiative != null && options.initiative !== "") {
+                    initiativeId = options.initiative;
+                  } else {
+                    const defaultInitResult = await q.raw<{
+                      initiative_id: string;
+                    }>(
+                      `SELECT initiative_id FROM \`initiative\` WHERE initiative_id = '${sqlEscape(UNASSIGNED_INITIATIVE_ID)}' OR title = 'Unassigned' LIMIT 1`,
+                    );
+                    if (
+                      defaultInitResult.isOk() &&
+                      defaultInitResult.value.length > 0
+                    ) {
+                      initiativeId = defaultInitResult.value[0].initiative_id;
+                    } else {
+                      initiativeId = UNASSIGNED_INITIATIVE_ID;
+                    }
+                  }
+                  insertPayload.initiative_id = initiativeId;
+                  if (overview != null) insertPayload.overview = overview;
+                  if (objectives != null && objectives.length > 0)
+                    insertPayload.objectives = JSON.stringify(objectives);
+                  if (outcomes != null && outcomes.length > 0)
+                    insertPayload.outcomes = JSON.stringify(outcomes);
+                  if (outputs != null && outputs.length > 0)
+                    insertPayload.outputs = JSON.stringify(outputs);
+                }
                 if (options.format === "cursor") {
                   if (fileTree != null) insertPayload.file_tree = fileTree;
                   if (risks != null)
@@ -132,11 +178,11 @@ export function importCommand(program: Command) {
                     insertPayload.tests = JSON.stringify(tests);
                   insertPayload.is_benchmark = isBenchmark ? 1 : 0;
                 }
-                const insertResult = await q.insert("project", insertPayload);
+                const insertResult = await q.insert(tableName, insertPayload);
                 if (insertResult.isErr()) throw insertResult.error;
 
                 console.log(
-                  `Created new plan '${newPlanTitle}' with ID: ${planId}`,
+                  `Created new project '${newPlanTitle}' with ID: ${planId}`,
                 );
                 const commitResult = await doltCommit(
                   `plan: create ${newPlanTitle} from import`,
@@ -163,8 +209,20 @@ export function importCommand(program: Command) {
                   planUpdatePayload.risks = JSON.stringify(risks);
                 if (tests != null)
                   planUpdatePayload.tests = JSON.stringify(tests);
+                if (tableName === "project") {
+                  if (options.initiative != null && options.initiative !== "")
+                    planUpdatePayload.initiative_id = options.initiative;
+                  if (overview != null) planUpdatePayload.overview = overview;
+                  if (objectives != null && objectives.length > 0)
+                    planUpdatePayload.objectives =
+                      JSON.stringify(objectives);
+                  if (outcomes != null && outcomes.length > 0)
+                    planUpdatePayload.outcomes = JSON.stringify(outcomes);
+                  if (outputs != null && outputs.length > 0)
+                    planUpdatePayload.outputs = JSON.stringify(outputs);
+                }
                 const planUpdateResult = await q.update(
-                  "project",
+                  tableName,
                   planUpdatePayload,
                   { plan_id: planId },
                 );
@@ -231,7 +289,7 @@ export function importCommand(program: Command) {
                 (countResult.value[0]?.c ?? 0) > 0
               ) {
                 const updateResult = await q.update(
-                  "project",
+                  tableName,
                   { status: "active", updated_at: currentTimestamp },
                   { plan_id: planId, status: "draft" },
                 );

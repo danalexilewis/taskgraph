@@ -35,6 +35,30 @@ All `tg` commands support the following global options:
 
 ## Commands
 
+### `tg import`
+
+Import tasks and edges from a markdown plan file. Creates or updates a **project** (stored in the `project` table). When a new project is created, prints: `Created new project '<title>' with ID: <plan_id>`.
+
+```bash
+tg import <filePath> --plan <planTitleOrId> [--format cursor|legacy] [--initiative <id>] [options]
+```
+
+**Required:**
+
+- `--plan <planTitleOrId>`: Title or ID of the project to associate tasks with (kept for backward compatibility).
+
+**Options:**
+
+- `--format <format>`: `legacy` (default) or `cursor`. Use `cursor` for plans with YAML frontmatter and `todos`.
+- `--initiative <id>`: Initiative ID to assign the project to. When omitted, `project.initiative_id` is set to the default Unassigned initiative.
+- `--external-key-prefix <prefix>`: Optional prefix for task `external_key` to avoid collisions.
+- `--no-suggest`: Disable auto-suggestion of docs/skills from file patterns.
+- `--force`: Proceed even when existing tasks would be unmatched (may create duplicates).
+- `--benchmark`: Mark the imported project as benchmark.
+- `--replace`: Cancel existing tasks that would not be matched, then upsert.
+
+**Cursor format:** Parsed frontmatter fields `overview`, `objectives`, `outcomes`, and `outputs` are stored on the project record when present.
+
 ### `tg stats`
 
 Derives agent performance metrics from the event table: tasks completed per agent, average elapsed time per task (started → done), review pass/fail counts, investigator fix rate metrics when requested, and (when self-reported) token usage and tool-call aggregates. See [performance.md](performance.md) for interpretation guidance.
