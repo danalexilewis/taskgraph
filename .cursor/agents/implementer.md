@@ -14,6 +14,11 @@ Execute a single task from the task graph. You run `tg start`, do the todos with
 
 The orchestrator must pass:
 
+- **Single-task mode (default):** When `{{TASK_ID}}` is present, use the prompt template below for one task.
+- **Batch mode (N tasks):** When the orchestrator passes `{{TASK_IDS}}` (ordered list of task UUIDs) and `{{CONTEXT_BLOCKS}}` (one context block per task: title, intent, suggested changes, docs, file tree, etc.), use the Batch mode section instead; one worktree per task, do not mix scope between tasks.
+
+Single-task inputs:
+
 - `{{TASK_ID}}` — task UUID
 - `{{AGENT_NAME}}` — unique name for this run (e.g. implementer-1 when running in parallel)
 - `{{WORKTREE_PATH}}` — **(optional)** absolute path to the task's worktree. When passed, the task is already started; `cd` to this path in Step 1 and run all work and `tg done` from there. When omitted, run `pnpm tg start {{TASK_ID}} --agent {{AGENT_NAME}} --worktree` yourself in Step 1 and obtain the path from `tg worktree list --json`. Sub-agent work uses **Worktrunk** when available (config `useWorktrunk: true` or `wt` on PATH).
@@ -59,6 +64,8 @@ SUGGESTED_FIX: (optional; what to do next, e.g. run gate:full, fix dependency, o
 
 ```
 You are the Implementer sub-agent. You execute exactly one task from the task graph. Use model=fast.
+
+**Mode:** If the orchestrator passed **{{TASK_IDS}}** and **{{CONTEXT_BLOCKS}}**, follow the **Batch mode (N tasks)** section below. Otherwise (single task), **{{TASK_ID}}** is set — follow the steps below.
 
 **At start (optional)** — To see current task state: `pnpm tg status --tasks` (task list only; no plans/initiatives).
 
@@ -144,6 +151,26 @@ SUGGESTED_FIX: reassign via watchdog - fixer if partial work, re-dispatch if no 
 
 If you cannot complete (blocked, unfixable gate/env issue): use the structured failure format (VERDICT: FAIL, REASON: ..., SUGGESTED_FIX: ...) in your reply or in `tg note {{TASK_ID}} --msg "..."`.
 ```
+
+## Batch mode (N tasks)
+
+When the orchestrator passes `{{TASK_IDS}}` (ordered list of task UUIDs) and `{{CONTEXT_BLOCKS}}` (one block per task), run the following loop. **One worktree per task; do not mix scope between tasks.**
+
+**Inputs:**
+
+- `{{TASK_IDS}}` — ordered list of task UUIDs (e.g. `id1, id2, id3` or JSON array)
+- `{{CONTEXT_BLOCKS}}` — one context block per task. Each block includes for that task: title, intent, change type, doc paths, suggested changes, file tree, etc. (same shape as the single-task context fields)
+- `{{AGENT_NAME}}` — unique name for this batch run (e.g. implementer-batch-1)
+
+**Loop (for each task in order):**
+
+1. **Start and switch to worktree** — From repo root: `pnpm tg start <taskId> --agent {{AGENT_NAME}} --worktree`. Run `pnpm tg worktree list --json`, find the entry for this task's branch, and `cd` to its `path`. All work for this task and `tg done` for this task must run from that worktree directory.
+2. **Load context for this task** — Use only the context block for the current task from `{{CONTEXT_BLOCKS}}`. Read any listed docs and skill guides. Read `docs/agent-field-guide.md` before implementation. Check `.breadcrumbs.json` for paths you will edit.
+3. **Do the work** — Implement only what the intent and suggested changes for this task describe. Stay in scope; do not touch files or scope of other tasks in the batch. Commit from the worktree: `git add -A && git commit -m "task(<hash_id>): <brief description>"`.
+4. **Complete the task** — From the **worktree directory**, run: `pnpm tg done <taskId> --merge --evidence "<brief evidence>"`. The `--merge` flag is required so the task branch is merged; do not omit it.
+5. **Next task** — Return to repo root (or the directory where you run `tg start`), then repeat from step 1 for the next task in `{{TASK_IDS}}`.
+
+Single-task mode remains the default when `{{TASK_ID}}` is present (and `{{TASK_IDS}}` / `{{CONTEXT_BLOCKS}}` are not used).
 
 ## Learnings
 
