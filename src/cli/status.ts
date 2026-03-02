@@ -1327,9 +1327,9 @@ const DASHBOARD_RESERVED_LINES = 12;
 const SUB_AGENT_TYPES_DEFINED = 12;
 
 /** Dashboard box padding for table sections: top 1, bottom 0; left/right 2. */
-const DASHBOARD_BOX_PADDING = { top: 1, bottom: 0, left: 2, right: 2 };
+export const DASHBOARD_BOX_PADDING = { top: 1, bottom: 0, left: 2, right: 2 };
 /** Stats footer: same as table boxes but bottom 1 so the footer has breathing room. */
-const DASHBOARD_FOOTER_BOX_PADDING = { top: 1, bottom: 1, left: 2, right: 2 };
+export const DASHBOARD_FOOTER_BOX_PADDING = { top: 1, bottom: 1, left: 2, right: 2 };
 
 /** Min width per column in the footer stats grid so columns stay readable; allows up to 5 columns on wide screens. */
 const FOOTER_COL_MIN = 20;
@@ -1384,7 +1384,7 @@ const STATS_LABEL = chalk.yellow;
  * Dashboard footer content as a borderless table so stats line up and fill full width.
  * Responsive: 1–5 columns depending on terminal width.
  */
-function getDashboardFooterContent(d: StatusData, innerWidth: number): string {
+export function getDashboardFooterContent(d: StatusData, innerWidth: number): string {
   const activeAgents = d.statusCounts.doing ?? 0;
   const bright = (s: string) => chalk.white(s);
   const pairs: [string, string][] = [
@@ -1446,13 +1446,13 @@ export function getDashboardFooterBox(d: StatusData, width: number): string {
  * First line of a boxed section: the section name as a clear header row inside the box.
  * Use with boxedSection("", formatSectionTitleRow("Name") + "\n" + tableContent, w, ...).
  */
-function formatSectionTitleRow(sectionName: string): string {
+export function formatSectionTitleRow(sectionName: string): string {
   return chalk.cyan.bold(`  ${sectionName}`);
 }
 
 /** Hard caps for dashboard: total data rows across both tables cannot exceed _DASHBOARD_MAX_TOTAL. */
 /** Projects section: 6 project rows + 1 Total row = 7 rows; empty lines pad when fewer than 6 projects. */
-const DASHBOARD_MAX_PLANS = 7;
+export const DASHBOARD_MAX_PLANS = 7;
 const DASHBOARD_MAX_TASKS = 13;
 const DASHBOARD_MIN_TASK_ROWS = 7;
 const _DASHBOARD_MAX_TOTAL = DASHBOARD_MAX_PLANS + DASHBOARD_MAX_TASKS;
@@ -1478,7 +1478,7 @@ export function getDashboardRowLimits(_terminalRows?: number): {
  *
  * Priority: tasks get their cap first (and at least DASHBOARD_MIN_TASK_ROWS); projects get the remainder up to their cap (min 1).
  */
-function getDashboardRowLimitsDynamic(
+export function getDashboardRowLimitsDynamic(
   actualTaskRows: number,
   actualPlanRows: number,
   terminalRows?: number,
@@ -1508,7 +1508,7 @@ function getDashboardRowLimitsDynamic(
 /**
  * Sort active plans for dashboard priority: doing first, then most ready (actionable), then most todo.
  */
-function sortActivePlansForDashboard(
+export function sortActivePlansForDashboard(
   plans: StatusData["activePlans"],
 ): StatusData["activePlans"] {
   return [...plans].sort((a, b) => {
@@ -1518,7 +1518,7 @@ function sortActivePlansForDashboard(
   });
 }
 
-function getActivePlansSectionContent(
+export function getActivePlansSectionContent(
   d: StatusData,
   w: number,
   maxRows?: number,
@@ -1662,7 +1662,7 @@ function truncatePlan(s: string): string {
  * Stale column: yellow ▲ for doing tasks started >2h ago; yellow ▲ for todo tasks unchanged >2h.
  * When maxRows is set (dashboard), slice to that many rows so the screen does not scroll.
  */
-function getMergedActiveNextContent(
+export function getMergedActiveNextContent(
   d: StatusData,
   w: number,
   maxRows?: number,

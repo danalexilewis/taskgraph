@@ -13,6 +13,7 @@ import type {
   TaskRow,
 } from "../status.js";
 import {
+  DASHBOARD_MAX_PLANS,
   fetchInitiativesTableData,
   fetchProjectsTableData,
   fetchStaleDoingTasks,
@@ -22,12 +23,19 @@ import {
   formatDashboardTasksView,
   formatInitiativesAsString,
   formatProjectsAsString,
+  formatSectionTitleRow,
   formatStatusAsString,
   formatTasksAsString,
+  getActivePlansSectionContent,
+  getDashboardFooterContent,
   getDashboardFooterLine,
+  getDashboardRowLimitsDynamic,
+  getMergedActiveNextContent,
+  sortActivePlansForDashboard,
 } from "../status.js";
+import { getBoxInnerWidthDashboard } from "./boxen.js";
 import { runLoadingProgressBar } from "./loading-progress.js";
-import { getTerminalWidth } from "../terminal.js";
+import { getTerminalHeight, getTerminalWidth } from "../terminal.js";
 import type { Config } from "../utils.js";
 
 const STATUS_ROOT_ID = "tg-status-root";
@@ -117,6 +125,161 @@ function replaceRootWithNewBox(
   renderer.root.add(newBox);
 }
 
+const SECTION_ID_PROJECTS = "tg-dash-projects";
+const SECTION_ID_TASKS = "tg-dash-tasks";
+const SECTION_ID_STATS = "tg-dash-stats";
+
+/**
+ * Build section content strings for the default dashboard (OpenTUI path).
+ * Uses same helpers as formatStatusAsString so content matches fallback.
+ */
+function getDefaultDashboardSectionContent(
+  data: StatusData,
+  w: number,
+): { projects: string; tasks: string; stats: string } {
+  const innerW = getBoxInnerWidthDashboard(w);
+  const sortedPlans = sortActivePlansForDashboard(data.activePlans);
+  const actualTaskRows = data.activeWork.length + data.nextTasks.length;
+  const actualPlanRows = data.activePlans.length;
+  const { maxTaskRows } = getDashboardRowLimitsDynamic(
+    actualTaskRows,
+    actualPlanRows,
+    getTerminalHeight(),
+  );
+  const plansContent = getActivePlansSectionContent(
+    { ...data, activePlans: sortedPlans },
+    w,
+    DASHBOARD_MAX_PLANS,
+    innerW,
+  );
+  const tasksContent = getMergedActiveNextContent(data, w, maxTaskRows, innerW);
+  const statsContent = getDashboardFooterContent(data, innerW);
+  return {
+    projects: plansContent
+      ? `${formatSectionTitleRow("Active Projects")}\n${plansContent}`
+      : "",
+    tasks: `${formatSectionTitleRow("Active tasks and upcoming")}\n${tasksContent}`,
+    stats: `${formatSectionTitleRow("Stats")}\n${statsContent}`,
+  };
+}
+
+/**
+ * Build root Box with three section Boxes (Active Projects, Active tasks, Stats).
+ * When data is undefined, each section shows "Loading...".
+ */
+function buildDefaultDashboardRoot(
+  Box: OpenTUIMod["Box"],
+  Text: OpenTUIMod["Text"],
+  w: number,
+  data?: StatusData,
+): unknown {
+  const loading = "Loading...";
+  const projectsContent = data
+    ? getDefaultDashboardSectionContent(data, w).projects || loading
+    : loading;
+  const tasksContent = data
+    ? getDefaultDashboardSectionContent(data, w).tasks
+    : loading;
+  const statsContent = data
+    ? getDefaultDashboardSectionContent(data, w).stats
+    : loading;
+
+  return Box(
+    {
+      id: STATUS_ROOT_ID,
+      border: false,
+      width: w,
+      height: "auto",
+      flexDirection: "column",
+      gap: 1,
+    },
+    Box(
+      {
+        id: SECTION_ID_PROJECTS,
+        borderStyle: "round",
+        border: true,
+        title: "Active Projects",
+        padding: 1,
+        width: w,
+      },
+      Text({ content: projectsContent }),
+    ),
+    Box(
+      {
+        id: SECTION_ID_TASKS,
+        borderStyle: "round",
+        border: true,
+        title: "Active tasks and upcoming",
+        padding: 1,
+        width: w,
+      },
+      Text({ content: tasksContent }),
+    ),
+    Box(
+      {
+        id: SECTION_ID_STATS,
+        borderStyle: "round",
+        border: true,
+        title: "Stats",
+        padding: 1,
+        width: w,
+      },
+      Text({ content: statsContent }),
+    ),
+  );
+}
+
+/**
+ * Update the three section Text nodes in place. Returns true if updated, false if structure doesn't match.
+ */
+function updateDefaultDashboardSections(
+  renderer: OpenTUIRenderer,
+  rootId: string,
+  data: StatusData,
+): boolean {
+  const root = renderer.root.getRenderable(rootId);
+  if (!root?.getChildren) return false;
+  const children = root.getChildren();
+  if (children.length !== 3) return false;
+  const w = getTerminalWidth();
+  const { projects, tasks, stats } = getDefaultDashboardSectionContent(
+    data,
+    w,
+  );
+  const sectionIds = [SECTION_ID_PROJECTS, SECTION_ID_TASKS, SECTION_ID_STATS];
+  const contents = [projects || "Loading...", tasks, stats];
+  for (let i = 0; i < 3; i++) {
+    const sectionBox = children[i];
+    if (!sectionBox?.getChildren) return false;
+    const textNode = sectionBox.getChildren()[0];
+    if (!textNode || typeof (textNode as { content?: string }).content === "undefined")
+      return false;
+    (textNode as { content: string }).content = contents[i];
+  }
+  renderer.root.requestRender?.();
+  return true;
+}
+
+/**
+ * Replace root with the multi-section dashboard root (used after error state or initial load).
+ */
+function replaceRootWithDashboardSections(
+  renderer: OpenTUIRenderer,
+  Box: OpenTUIMod["Box"],
+  Text: OpenTUIMod["Text"],
+  rootId: string,
+  data: StatusData | undefined,
+  w: number,
+): void {
+  const child = renderer.root.getRenderable(rootId);
+  if (child) {
+    child.destroy();
+    renderer.root.remove(rootId);
+  }
+  const newRoot = buildDefaultDashboardRoot(Box, Text, w, data);
+  renderer.root.add(newRoot);
+}
+
 export async function runOpenTUILive(
   config: Config,
   statusOptions: StatusOptions,
@@ -148,16 +311,7 @@ export async function runOpenTUILive(
 
   const w = getTerminalWidth();
   const { Box, Text } = mod;
-  const rootBox = Box(
-    {
-      id: STATUS_ROOT_ID,
-      borderStyle: "round",
-      border: false,
-      width: w,
-      height: "auto",
-    },
-    Text({ content: "Loading\n" }),
-  );
+  const rootBox = buildDefaultDashboardRoot(Box, Text, w, undefined);
   renderer.root.add(rootBox);
 
   const progressBar = runLoadingProgressBar({
@@ -186,16 +340,13 @@ export async function runOpenTUILive(
 
   const refreshContent = (data: StatusData) => {
     try {
-      const newContent = formatStatusAsString(data, getTerminalWidth(), {
-        dashboard: true,
-      });
-      if (!updateRootTextContent(renderer, STATUS_ROOT_ID, newContent)) {
-        replaceRootWithNewBox(
+      if (!updateDefaultDashboardSections(renderer, STATUS_ROOT_ID, data)) {
+        replaceRootWithDashboardSections(
           renderer,
           Box,
           Text,
           STATUS_ROOT_ID,
-          newContent,
+          data,
           getTerminalWidth(),
         );
       }
@@ -224,16 +375,14 @@ export async function runOpenTUILive(
           consecutiveErrors++;
           if (consecutiveErrors >= 3) {
             const msg = `[tg] DB refresh error: ${e.message}`;
-            if (!updateRootTextContent(renderer, STATUS_ROOT_ID, msg)) {
-              replaceRootWithNewBox(
-                renderer,
-                Box,
-                Text,
-                STATUS_ROOT_ID,
-                msg,
-                getTerminalWidth(),
-              );
-            }
+            replaceRootWithNewBox(
+              renderer,
+              Box,
+              Text,
+              STATUS_ROOT_ID,
+              msg,
+              getTerminalWidth(),
+            );
             renderer.root.requestRender?.();
           }
         },
