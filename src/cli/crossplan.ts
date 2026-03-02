@@ -7,8 +7,8 @@ import {
   type Result,
   ResultAsync,
 } from "neverthrow";
-import { sqlEscape } from "../db/escape";
 import { doltCommit } from "../db/commit";
+import { sqlEscape } from "../db/escape";
 import { query } from "../db/query";
 import { syncBlockedStatusForTask } from "../domain/blocked-status";
 import type { AppError } from "../domain/errors";
@@ -284,10 +284,11 @@ async function getInitiativeId(
   config: Config,
   cmd: Command,
 ): Promise<string | undefined> {
-  const parentOpts =
-    (cmd.parent && typeof (cmd.parent as Command).opts === "function"
+  const parentOpts = (
+    cmd.parent && typeof (cmd.parent as Command).opts === "function"
       ? (cmd.parent as Command).opts()
-      : {}) as { initiative?: string };
+      : {}
+  ) as { initiative?: string };
   if (!parentOpts.initiative) return undefined;
   const result = await resolveInitiativeId(
     config.doltRepoPath,

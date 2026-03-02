@@ -28,12 +28,18 @@ else
   CHANGED=$(printf '%s\n' "${FILES[@]}")
 fi
 
-echo "=== [LINT] biome check ==="
-npx @biomejs/biome check src/ __tests__/ scripts/
-
+# Lint and typecheck are independent; run in parallel for gate:full to save wall time
 if [[ -n "$FULL" ]]; then
-  bash scripts/typecheck.sh --all
+  echo "=== [LINT] biome check (parallel with typecheck) ==="
+  npx @biomejs/biome check src/ __tests__/ scripts/ &
+  LINT_PID=$!
+  bash scripts/typecheck.sh --all &
+  TC_PID=$!
+  wait "$LINT_PID" || exit $?
+  wait "$TC_PID" || exit $?
 else
+  echo "=== [LINT] biome check ==="
+  npx @biomejs/biome check src/ __tests__/ scripts/
   bash scripts/typecheck.sh
 fi
 

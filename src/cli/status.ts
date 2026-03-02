@@ -4,7 +4,7 @@ import { errAsync, okAsync, ResultAsync } from "neverthrow";
 import { sqlEscape } from "../db/escape";
 import { tableExists } from "../db/migrate";
 import { query } from "../db/query";
-import { buildError, type AppError, ErrorCode } from "../domain/errors";
+import { type AppError, buildError, ErrorCode } from "../domain/errors";
 import { renderTable } from "./table";
 import {
   enterAlternateScreen,
@@ -32,13 +32,18 @@ export function resolveInitiativeId(
   if (UUID_REGEX.test(value)) return okAsync(value);
   const q = query(repoPath);
   const sql = `SELECT initiative_id FROM \`initiative\` WHERE title = '${sqlEscape(value)}' LIMIT 1`;
-  return q.raw<{ initiative_id: string }>(sql).andThen((rows) =>
-    rows[0]
-      ? okAsync(rows[0].initiative_id)
-      : errAsync(
-        buildError(ErrorCode.VALIDATION_FAILED, `Initiative not found: ${value}`),
-      ),
-  );
+  return q
+    .raw<{ initiative_id: string }>(sql)
+    .andThen((rows) =>
+      rows[0]
+        ? okAsync(rows[0].initiative_id)
+        : errAsync(
+            buildError(
+              ErrorCode.VALIDATION_FAILED,
+              `Initiative not found: ${value}`,
+            ),
+          ),
+    );
 }
 
 const INITIATIVES_STUB_MESSAGE =
@@ -927,8 +932,9 @@ export function statusCommand(program: Command) {
           console.error("tg status --dashboard does not support --json");
           process.exit(1);
         }
-        const { runOpenTUILiveInitiatives } =
-          await import("./tui/live-opentui.js");
+        const { runOpenTUILiveInitiatives } = await import(
+          "./tui/live-opentui.js"
+        );
         try {
           await runOpenTUILiveInitiatives(config, statusOptions);
           return;
@@ -1068,8 +1074,9 @@ export function statusCommand(program: Command) {
         const config = configResult.value;
 
         if (viewMode === "projects") {
-          const { runOpenTUILiveProjects } =
-            await import("./tui/live-opentui.js");
+          const { runOpenTUILiveProjects } = await import(
+            "./tui/live-opentui.js"
+          );
           try {
             await runOpenTUILiveProjects(config, statusOptions);
             return;

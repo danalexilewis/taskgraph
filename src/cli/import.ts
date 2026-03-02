@@ -203,7 +203,10 @@ export function importCommand(program: Command) {
                   created_at: currentTimestamp,
                   updated_at: currentTimestamp,
                 };
-                if (tableName === "project" && effectiveInitiativeId !== undefined) {
+                if (
+                  tableName === "project" &&
+                  effectiveInitiativeId !== undefined
+                ) {
                   insertPayload.initiative_id = effectiveInitiativeId;
                   if (overview != null) insertPayload.overview = overview;
                   if (objectives != null && objectives.length > 0)
@@ -252,7 +255,10 @@ export function importCommand(program: Command) {
                   planUpdatePayload.risks = JSON.stringify(risks);
                 if (tests != null)
                   planUpdatePayload.tests = JSON.stringify(tests);
-                if (tableName === "project" && effectiveInitiativeId !== undefined) {
+                if (
+                  tableName === "project" &&
+                  effectiveInitiativeId !== undefined
+                ) {
                   planUpdatePayload.initiative_id = effectiveInitiativeId;
                   if (overview != null) planUpdatePayload.overview = overview;
                   if (objectives != null && objectives.length > 0)
