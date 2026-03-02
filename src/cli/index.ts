@@ -129,6 +129,8 @@ if (isMainEntrypoint) {
   createProgram()
     .parseAsync(process.argv)
     .then(() => closeAllServerPools())
-    .then(() => process.exit(0))
+    .then(() => {
+      process.exitCode = 0;
+    })
     .catch(() => process.exit(1));
 }
