@@ -222,6 +222,18 @@ For deeper token-level analytics beyond what `tg stats` provides:
 
 For now, Dolt's event table is the primary analytics store. OTLP integration is a future upgrade path if volume or reporting needs grow.
 
+## Productivity benchmark
+
+A custom benchmark suite for productivity and CLI timing lives in [.benchmark/](.benchmark/README.md). It holds problem definitions, runner scripts, and (gitignored) results.
+
+**How to run:** use the benchmark runner to time one or more commands, e.g.:
+
+```bash
+bun scripts/run-benchmark.ts "pnpm tg status"
+```
+
+For CSV output: `bun scripts/run-benchmark.ts --csv "<command>" [<command>...]`. See [.benchmark/README.md](.benchmark/README.md) for structure and usage.
+
 ## Related Projects
 
 - Performance Intelligence (2026-03-01) — added `tg stats --plan`, `tg stats --timeline`, stale-task warning, `tg done` self-report flags, and `tg context` scope compression
