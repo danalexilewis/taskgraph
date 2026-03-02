@@ -1,0 +1,8 @@
+{
+  "name": "task_01_cli_command_stub",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "cli": "bun run src/cli.ts"
+  }
+}
