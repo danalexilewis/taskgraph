@@ -25,6 +25,7 @@ exports/
 coverage/
 
 # Package manager
+.pnpm-store
 .pnpm-debug.log*
 .yarn-integrity
 
