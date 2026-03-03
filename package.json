@@ -28,6 +28,7 @@
     "test:integration": "npm run build && bun run scripts/run-integration-global-setup.ts && (bun test __tests__/integration; r=$?; bun run scripts/run-integration-global-teardown.ts; exit $r)",
     "test:e2e": "npm run build && bun test __tests__/e2e",
     "test:all": "npm run build && bun test __tests__ --concurrent",
+    "test:coverage": "bun test --coverage",
     "doctor": "bash scripts/doctor.sh",
     "precommit": "node scripts/pre-commit.js",
     "publish": "npm publish"
