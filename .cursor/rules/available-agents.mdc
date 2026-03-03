@@ -55,6 +55,8 @@ Quick-pick table — use this before deciding which agent to dispatch:
 - **implementer** — first attempt at a task (fast model)
 - **fixer** — escalation after 2 implementer failures (inherits session model = Sonnet/Opus); amends existing changes rather than redoing
 
+**product-analyst vs planner-analyst:** Both read-only, used by /plan. **product-analyst** runs only in Strategic mode (Phase 0); returns goals, options, outcomes, priorities — no codebase exploration. **planner-analyst** runs for every plan (Phase 1); explores codebase and task graph and produces structured analysis for the orchestrator to write the plan.
+
 ---
 
 ## Lead Roles and Formation

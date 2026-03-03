@@ -5,7 +5,7 @@ description: Create a rich project plan with codebase analysis, file trees, risk
 
 # Plan — Rich Plan Creation
 
-**Lead documentation:** See [docs/leads/planner-analyst.md](docs/leads/planner-analyst.md). **Shared learnings for sub-agents:** [.cursor/agent-utility-belt.md](../../agent-utility-belt.md).
+**Lead documentation:** See [docs/leads/planner-analyst.md](docs/leads/planner-analyst.md) and [docs/leads/product-analyst.md](docs/leads/product-analyst.md) (Strategic mode). **Shared learnings for sub-agents:** [.cursor/agent-utility-belt.md](../../agent-utility-belt.md).
 
 ## Architecture
 
