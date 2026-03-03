@@ -25,6 +25,7 @@ Docs in this folder form a **DDD-inspired domain knowledge base**. Each doc cove
 | `agent-context`        | [agent-context.md](agent-context.md)                                                                                                                        | SQLite event store for cross-agent state visibility                 |
 | `agent-system`         | [AGENT.md](../AGENT.md), [agent-contract.md](agent-contract.md), [agent-strategy.md](agent-strategy.md), [multi-agent.md](multi-agent.md), [leads/](leads/) | Agent contract, workflow, and lead registry                         |
 | `breadcrumbs`          | [breadcrumbs.md](breadcrumbs.md)                                                                                                                            | Path-scoped committed clues for async agent-to-agent coordination   |
+| `transcript-schema`    | [transcript-schema.md](transcript-schema.md)                                                                                                                 | Agent transcript .jsonl structure for tool-call detection            |
 
 Use the slug (e.g. `schema`, `plan-import`) as the task’s `domain` in plan YAML.
 
