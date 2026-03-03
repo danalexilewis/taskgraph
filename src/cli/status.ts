@@ -3,9 +3,11 @@ import ansiDiff from "ansi-diff";
 import chalk from "chalk";
 import type { Command } from "commander";
 import { errAsync, okAsync, ResultAsync } from "neverthrow";
+import type { QueryCache } from "../db/cache";
 import { sqlEscape } from "../db/escape";
 import { tableExists } from "../db/migrate";
-import { query } from "../db/query";
+import { cachedQuery, query } from "../db/query";
+import { getStatusCache, statusCacheTtlMs } from "./status-cache";
 import { type AppError, buildError, ErrorCode } from "../domain/errors";
 import { renderTable } from "./table";
 import {
@@ -236,8 +238,13 @@ export interface StatusData {
 export function fetchStatusData(
   config: Config,
   options: StatusOptions,
+  cache?: QueryCache,
 ): ResultAsync<StatusData, AppError> {
-  const q = query(config.doltRepoPath);
+  const q = cachedQuery(
+    config.doltRepoPath,
+    cache ?? getStatusCache(),
+    statusCacheTtlMs,
+  );
 
   const isUUID =
     options.plan &&
@@ -650,8 +657,13 @@ export function fetchStaleDoingTasks(
 export function fetchProjectsTableData(
   config: Config,
   options: StatusOptions,
+  cache?: QueryCache,
 ): ResultAsync<ProjectRow[], AppError> {
-  const q = query(config.doltRepoPath);
+  const q = cachedQuery(
+    config.doltRepoPath,
+    cache ?? getStatusCache(),
+    statusCacheTtlMs,
+  );
   const isUUID =
     options.plan &&
     /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(
@@ -716,8 +728,13 @@ export function fetchProjectsTableData(
 export function fetchTasksTableData(
   config: Config,
   options: StatusOptions,
+  cache?: QueryCache,
 ): ResultAsync<TaskRow[], AppError> {
-  const q = query(config.doltRepoPath);
+  const q = cachedQuery(
+    config.doltRepoPath,
+    cache ?? getStatusCache(),
+    statusCacheTtlMs,
+  );
   const isUUID =
     options.plan &&
     /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(
@@ -777,8 +794,13 @@ export function fetchTasksTableData(
 export function fetchInitiativesTableData(
   config: Config,
   options: StatusOptions,
+  cache?: QueryCache,
 ): ResultAsync<InitiativeRow[], AppError> {
-  const q = query(config.doltRepoPath);
+  const q = cachedQuery(
+    config.doltRepoPath,
+    cache ?? getStatusCache(),
+    statusCacheTtlMs,
+  );
   const filterUpcoming =
     options.filter === "upcoming"
       ? ` AND (i.${bt("status")} = 'draft' OR i.${bt("cycle_start")} > CURDATE()) `

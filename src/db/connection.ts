@@ -30,6 +30,41 @@ const execaSemaphores = new Map<string, ExecaSemaphore>();
 /** Max wait (ms) to acquire the execa slot before failing. Prevents indefinite hang when another Dolt operation is stuck. */
 const EXECA_SLOT_WAIT_TIMEOUT_MS = 60_000;
 
+/** True when Dolt failed because the default/main branch is missing or unresolved (active_branch() nil). */
+function isUnresolvedBranchError(e: unknown): boolean {
+  const cause =
+    e &&
+    typeof e === "object" &&
+    "cause" in e &&
+    (e as { cause: unknown }).cause;
+  const raw = cause ?? e;
+  const msg =
+    typeof (raw as { message?: string })?.message === "string"
+      ? (raw as { message: string }).message
+      : "";
+  const stderr =
+    typeof (raw as { stderr?: string })?.stderr === "string"
+      ? (raw as { stderr: string }).stderr
+      : "";
+  const combined = `${msg} ${stderr}`;
+  return (
+    /cannot resolve default branch/i.test(combined) ||
+    /active_branch.*nil|non-string column.*active_branch/i.test(combined)
+  );
+}
+
+/** Ensure main branch exists so Dolt can resolve the default branch. Idempotent if main already exists. */
+async function repairMainBranch(repoPath: string): Promise<void> {
+  await execa(doltPath(), ["--data-dir", repoPath, "checkout", "-b", "main"], {
+    cwd: repoPath,
+    env: {
+      ...process.env,
+      DOLT_READ_ONLY: "false",
+      DOLT_DISABLE_UPDATE_CHECK: "1",
+    },
+  });
+}
+
 function acquireExecaSlot(repoPath: string): Promise<() => void> {
   let sem = execaSemaphores.get(repoPath);
   if (!sem) {
@@ -389,8 +424,21 @@ export function doltSql(
     });
   };
 
-  if (options?.branch) {
-    return checkoutBranch(repoPath, options.branch).andThen(runQuery);
-  }
-  return runQuery();
+  const runOnce = (): ResultAsync<unknown[], AppError> =>
+    options?.branch
+      ? checkoutBranch(repoPath, options.branch).andThen(runQuery)
+      : runQuery();
+
+  return runOnce().orElse((e) => {
+    if (!isUnresolvedBranchError(e)) return errAsync(e);
+    return ResultAsync.fromPromise(
+      repairMainBranch(repoPath),
+      (repairErr) =>
+        buildError(
+          ErrorCode.DB_QUERY_FAILED,
+          "Could not repair Dolt main branch. Try: cd .taskgraph/dolt && dolt checkout -b main",
+          repairErr,
+        ),
+    ).andThen(() => runOnce());
+  });
 }
