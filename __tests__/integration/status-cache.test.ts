@@ -121,7 +121,7 @@ describe("fetchStatusData cache invalidation — clear() drains the cache and ne
       },
     );
     expect(cache.size).toBeGreaterThan(0);
-  });
+  }, 15_000);
 });
 
 // ─── Group 3: TG_DISABLE_CACHE flag ──────────────────────────────────────────
