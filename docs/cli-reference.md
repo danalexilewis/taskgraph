@@ -182,6 +182,38 @@ tg plan set-priority "Gate Full Triage" 1
 # Priority set to 1 for plan 88f2a555-7464-4be3-ab5d-419765d3fca7
 ```
 
+### `tg plan summary --plan <planId> [--format commit]`
+
+Generates a PR-style plan summary (subject + body) for use as a commit message or display. Uses the plan title, intent, done tasks (with evidence from `done` events), and note messages. Suitable for `git commit -F` or `-m -m` when merging a plan branch.
+
+```bash
+tg plan summary --plan <planId> [--format full|commit]
+```
+
+**Required:**
+
+- `--plan <planId>`: Plan (project) ID.
+
+**Options:**
+
+- `--format <format>`: `full` (default) or `commit`. Both output a subject line then a body; `commit` is the same structure (first line = subject, blank line, then body sections).
+
+**Output:**
+
+- **Subject:** `plan: <title> — N tasks` (N = number of done tasks).
+- **Body sections:** `## What changed` (plan title + bullet list of done task titles), `## Why` (plan intent), `## Key insights` (note messages or "(None)"), `## Deliverables` (done task titles with evidence when present).
+- With no done tasks, output is minimal: subject line only (`plan: <title> — 0 tasks`) so merge steps never block.
+
+**Example:**
+
+```bash
+tg plan summary --plan 88f2a555-7464-4be3-ab5d-419765d3fca7
+# Output: subject line, then ## What changed, ## Why, ## Key insights, ## Deliverables
+
+tg plan summary --plan 88f2a555-7464-4be3-ab5d-419765d3fca7 --format commit
+# Same content; first line is subject, blank line, then body (for git commit -F).
+```
+
 ### `tg task new <title>`
 
 Creates a new task within an existing plan.
