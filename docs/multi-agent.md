@@ -50,6 +50,20 @@ Task-Graph uses **Worktrunk (wt)** as the standard backend when available: set `
 
 See [cli-reference.md](cli-reference.md) (worktree section) and `.cursor/rules/subagent-dispatch.mdc`.
 
+### Worktree / Worktrunk failure conditions
+
+The CLI emits the following error messages when worktree/Worktrunk operations fail. The underlying cause is stored in `AppError.cause` and is surfaced when `tg start` fails (after the task *surface-worktree-cause*).
+
+| Message (or pattern) | Possible causes | Notes |
+| -------------------- | ---------------- | ----- |
+| `Worktrunk worktree create failed for <id>` | `wt` not on PATH; `wt switch --create` failed (permissions, disk, git state) | Task worktree creation; `<id>` is task ID. |
+| `Worktrunk worktree create failed for <branchName>` | Same as above; `<branchName>` is plan or task branch. | Plan or task branch create. |
+| `Worktrunk worktree create failed for existing branch <branchName>` | Branch exists but worktree missing; `wt switch` (no `--create`) failed. | Fallback when branch already exists. |
+| `Worktrunk worktree list failed` | `wt` not on PATH; `wt list` failed or returned non-JSON. | Path resolution after create depends on list. |
+| `Could not find worktree path for branch X after creation` | `wt list` output format changed; branch not in list; path missing. | Create succeeded but path lookup failed. |
+| `Plan branch X exists but could not find worktree path` | Plan branch in DB but no worktree on disk; `wt list` missing entry. | Seen in `tg start` when resolving plan worktree. |
+| `Worktrunk requested but not available` | `wt` not on PATH; `useWorktrunk: true` but `resolveBackendFromConfig` threw. | Backend resolution before any `wt` call. |
+
 ## CLI Additions
 
 | Command                                                | Purpose                                                                                          |
