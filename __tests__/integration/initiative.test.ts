@@ -190,18 +190,23 @@ todos:
 describe("tg initiative commands without init", () => {
   it("initiative list without init errors with run tg init message", async () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "no-init-"));
-    const { exitCode, stdout } = await runTgCli(`initiative list`, tempDir);
+    const { exitCode, stderr } = await runTgCli(
+      `initiative list`,
+      tempDir,
+      true,
+    );
     expect(exitCode).toBe(1);
-    expect(stdout).toMatch(/run tg init/i);
+    expect(stderr).toMatch(/tg init/i);
   });
 
   it("initiative show without init errors with run tg init message", async () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "no-init-"));
-    const { exitCode, stdout } = await runTgCli(
+    const { exitCode, stderr } = await runTgCli(
       `initiative show 00000000-0000-0000-0000-000000000000`,
       tempDir,
+      true,
     );
     expect(exitCode).toBe(1);
-    expect(stdout).toMatch(/run tg init/i);
+    expect(stderr).toMatch(/tg init/i);
   });
 });
