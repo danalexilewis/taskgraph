@@ -1,5 +1,6 @@
 import type { Command } from "commander";
 import { errAsync, okAsync, type ResultAsync } from "neverthrow";
+import type { Config } from "../config";
 import { doltSql } from "../db/connection";
 import { sqlEscape } from "../db/escape";
 import { query } from "../db/query";
@@ -49,6 +50,65 @@ export function resolveTaskId(
       "Task ID must be a UUID or a hash id (tg-XXXXXX)",
     ),
   );
+}
+
+/**
+ * Resolves an array of user-supplied IDs (short hash_id or full UUID) to task_id list with per-ID errors.
+ * UUIDs pass through; hash_ids are resolved via a single SELECT. Validates 1:1 (missing or duplicate hash_id → error for that ID).
+ * Returns { resolved, errors } so the caller can build results.
+ */
+export function resolveTaskIdsBatch(
+  config: Config,
+  ids: string[],
+): ResultAsync<
+  { resolved: Map<string, string>; errors: Map<string, string> },
+  AppError
+> {
+  const resolved = new Map<string, string>();
+  const errors = new Map<string, string>();
+  const invalidMessage =
+    "Task ID must be a UUID or a hash id (tg-XXXXXX)";
+
+  for (const id of ids) {
+    if (UUID_REGEX.test(id)) {
+      resolved.set(id, id);
+    } else if (!isHashId(id)) {
+      errors.set(id, invalidMessage);
+    }
+  }
+
+  const hashIdInputs = ids.filter(isHashId);
+  const uniqueHashIds = [...new Set(hashIdInputs)];
+  if (uniqueHashIds.length === 0) {
+    return okAsync({ resolved, errors });
+  }
+
+  const idList = uniqueHashIds.map((id) => `'${sqlEscape(id)}'`).join(",");
+  const sql = `SELECT \`hash_id\`, \`task_id\` FROM \`task\` WHERE \`hash_id\` IN (${idList})`;
+  const repoPath = config.doltRepoPath;
+  const q = query(repoPath);
+
+  return q
+    .raw<{ hash_id: string; task_id: string }>(sql)
+    .map((rows) => {
+      const hashIdToTaskIds = new Map<string, string[]>();
+      for (const r of rows) {
+        const arr = hashIdToTaskIds.get(r.hash_id) ?? [];
+        arr.push(r.task_id);
+        hashIdToTaskIds.set(r.hash_id, arr);
+      }
+      for (const id of hashIdInputs) {
+        const arr = hashIdToTaskIds.get(id);
+        if (!arr || arr.length === 0) {
+          errors.set(id, `No task found with hash_id '${id}'`);
+        } else if (arr.length > 1) {
+          errors.set(id, `Multiple tasks matched hash_id '${id}'`);
+        } else {
+          resolved.set(id, arr[0]);
+        }
+      }
+      return { resolved, errors };
+    });
 }
 
 /**
