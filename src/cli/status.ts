@@ -278,10 +278,13 @@ export function fetchStatusData(
       : `WHERE p.title = '${sqlEscape(options.plan)}'`
     : "";
 
-  /** Total completed projects in tg (project.status = 'done'); no plan/dimension filter. Used for dashboard "Projects done" stat. */
-  const completedPlansSql = `SELECT COUNT(*) AS count FROM ${bt("project")} WHERE status = 'done'`;
-  const completedTasksSql = `SELECT COUNT(*) AS count FROM ${bt("task")} WHERE status = 'done'`;
-  const canceledTasksSql = `SELECT COUNT(*) AS count FROM ${bt("task")} WHERE status = 'canceled'`;
+  /** Global counts in one round-trip (no plan/dimension filter). */
+  const globalCountsSql = `
+    SELECT
+      (SELECT COUNT(*) FROM ${bt("project")} WHERE status = 'done') AS completed_plans,
+      (SELECT COUNT(*) FROM ${bt("task")} WHERE status = 'done') AS completed_tasks,
+      (SELECT COUNT(*) FROM ${bt("task")} WHERE status = 'canceled') AS canceled_tasks
+  `;
   const agentMetricsSql = `
     SELECT
       (SELECT COUNT(DISTINCT JSON_UNQUOTE(JSON_EXTRACT(body, '$.agent'))) FROM ${bt("event")} WHERE kind = 'started' AND JSON_EXTRACT(body, '$.agent') IS NOT NULL) AS agent_count,
@@ -348,21 +351,13 @@ export function fetchStatusData(
     ${dimFilter}
     ${excludeCanceledAbandoned}
   `;
-  const nextSql = `
-    SELECT t.task_id, t.hash_id, t.title, p.title as plan_title, t.updated_at
-    FROM ${bt("task")} t
-    JOIN ${bt("project")} p ON t.plan_id = p.plan_id
-    WHERE t.status = 'todo'
-    AND (SELECT COUNT(*) FROM ${bt("edge")} e
-         JOIN ${bt("task")} bt ON e.from_task_id = bt.task_id
-         WHERE e.to_task_id = t.task_id AND e.type = 'blocks'
-         AND bt.status NOT IN ('done','canceled')) = 0
-    ${options.plan ? (isUUID ? `AND p.plan_id = '${sqlEscape(options.plan)}'` : `AND p.title = '${sqlEscape(options.plan)}'`) : ""}
-    ${dimFilter}
-    ${excludeCanceledAbandoned}
-    ORDER BY p.priority ASC, t.created_at ASC
-    LIMIT 3
+  /** Plans count + actionable count in one round-trip (same filters). */
+  const plansAndActionableSql = `
+    SELECT
+      (${plansCountSql}) AS plans_count,
+      (${actionableCountSql}) AS actionable_count
   `;
+  /** Next runnable tasks: one query LIMIT 7, then slice to next (3) and next7 (7) in JS. */
   const next7Sql = `
     SELECT t.task_id, t.hash_id, t.title, p.title as plan_title, t.updated_at
     FROM ${bt("task")} t
@@ -427,19 +422,24 @@ export function fetchStatusData(
     investigator_runs: number;
     total_agent_minutes: number;
   }
-  // All queries are independent reads — run them all in parallel.
+  interface GlobalCountsRow {
+    completed_plans: number;
+    completed_tasks: number;
+    canceled_tasks: number;
+  }
+  interface PlansAndActionableRow {
+    plans_count: number;
+    actionable_count: number;
+  }
+  // All queries are independent reads — run them in parallel (merged counts and next/next7 reduce round-trips).
   return ResultAsync.combine([
-    q.raw<{ count: number }>(completedPlansSql),
-    q.raw<{ count: number }>(completedTasksSql),
-    q.raw<{ count: number }>(canceledTasksSql),
+    q.raw<GlobalCountsRow>(globalCountsSql),
     q.raw<AgentMetricsRow>(agentMetricsSql),
     q.raw<ActivePlanRow>(activePlansSql),
     q.raw<{ plan_id: string; count: number }>(actionablePerPlanSql),
     q.raw<{ task_id: string; hash_id: string | null; title: string }>(staleSql),
-    q.raw<{ count: number }>(plansCountSql),
+    q.raw<PlansAndActionableRow>(plansAndActionableSql),
     q.raw<{ status: string; count: number }>(statusCountsSql),
-    q.raw<{ count: number }>(actionableCountSql),
-    q.raw<NextTaskRow>(nextSql),
     q.raw<NextTaskRow>(next7Sql),
     q.raw<LastCompletedTaskRow>(last7CompletedSql),
     q.raw<PlanSummaryRow>(next7UpcomingPlansSql),
@@ -448,18 +448,14 @@ export function fetchStatusData(
     fetchStaleDoingTasks(config.doltRepoPath, options.staleThreshold ?? 2),
   ] as const).andThen(
     ([
-      cpRes,
-      ctRes,
-      canRes,
+      globalCountsRes,
       amRes,
       apRows,
       actionableRows,
       staleRows,
-      plansRes,
+      plansAndActionableRes,
       statusRows,
-      actionableRes,
-      nextTasks,
-      next7RunnableTasks,
+      next7Rows,
       last7CompletedTasks,
       next7UpcomingPlans,
       last7CompletedPlans,
@@ -467,9 +463,15 @@ export function fetchStatusData(
       staleDoingTasks,
     ]) => {
       {
-        const completedPlans = Number(cpRes[0]?.count ?? 0);
-        const completedTasks = Number(ctRes[0]?.count ?? 0);
-        const canceledTasks = Number(canRes[0]?.count ?? 0);
+        const gc = globalCountsRes[0];
+        const completedPlans = Number(gc?.completed_plans ?? 0);
+        const completedTasks = Number(gc?.completed_tasks ?? 0);
+        const canceledTasks = Number(gc?.canceled_tasks ?? 0);
+        const nextTasks = next7Rows.slice(0, 3);
+        const next7RunnableTasks = next7Rows;
+        const pa = plansAndActionableRes[0];
+        const plansCount = Number(pa?.plans_count ?? 0);
+        const actionableCount = Number(pa?.actionable_count ?? 0);
         const agentCount = Number(amRes[0]?.agent_count ?? 0);
         const subAgentRuns = Number(amRes[0]?.sub_agent_runs ?? 0);
         const investigatorRuns = Number(amRes[0]?.investigator_runs ?? 0);
@@ -539,9 +541,9 @@ export function fetchStatusData(
           next7UpcomingPlans,
           last7CompletedPlans,
           activeWork,
-          plansCount: Number(plansRes[0]?.count ?? 0),
+          plansCount,
           statusCounts,
-          actionableCount: Number(actionableRes[0]?.count ?? 0),
+          actionableCount,
           agentCount,
           subAgentRuns,
           totalAgentHours,
@@ -550,37 +552,13 @@ export function fetchStatusData(
           subAgentTypesDefined: SUB_AGENT_TYPES_DEFINED,
         };
 
-        return tableExists(config.doltRepoPath, "initiative")
-          .andThen((initiativeExists) => {
-            if (!initiativeExists) return okAsync(base);
-            const initiativeSql = `
+        const initiativeSql = `
               SELECT p.plan_id, i.title AS initiative_title
               FROM ${bt("project")} p
               LEFT JOIN ${bt("initiative")} i ON p.initiative_id = i.initiative_id
               WHERE p.status NOT IN ('done', 'abandoned')
               ${options.plan ? (isUUID ? `AND p.plan_id = '${sqlEscape(options.plan)}'` : `AND p.title = '${sqlEscape(options.plan)}'`) : ""}`;
-            return q
-              .raw<{
-                plan_id: string;
-                initiative_title: string | null;
-              }>(initiativeSql)
-              .map((rows) => {
-                const imap = new Map(
-                  rows.map((r) => [r.plan_id, r.initiative_title ?? null]),
-                );
-                return {
-                  ...base,
-                  activePlans: base.activePlans.map((p) => ({
-                    ...p,
-                    initiative: imap.get(p.plan_id) ?? null,
-                  })),
-                };
-              });
-          })
-          .andThen((baseWithInitiative) =>
-            tableExists(config.doltRepoPath, "cycle").andThen((cycleExists) => {
-              if (!cycleExists) return okAsync(baseWithInitiative);
-              const currentCycleSql = `
+        const currentCycleSql = `
           SELECT c.name, c.start_date, c.end_date,
                  COUNT(DISTINCT i.initiative_id) AS initiative_count
           FROM ${bt("cycle")} c
@@ -588,19 +566,48 @@ export function fetchStatusData(
           WHERE CURDATE() BETWEEN c.start_date AND c.end_date
           GROUP BY c.cycle_id, c.name, c.start_date, c.end_date
           LIMIT 1`;
-              return q
-                .raw<{
+        return ResultAsync.combine([
+          tableExists(config.doltRepoPath, "initiative"),
+          tableExists(config.doltRepoPath, "cycle"),
+        ] as const).andThen(([initiativeExists, cycleExists]) =>
+          ResultAsync.combine([
+            initiativeExists
+              ? q.raw<{
+                  plan_id: string;
+                  initiative_title: string | null;
+                }>(initiativeSql)
+              : okAsync([]),
+            cycleExists
+              ? q.raw<{
                   name: string;
                   start_date: string;
                   end_date: string;
                   initiative_count: number;
                 }>(currentCycleSql)
-                .map((rows) => ({
-                  ...baseWithInitiative,
-                  currentCycle: rows[0] ?? null,
-                }));
-            }),
-          );
+              : okAsync([]),
+          ] as const).map(([initiativeRows, cycleRows]) => {
+            let data: StatusData = base;
+            if (initiativeRows.length > 0) {
+              const imap = new Map(
+                initiativeRows.map((r) => [r.plan_id, r.initiative_title ?? null]),
+              );
+              data = {
+                ...data,
+                activePlans: data.activePlans.map((p) => ({
+                  ...p,
+                  initiative: imap.get(p.plan_id) ?? null,
+                })),
+              };
+            }
+            if (cycleRows.length > 0) {
+              data = {
+                ...data,
+                currentCycle: cycleRows[0] ?? null,
+              };
+            }
+            return data;
+          }),
+        );
       }
     },
   );
