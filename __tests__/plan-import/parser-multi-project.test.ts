@@ -87,8 +87,14 @@ todos:
       name: "Strategic",
       overview: "Multi-project format.",
       projects: [
-        { name: "P1", todos: [{ id: "p1-a", content: "P1 Task", status: "pending" }] },
-        { name: "P2", todos: [{ id: "p2-a", content: "P2 Task", status: "pending" }] },
+        {
+          name: "P1",
+          todos: [{ id: "p1-a", content: "P1 Task", status: "pending" }],
+        },
+        {
+          name: "P2",
+          todos: [{ id: "p2-a", content: "P2 Task", status: "pending" }],
+        },
       ],
     };
 

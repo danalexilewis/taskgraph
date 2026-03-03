@@ -1,6 +1,10 @@
 import { errAsync, ok, ResultAsync } from "neverthrow";
-import { readConfig } from "../config";
+import { recoverStaleTasks } from "../cli/recover";
+import type { StatusOptions } from "../cli/status";
+import { fetchStatusData } from "../cli/status";
+import { resolveTaskId } from "../cli/utils";
 import type { Config } from "../config";
+import { readConfig } from "../config";
 import { sqlEscape } from "../db/escape";
 import { query } from "../db/query";
 import { type AppError, buildError, ErrorCode } from "../domain/errors";
@@ -9,10 +13,6 @@ import {
   compactContext,
   estimateJsonTokens,
 } from "../domain/token-estimate";
-import { recoverStaleTasks } from "../cli/recover";
-import { resolveTaskId } from "../cli/utils";
-import { fetchStatusData } from "../cli/status";
-import type { StatusOptions } from "../cli/status";
 import type { ContextResult, NextTaskRow, StatusResult } from "./types";
 
 async function runContextChain(
@@ -32,7 +32,14 @@ async function runContextChain(
     suggested_changes: string | null;
     agent: string | null;
   }>("task", {
-    columns: ["task_id", "title", "change_type", "plan_id", "suggested_changes", "agent"],
+    columns: [
+      "task_id",
+      "title",
+      "change_type",
+      "plan_id",
+      "suggested_changes",
+      "agent",
+    ],
     where: { task_id: taskIdResolved },
   });
   if (taskRows.isErr()) throw taskRows.error;
@@ -81,13 +88,19 @@ async function runContextChain(
   const doc_paths = docs.map((d) => `docs/${d}.md`);
   const skill_docs = skills.map((s) => `docs/skills/${s}.md`);
 
-  const blockerResult = await q.raw<{ task_id: string; title: string; status: string }>(
+  const blockerResult = await q.raw<{
+    task_id: string;
+    title: string;
+    status: string;
+  }>(
     `SELECT e.from_task_id AS task_id, t.title, t.status FROM \`edge\` e JOIN \`task\` t ON e.from_task_id = t.task_id WHERE e.to_task_id = '${sqlEscape(taskIdResolved)}' AND e.type = 'blocks'`,
   );
   if (blockerResult.isErr()) throw blockerResult.error;
   const blockerRows = blockerResult.value;
 
-  const doneBlockerIds = blockerRows.filter((b) => b.status === "done").map((b) => b.task_id);
+  const doneBlockerIds = blockerRows
+    .filter((b) => b.status === "done")
+    .map((b) => b.task_id);
   const evidenceByTaskId = new Map<string, string>();
   if (doneBlockerIds.length > 0) {
     const evidenceResult = await q.raw<{ task_id: string; body: string }>(
@@ -203,7 +216,10 @@ export class TgClient {
       const limit = Math.max(1, options.limit ?? 10);
       let planFilter = "";
       if (options.plan) {
-        const isUUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(options.plan);
+        const isUUID =
+          /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(
+            options.plan,
+          );
         planFilter = isUUID
           ? `AND p.plan_id = '${sqlEscape(options.plan)}'`
           : `AND p.title = '${sqlEscape(options.plan)}'`;

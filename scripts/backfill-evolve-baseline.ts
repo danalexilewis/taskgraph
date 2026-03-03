@@ -11,7 +11,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 const REPORTS_DIR = path.join(process.cwd(), "reports");
-const BASELINE_OUT = path.join(process.cwd(), "reports", "evolve-baseline-metrics.json");
+const BASELINE_OUT = path.join(
+  process.cwd(),
+  "reports",
+  "evolve-baseline-metrics.json",
+);
 
 interface EvolveReportMetrics {
   report_file: string;
@@ -19,23 +23,31 @@ interface EvolveReportMetrics {
   findings_count: number;
   learnings_entries_count: number;
   durable_patterns_noted: boolean;
-  severity_breakdown?: { critical?: number; high?: number; medium?: number; low?: number };
+  severity_breakdown?: {
+    critical?: number;
+    high?: number;
+    medium?: number;
+    low?: number;
+  };
 }
 
 function extractDate(content: string, filename: string): string {
   const dateLine = content.match(/\*\*Date:\*\*\s*(\d{4}-\d{2}-\d{2})/);
   if (dateLine) return dateLine[1];
   const fromName = filename.match(/(\d{2})-(\d{2})-(\d{2})_/);
-  if (fromName)
-    return `20${fromName[1]}-${fromName[2]}-${fromName[3]}`;
+  if (fromName) return `20${fromName[1]}-${fromName[2]}-${fromName[3]}`;
   return "";
 }
 
 function countFindings(content: string): number {
-  const inventoryMatch = content.match(/Anti-pattern inventory\s*\((\d+)\s*closed\)/i);
+  const inventoryMatch = content.match(
+    /Anti-pattern inventory\s*\((\d+)\s*closed\)/i,
+  );
   if (inventoryMatch) return Number(inventoryMatch[1]);
 
-  const findingsSection = content.match(/## Findings\s*([\s\S]*?)(?=^\s*##\s+\S|$)/m);
+  const findingsSection = content.match(
+    /## Findings\s*([\s\S]*?)(?=^\s*##\s+\S|$)/m,
+  );
   if (!findingsSection) return 0;
   const section = findingsSection[1];
   const lines = section.split("\n").filter((l) => /^\|.+\|/.test(l.trim()));
@@ -44,7 +56,9 @@ function countFindings(content: string): number {
 }
 
 function countLearnings(content: string): number {
-  const learningsSection = content.match(/## Learnings written\s*([\s\S]*?)(?=^\s*##\s+\S|$)/m);
+  const learningsSection = content.match(
+    /## Learnings written\s*([\s\S]*?)(?=^\s*##\s+\S|$)/m,
+  );
   if (!learningsSection) return 0;
   const section = learningsSection[1];
   let total = 0;
@@ -56,13 +70,17 @@ function countLearnings(content: string): number {
 }
 
 function hasDurablePatterns(content: string): boolean {
-  const section = content.match(/## Durable patterns[\s\S]*?(?=^\s*##\s+\S|$)/m);
+  const section = content.match(
+    /## Durable patterns[\s\S]*?(?=^\s*##\s+\S|$)/m,
+  );
   if (!section) return false;
   const body = section[0].replace(/## Durable patterns\s*/i, "").trim();
   return body.length > 0 && !/^[-*]\s*\(none\)\s*$/im.test(body);
 }
 
-function extractSeverityBreakdown(content: string): EvolveReportMetrics["severity_breakdown"] {
+function extractSeverityBreakdown(
+  content: string,
+): EvolveReportMetrics["severity_breakdown"] {
   const section = content.match(/## Findings[\s\S]*?(?=^\s*##\s+\S|$)/m);
   if (!section) return undefined;
   const text = section[0];
@@ -75,7 +93,9 @@ function extractSeverityBreakdown(content: string): EvolveReportMetrics["severit
 }
 
 function main(): void {
-  const files = fs.readdirSync(REPORTS_DIR).filter((f) => f.includes("evolve") && f.endsWith(".md"));
+  const files = fs
+    .readdirSync(REPORTS_DIR)
+    .filter((f) => f.includes("evolve") && f.endsWith(".md"));
   const metrics: EvolveReportMetrics[] = [];
 
   for (const file of files.sort()) {
@@ -100,12 +120,16 @@ function main(): void {
   const baseline = {
     generated_at: new Date().toISOString(),
     source: "reports/*evolve*.md",
-    purpose: "Baseline for Evolve v2 P1 — run-quality metrics from structured report sections",
+    purpose:
+      "Baseline for Evolve v2 P1 — run-quality metrics from structured report sections",
     reports: metrics,
     totals: {
       reports_count: metrics.length,
       findings_total: metrics.reduce((s, r) => s + r.findings_count, 0),
-      learnings_total: metrics.reduce((s, r) => s + r.learnings_entries_count, 0),
+      learnings_total: metrics.reduce(
+        (s, r) => s + r.learnings_entries_count,
+        0,
+      ),
     },
   };
 

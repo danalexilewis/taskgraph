@@ -8,11 +8,12 @@ describe("Migration chain", () => {
     expect(MIGRATION_CHAIN).toContain("applyDefaultInitiativeMigration");
   });
 
-  it("includes applyEventKindIndex and applyIsBenchmarkMigration; applyIsBenchmarkMigration is last", () => {
+  it("includes applyEventKindIndex and applyIsBenchmarkMigration; applyLearningRecurrenceMigration is last", () => {
     expect(MIGRATION_CHAIN).toContain("applyEventKindIndex");
     expect(MIGRATION_CHAIN).toContain("applyIsBenchmarkMigration");
+    expect(MIGRATION_CHAIN).toContain("applyLearningRecurrenceMigration");
     expect(MIGRATION_CHAIN[MIGRATION_CHAIN.length - 1]).toBe(
-      "applyIsBenchmarkMigration",
+      "applyLearningRecurrenceMigration",
     );
   });
 });

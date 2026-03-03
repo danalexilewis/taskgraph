@@ -74,9 +74,11 @@ function mockJsonObj(value: Record<string, unknown>) {
 mock.module("../../src/cli/status.js", () => ({
   fetchStatusData: (...args: unknown[]) =>
     mockFetchStatusData(...(args as [unknown, unknown])),
+  fetchStaleDoingTasks: () => okAsync([]),
 }));
 
 mock.module("../../src/cli/utils.js", () => ({
+  readConfig: () => ok({ doltRepoPath: FAKE_REPO }),
   resolveTaskId: (...args: unknown[]) =>
     mockResolveTaskId(...(args as [string, string])),
   getStartedEventBranch: (...args: unknown[]) =>

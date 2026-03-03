@@ -5,12 +5,12 @@
 import { Command } from "commander";
 import { ResultAsync } from "neverthrow";
 import { tableExists } from "../db/migrate";
+import { query } from "../db/query";
 import {
+  type LearningRow,
   listRecurrences,
   recordFinding,
-  type LearningRow,
 } from "../db/recurrence";
-import { query } from "../db/query";
 import type { AppError } from "../domain/errors";
 import type { LearningOutcome, LearningSource } from "../domain/types";
 import type { Config } from "./utils";
@@ -194,9 +194,7 @@ function evolveRecordFindingSubcommand(): Command {
         process.exit(1);
       }
       const outcome =
-        opts.outcome != null
-          ? (opts.outcome as LearningOutcome)
-          : undefined;
+        opts.outcome != null ? (opts.outcome as LearningOutcome) : undefined;
       if (
         outcome != null &&
         !["new", "seen_again", "caught", "escaped"].includes(outcome)
@@ -266,9 +264,7 @@ function evolveRecurrencesSubcommand(): Command {
         process.exit(1);
       }
       const outcome =
-        opts.outcome != null
-          ? (opts.outcome as LearningOutcome)
-          : undefined;
+        opts.outcome != null ? (opts.outcome as LearningOutcome) : undefined;
       if (
         outcome != null &&
         !["new", "seen_again", "caught", "escaped"].includes(outcome)
@@ -286,11 +282,7 @@ function evolveRecurrencesSubcommand(): Command {
         (rows) => {
           if (json) {
             console.log(
-              JSON.stringify(
-                { recurrences: rows.map(rowToJson) },
-                null,
-                2,
-              ),
+              JSON.stringify({ recurrences: rows.map(rowToJson) }, null, 2),
             );
           } else {
             if (rows.length === 0) {

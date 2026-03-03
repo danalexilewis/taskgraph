@@ -3,12 +3,12 @@
  * for closed-loop verification (new, seen_again, caught, escaped).
  */
 import { createHash } from "node:crypto";
-import { ResultAsync } from "neverthrow";
+import type { ResultAsync } from "neverthrow";
 import { v4 as uuidv4 } from "uuid";
-import { now, query } from "./query";
+import type { Config } from "../cli/utils";
 import type { AppError } from "../domain/errors";
 import type { LearningOutcome, LearningSource } from "../domain/types";
-import type { Config } from "../cli/utils";
+import { now, query } from "./query";
 
 /** Normalize directive text for fingerprint: trim and collapse internal whitespace. */
 export function normalizeDirective(directive: string): string {
@@ -63,8 +63,7 @@ export function recordFinding(
     .andThen((rows) => {
       const prior = rows[0];
       const outcome: LearningOutcome =
-        input.outcome ??
-        (prior ? "seen_again" : "new");
+        input.outcome ?? (prior ? "seen_again" : "new");
       const prior_learning_id = prior?.learning_id ?? null;
       const learning_id = uuidv4();
       return q

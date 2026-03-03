@@ -1164,9 +1164,7 @@ export function ensureMigrations(
     .andThen(() => applyEventKindIndex(repoPath, noCommit, cache))
     .andThen(() => applyIsBenchmarkMigration(repoPath, noCommit, cache))
     .andThen(() => applyEvolveRunQualityMigration(repoPath, noCommit, cache))
-    .andThen(() =>
-      applyLearningRecurrenceMigration(repoPath, noCommit, cache),
-    )
+    .andThen(() => applyLearningRecurrenceMigration(repoPath, noCommit, cache))
     .map(() => {
       writeSentinel(repoPath);
       return undefined;

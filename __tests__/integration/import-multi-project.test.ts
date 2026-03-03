@@ -29,7 +29,10 @@ todos:
     status: pending
 ---
 `;
-    fs.writeFileSync(path.join(plansDir, "single-regression.md"), singlePlanContent);
+    fs.writeFileSync(
+      path.join(plansDir, "single-regression.md"),
+      singlePlanContent,
+    );
 
     const planA = `---
 name: Multi Plan A

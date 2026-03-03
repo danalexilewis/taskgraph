@@ -42,7 +42,9 @@ describe("TgClient", () => {
 
   describe("readConfig", () => {
     it("returns err when cwd has no .taskgraph/config.json", () => {
-      const emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), "tg-client-no-config-"));
+      const emptyDir = fs.mkdtempSync(
+        path.join(os.tmpdir(), "tg-client-no-config-"),
+      );
       try {
         const client = new TgClient(emptyDir);
         const result = client.readConfig();
@@ -55,7 +57,9 @@ describe("TgClient", () => {
 
   describe("next", () => {
     it("returns err when config is missing (no repo)", async () => {
-      const emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), "tg-client-next-"));
+      const emptyDir = fs.mkdtempSync(
+        path.join(os.tmpdir(), "tg-client-next-"),
+      );
       try {
         const client = new TgClient(emptyDir);
         const result = await client.next({ limit: 5 });
@@ -81,7 +85,9 @@ describe("TgClient", () => {
 
   describe("status", () => {
     it("returns err when config is missing (no repo)", async () => {
-      const emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), "tg-client-status-"));
+      const emptyDir = fs.mkdtempSync(
+        path.join(os.tmpdir(), "tg-client-status-"),
+      );
       try {
         const client = new TgClient(emptyDir);
         const result = await client.status();

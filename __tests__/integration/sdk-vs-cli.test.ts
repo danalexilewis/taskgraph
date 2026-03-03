@@ -7,10 +7,10 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import {
-  TgClient,
   type ContextResult,
   type NextTaskRow,
   type StatusResult,
+  TgClient,
 } from "../../src/api";
 import {
   runTgCli,
@@ -118,7 +118,10 @@ todos:
       `plan list --json`,
       context.tempDir,
     );
-    const plans = JSON.parse(listOut) as Array<{ plan_id: string; title: string }>;
+    const plans = JSON.parse(listOut) as Array<{
+      plan_id: string;
+      title: string;
+    }>;
     const plan = plans.find((p) => p.title === "SDK Parity Plan");
     expect(plan).toBeDefined();
     planId = plan?.plan_id ?? "";
@@ -140,11 +143,11 @@ todos:
   it("next: SDK and CLI --json produce same shape", async () => {
     const { stdout: cliOut } = await runTgCli(
       `next --plan ${planId} --limit 5 --json`,
-      context!.tempDir,
+      context?.tempDir,
     );
     const cliArr = JSON.parse(cliOut) as NextTaskRow[];
 
-    const client = new TgClient({ doltRepoPath: context!.doltRepoPath });
+    const client = new TgClient({ doltRepoPath: context?.doltRepoPath });
     const sdkResult = await client.next({ plan: planId, limit: 5 });
     expect(sdkResult.isOk()).toBe(true);
     const sdkArr = sdkResult.isOk() ? sdkResult.value : [];
@@ -154,8 +157,12 @@ todos:
     expect(sdkArr.length).toBe(cliArr.length);
 
     for (let i = 0; i < sdkArr.length; i++) {
-      expect(sameKeys(NEXT_KEYS, sdkArr[i] as unknown as Record<string, unknown>)).toBe(true);
-      expect(sameKeys(NEXT_KEYS, cliArr[i] as unknown as Record<string, unknown>)).toBe(true);
+      expect(
+        sameKeys(NEXT_KEYS, sdkArr[i] as unknown as Record<string, unknown>),
+      ).toBe(true);
+      expect(
+        sameKeys(NEXT_KEYS, cliArr[i] as unknown as Record<string, unknown>),
+      ).toBe(true);
       for (const k of NEXT_KEYS) {
         expect((sdkArr[i] as Record<string, unknown>)[k]).toEqual(
           (cliArr[i] as Record<string, unknown>)[k],
@@ -167,17 +174,21 @@ todos:
   it("context: SDK and CLI --json produce same shape", async () => {
     const { stdout: cliOut } = await runTgCli(
       `context ${taskId} --json`,
-      context!.tempDir,
+      context?.tempDir,
     );
     const cliObj = JSON.parse(cliOut) as ContextResult;
 
-    const client = new TgClient({ doltRepoPath: context!.doltRepoPath });
+    const client = new TgClient({ doltRepoPath: context?.doltRepoPath });
     const sdkResult = await client.context(taskId);
     expect(sdkResult.isOk()).toBe(true);
     const sdkObj = sdkResult.isOk() ? sdkResult.value : ({} as ContextResult);
 
-    expect(sameKeys(CONTEXT_KEYS, sdkObj as unknown as Record<string, unknown>)).toBe(true);
-    expect(sameKeys(CONTEXT_KEYS, cliObj as unknown as Record<string, unknown>)).toBe(true);
+    expect(
+      sameKeys(CONTEXT_KEYS, sdkObj as unknown as Record<string, unknown>),
+    ).toBe(true);
+    expect(
+      sameKeys(CONTEXT_KEYS, cliObj as unknown as Record<string, unknown>),
+    ).toBe(true);
     for (const k of CONTEXT_KEYS) {
       const s = (sdkObj as Record<string, unknown>)[k];
       const c = (cliObj as Record<string, unknown>)[k];
@@ -203,17 +214,21 @@ todos:
   it("status: SDK and CLI --json produce same shape", async () => {
     const { stdout: cliOut } = await runTgCli(
       `status --json`,
-      context!.tempDir,
+      context?.tempDir,
     );
     const cliObj = JSON.parse(cliOut) as StatusResult;
 
-    const client = new TgClient({ doltRepoPath: context!.doltRepoPath });
+    const client = new TgClient({ doltRepoPath: context?.doltRepoPath });
     const sdkResult = await client.status();
     expect(sdkResult.isOk()).toBe(true);
     const sdkObj = sdkResult.isOk() ? sdkResult.value : ({} as StatusResult);
 
-    expect(sameKeys(STATUS_KEYS, sdkObj as unknown as Record<string, unknown>)).toBe(true);
-    expect(sameKeys(STATUS_KEYS, cliObj as unknown as Record<string, unknown>)).toBe(true);
+    expect(
+      sameKeys(STATUS_KEYS, sdkObj as unknown as Record<string, unknown>),
+    ).toBe(true);
+    expect(
+      sameKeys(STATUS_KEYS, cliObj as unknown as Record<string, unknown>),
+    ).toBe(true);
     for (const k of STATUS_KEYS) {
       expect((sdkObj as Record<string, unknown>)[k]).toEqual(
         (cliObj as Record<string, unknown>)[k],

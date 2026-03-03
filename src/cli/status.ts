@@ -444,9 +444,9 @@ export function fetchStatusData(
       staleDoingTasks,
     ]) => {
       {
-        const completedPlans = cpRes[0]?.count ?? 0;
-        const completedTasks = ctRes[0]?.count ?? 0;
-        const canceledTasks = canRes[0]?.count ?? 0;
+        const completedPlans = Number(cpRes[0]?.count ?? 0);
+        const completedTasks = Number(ctRes[0]?.count ?? 0);
+        const canceledTasks = Number(canRes[0]?.count ?? 0);
         const agentCount = Number(amRes[0]?.agent_count ?? 0);
         const subAgentRuns = Number(amRes[0]?.sub_agent_runs ?? 0);
         const investigatorRuns = Number(amRes[0]?.investigator_runs ?? 0);
@@ -459,7 +459,7 @@ export function fetchStatusData(
             : 0;
 
         const actionableMap = new Map(
-          actionableRows.map((r) => [r.plan_id, r.count]),
+          actionableRows.map((r) => [r.plan_id, Number(r.count)]),
         );
         const planMap = new Map<
           string,
@@ -489,17 +489,18 @@ export function fetchStatusData(
           }
           const entry = planMap.get(row.plan_id);
           if (entry) {
-            if (row.status === "todo") entry.todo = row.count;
-            else if (row.status === "doing") entry.doing = row.count;
-            else if (row.status === "blocked") entry.blocked = row.count;
-            else if (row.status === "done") entry.done = row.count;
+            const n = Number(row.count);
+            if (row.status === "todo") entry.todo = n;
+            else if (row.status === "doing") entry.doing = n;
+            else if (row.status === "blocked") entry.blocked = n;
+            else if (row.status === "done") entry.done = n;
           }
         }
         const activePlans = Array.from(planMap.values());
 
         const statusCounts: Record<string, number> = {};
         statusRows.forEach((r) => {
-          statusCounts[r.status] = r.count;
+          statusCounts[r.status] = Number(r.count);
         });
 
         const base: StatusData = {
@@ -515,9 +516,9 @@ export function fetchStatusData(
           next7UpcomingPlans,
           last7CompletedPlans,
           activeWork,
-          plansCount: plansRes[0]?.count ?? 0,
+          plansCount: Number(plansRes[0]?.count ?? 0),
           statusCounts,
-          actionableCount: actionableRes[0]?.count ?? 0,
+          actionableCount: Number(actionableRes[0]?.count ?? 0),
           agentCount,
           subAgentRuns,
           totalAgentHours,
@@ -1502,8 +1503,12 @@ export function getDashboardRowLimitsDynamic(
 ): { maxPlanRows: number; maxTaskRows: number } {
   const useLargeCaps =
     terminalRows != null && terminalRows >= LARGE_SCREEN_ROW_THRESHOLD;
-  const maxPlanCap = useLargeCaps ? DASHBOARD_MAX_PLANS_LARGE : DASHBOARD_MAX_PLANS;
-  const maxTaskCap = useLargeCaps ? DASHBOARD_MAX_TASKS_LARGE : DASHBOARD_MAX_TASKS;
+  const maxPlanCap = useLargeCaps
+    ? DASHBOARD_MAX_PLANS_LARGE
+    : DASHBOARD_MAX_PLANS;
+  const maxTaskCap = useLargeCaps
+    ? DASHBOARD_MAX_TASKS_LARGE
+    : DASHBOARD_MAX_TASKS;
   let taskCap = maxTaskCap;
   let planCap = maxPlanCap;
 
@@ -1618,7 +1623,16 @@ function buildActivePlansTable(
   const numericColW = Math.max(...numericHeaders.map((h) => h.length));
   const minWidths = showInitiative
     ? narrow
-      ? [8, priorityColW, 10, numericColW, numericColW, numericColW, numericColW, numericColW]
+      ? [
+          8,
+          priorityColW,
+          10,
+          numericColW,
+          numericColW,
+          numericColW,
+          numericColW,
+          numericColW,
+        ]
       : [
           12,
           priorityColW,
@@ -1630,8 +1644,24 @@ function buildActivePlansTable(
           numericColW,
         ]
     : narrow
-      ? [8, priorityColW, numericColW, numericColW, numericColW, numericColW, numericColW]
-      : [12, priorityColW, numericColW, numericColW, numericColW, numericColW, numericColW];
+      ? [
+          8,
+          priorityColW,
+          numericColW,
+          numericColW,
+          numericColW,
+          numericColW,
+          numericColW,
+        ]
+      : [
+          12,
+          priorityColW,
+          numericColW,
+          numericColW,
+          numericColW,
+          numericColW,
+          numericColW,
+        ];
   const maxWidths = showInitiative
     ? [
         undefined,

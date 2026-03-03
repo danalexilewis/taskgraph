@@ -12,8 +12,8 @@
 
 import { readConfig } from "../src/cli/utils";
 import { doltCommit } from "../src/db/commit";
-import { tableExists } from "../src/db/migrate";
 import { sqlEscape } from "../src/db/escape";
+import { tableExists } from "../src/db/migrate";
 import { query } from "../src/db/query";
 import { syncBlockedStatusForPlanTasks } from "../src/domain/blocked-status";
 
@@ -71,7 +71,9 @@ async function main() {
   if (blockedTasks.length === 0) {
     console.log("No blocked tasks.");
   } else {
-    console.log(`Found ${blockedTasks.length} blocked task(s). Checking validity...\n`);
+    console.log(
+      `Found ${blockedTasks.length} blocked task(s). Checking validity...\n`,
+    );
   }
 
   // 2. All blocks edges (from_task_id blocks to_task_id)
@@ -85,7 +87,7 @@ async function main() {
   const blocksEdges = edgesResult.value;
 
   // 3. Pending gates (if gate table exists)
-  let pendingGatesByTask = new Map<string, string[]>();
+  const pendingGatesByTask = new Map<string, string[]>();
   const gateExistsResult = await tableExists(repo, "gate");
   if (gateExistsResult.isOk() && gateExistsResult.value) {
     const gatesResult = await q.raw<GateRow>(
@@ -100,7 +102,7 @@ async function main() {
     }
   }
 
-  const blockedIds = new Set(blockedTasks.map((t) => t.task_id));
+  const _blockedIds = new Set(blockedTasks.map((t) => t.task_id));
   const edgesByTo = new Map<string, EdgeRow[]>();
   for (const e of blocksEdges) {
     const list = edgesByTo.get(e.to_task_id) ?? [];
@@ -130,8 +132,13 @@ async function main() {
   }
 
   const invalidNoBlock: BlockedTaskRow[] = [];
-  const invalidBlockerMissing: { task: BlockedTaskRow; blockerId: string }[] = [];
-  const staleBlock: { task: BlockedTaskRow; blockerId: string; blockerStatus: string }[] = [];
+  const invalidBlockerMissing: { task: BlockedTaskRow; blockerId: string }[] =
+    [];
+  const staleBlock: {
+    task: BlockedTaskRow;
+    blockerId: string;
+    blockerStatus: string;
+  }[] = [];
 
   for (const task of blockedTasks) {
     const edges = edgesByTo.get(task.task_id) ?? [];
@@ -165,7 +172,9 @@ async function main() {
     hasInvalid = true;
     console.log("Invalid: blocked task has no block edge and no pending gate:");
     for (const t of invalidNoBlock) {
-      console.log(`  ${t.task_id}  ${t.title.slice(0, 60)}${t.title.length > 60 ? "…" : ""}`);
+      console.log(
+        `  ${t.task_id}  ${t.title.slice(0, 60)}${t.title.length > 60 ? "…" : ""}`,
+      );
     }
     console.log("");
   }
@@ -174,7 +183,9 @@ async function main() {
     hasInvalid = true;
     console.log("Invalid: block edge references non-existent blocker task:");
     for (const { task, blockerId } of invalidBlockerMissing) {
-      console.log(`  ${task.task_id} blocked by ${blockerId} (blocker not in task table)`);
+      console.log(
+        `  ${task.task_id} blocked by ${blockerId} (blocker not in task table)`,
+      );
     }
     console.log("");
   }
@@ -184,13 +195,17 @@ async function main() {
       "Sync inconsistency: blocked task has blocker(s) that are done/canceled (should have been unblocked):",
     );
     for (const { task, blockerId, blockerStatus } of staleBlock) {
-      console.log(`  ${task.task_id} blocked by ${blockerId} (blocker status: ${blockerStatus})`);
+      console.log(
+        `  ${task.task_id} blocked by ${blockerId} (blocker status: ${blockerStatus})`,
+      );
     }
     console.log("");
   }
 
   if (!hasInvalid && staleBlock.length === 0 && blockedTasks.length > 0) {
-    console.log("All blocked tasks have valid blocks (blocker tasks exist; no stale sync).");
+    console.log(
+      "All blocked tasks have valid blocks (blocker tasks exist; no stale sync).",
+    );
   }
 
   // Sync blocked/todo status across the whole graph and commit

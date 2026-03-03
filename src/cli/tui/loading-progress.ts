@@ -25,7 +25,7 @@ export function renderProgressBar(progress: number, width: number): string {
  * Full loading screen content: "Loading" plus a progress bar line.
  */
 export function renderLoadingView(progress: number, width: number): string {
-  return "Loading\n" + renderProgressBar(progress, width);
+  return `Loading\n${renderProgressBar(progress, width)}`;
 }
 
 export type RunLoadingProgressBarOptions = {
