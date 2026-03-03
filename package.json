@@ -55,7 +55,6 @@
   },
   "homepage": "https://github.com/danalexilewis/taskgraph",
   "dependencies": {
-    "@t3-oss/env-core": "^0.13.10",
     "@clack/prompts": "^1.0.1",
     "@modelcontextprotocol/sdk": "^1.27.0",
     "@opentui/core": "^0.1.84",
