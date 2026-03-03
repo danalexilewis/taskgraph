@@ -257,3 +257,13 @@ export function rootOpts(cmd: Command): { json?: boolean; noCommit?: boolean } {
   while (c?.parent) c = c.parent;
   return (c?.opts?.() ?? {}) as { json?: boolean; noCommit?: boolean };
 }
+
+/**
+ * Returns true if JSON output should be used for a command.
+ * When stdout is not a TTY (piped output or agent environment), defaults to JSON
+ * so callers do not need to pass --json explicitly in automation.
+ * Explicit --json flag always takes precedence when present.
+ */
+export function shouldUseJson(cmd: Command): boolean {
+  return rootOpts(cmd).json === true || !process.stdout.isTTY;
+}

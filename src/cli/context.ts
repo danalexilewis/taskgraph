@@ -6,7 +6,7 @@ import { query } from "../db/query";
 import type { AppError } from "../domain/errors";
 import { buildError, ErrorCode } from "../domain/errors";
 import type { HiveSnapshot, HiveTaskEntry } from "../domain/hive";
-import { readConfig, rootOpts } from "./utils";
+import { readConfig, rootOpts, shouldUseJson } from "./utils";
 
 interface DoingTaskRow {
   task_id: string;
@@ -212,7 +212,7 @@ export function contextCommand(program: Command) {
     .argument("[taskId]", "Task ID (required unless --hive)")
     .option("--hive", "Output HiveSnapshot of all active agent activity")
     .action(async (taskId, options, cmd) => {
-      const json = rootOpts(cmd).json ?? false;
+      const json = shouldUseJson(cmd);
       const hive = options.hive === true;
 
       if (hive) {

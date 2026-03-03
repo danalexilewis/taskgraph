@@ -2,7 +2,7 @@ import type { Command } from "commander";
 import { TgClient } from "../api";
 import type { AppError } from "../domain/errors";
 import { recoverStaleTasks } from "./recover";
-import { readConfig } from "./utils";
+import { readConfig, shouldUseJson } from "./utils";
 
 export function nextCommand(program: Command) {
   program
@@ -47,9 +47,10 @@ export function nextCommand(program: Command) {
         all: options.all,
       });
 
+      const json = shouldUseJson(cmd);
       result.match(
         (tasksArray) => {
-          if (!cmd.parent?.opts().json) {
+          if (!json) {
             if (tasksArray.length > 0) {
               console.log("Runnable Tasks:");
               tasksArray.forEach((task) => {
@@ -67,7 +68,7 @@ export function nextCommand(program: Command) {
         },
         (error: AppError) => {
           console.error(`Error fetching next tasks: ${error.message}`);
-          if (cmd.parent?.opts().json) {
+          if (json) {
             console.log(
               JSON.stringify({
                 status: "error",
