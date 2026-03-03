@@ -95,6 +95,8 @@ export interface StatusOptions {
   tasksView?: boolean;
   /** Hours threshold for stale doing-task warning (default: 2). */
   staleThreshold?: number;
+  /** When true (with --tasks), include a runnable boolean per task row. */
+  runnable?: boolean;
 }
 
 export interface ProjectRow {
@@ -125,6 +127,8 @@ export interface TaskRow {
   owner: string;
   /** When status is 'blocked', set to the first pending gate name if blocked by a gate. */
   blocked_by_gate_name?: string | null;
+  /** Present when --runnable is passed: true when task is todo with no unmet blockers. */
+  runnable?: boolean;
 }
 
 export interface StaleDoingTaskRow {
@@ -771,6 +775,7 @@ export function fetchTasksTableData(
 
   const baseSelect = `t.task_id, t.hash_id, t.title, p.title AS plan_title, t.status, t.owner`;
   const gateSubquery = `(SELECT g.name FROM ${bt("gate")} g WHERE g.task_id = t.task_id AND g.status = 'pending' ORDER BY g.created_at ASC LIMIT 1) AS blocked_by_gate_name`;
+  const runnableExpr = `(t.status = 'todo' AND (SELECT COUNT(*) FROM ${bt("edge")} e JOIN ${bt("task")} bt ON e.from_task_id = bt.task_id WHERE e.to_task_id = t.task_id AND e.type = 'blocks' AND bt.status NOT IN ('done','canceled')) = 0) AS runnable`;
   const fromWhereOrder = `
     FROM ${bt("task")} t
     JOIN ${bt("project")} p ON t.plan_id = p.plan_id
@@ -782,7 +787,8 @@ export function fetchTasksTableData(
     const blockedByCol = gateExists
       ? gateSubquery
       : "NULL AS blocked_by_gate_name";
-    const tasksSql = `SELECT ${baseSelect}, ${blockedByCol} ${fromWhereOrder}`;
+    const extraCols = options.runnable ? `, ${runnableExpr}` : "";
+    const tasksSql = `SELECT ${baseSelect}, ${blockedByCol}${extraCols} ${fromWhereOrder}`;
     return q.raw<TaskRow>(tasksSql);
   });
 }
@@ -862,6 +868,10 @@ export function statusCommand(program: Command) {
       "Hours threshold for stale doing-task warning (default: 2)",
       "2",
     )
+    .option(
+      "--runnable",
+      "Include a runnable column per task when used with --tasks (Y if todo with no unmet blockers)",
+    )
     .action(async (options, cmd) => {
       const useLive = options.dashboard;
       const statusOptions: StatusOptions = {
@@ -875,6 +885,7 @@ export function statusCommand(program: Command) {
         tasks: options.tasks,
         filter: options.filter,
         staleThreshold: Number.parseInt(options.staleThreshold, 10) || 2,
+        runnable: options.runnable,
       };
 
       if (options.initiative && (options.projects || options.tasks)) {
@@ -1968,6 +1979,7 @@ export function formatTasksAsString(
   const innerW = getBoxInnerWidth(w);
   const staleSet = options?.staleTaskIds;
   const withStale = staleSet !== undefined;
+  const withRunnable = rows.length > 0 && rows[0].runnable !== undefined;
   const sym = getDashboardSymbols();
   const taskRows = withStale
     ? rows.map((r) => {
@@ -1981,25 +1993,44 @@ export function formatTasksAsString(
           statusIconOnly(r.status, false),
         ];
       })
-    : rows.map((r) => {
-        const id = r.hash_id ?? r.task_id;
-        const status = displayStatus(r.status, r.blocked_by_gate_name);
-        return [id, r.title, r.plan_title, status, r.owner ?? sym.emDash];
-      });
+    : withRunnable
+      ? rows.map((r) => {
+          const id = r.hash_id ?? r.task_id;
+          const status = displayStatus(r.status, r.blocked_by_gate_name);
+          const runnableDisplay = r.runnable ? chalk.green("Y") : chalk.dim("N");
+          return [id, r.title, r.plan_title, status, r.owner ?? sym.emDash, runnableDisplay];
+        })
+      : rows.map((r) => {
+          const id = r.hash_id ?? r.task_id;
+          const status = displayStatus(r.status, r.blocked_by_gate_name);
+          return [id, r.title, r.plan_title, status, r.owner ?? sym.emDash];
+        });
 
   const headers = withStale
     ? ["Id", "Title", "Project", "Stale", "Owner", "Status"]
-    : ["Id", "Title", "Project", "Status", "Owner"];
+    : withRunnable
+      ? ["Id", "Title", "Project", "Status", "Owner", "Runnable"]
+      : ["Id", "Title", "Project", "Status", "Owner"];
   const emptyRow = withStale
     ? [[sym.emDash, "No tasks", sym.emDash, sym.emDash, sym.emDash, sym.emDash]]
-    : [[sym.emDash, "No tasks", sym.emDash, sym.emDash, sym.emDash]];
+    : withRunnable
+      ? [[sym.emDash, "No tasks", sym.emDash, sym.emDash, sym.emDash, sym.emDash]]
+      : [[sym.emDash, "No tasks", sym.emDash, sym.emDash, sym.emDash]];
   const table = renderTable({
     headers,
     rows: taskRows.length > 0 ? taskRows : emptyRow,
     maxWidth: innerW,
-    minWidths: withStale ? [10, 12, 12, 1, 6, 1] : [10, 12, 12, 8, 6],
+    minWidths: withStale
+      ? [10, 12, 12, 1, 6, 1]
+      : withRunnable
+        ? [10, 12, 12, 8, 6, 1]
+        : [10, 12, 12, 8, 6],
     flexColumnIndex: 1,
-    maxWidths: withStale ? [10, undefined, 12, 1, 6, 1] : [10],
+    maxWidths: withStale
+      ? [10, undefined, 12, 1, 6, 1]
+      : withRunnable
+        ? [10, undefined, 12, undefined, 6, 1]
+        : [10],
   });
   return boxedSection("Tasks", table, w);
 }
