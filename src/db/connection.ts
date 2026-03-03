@@ -2,14 +2,16 @@ import execa from "execa";
 import { createPool, type Pool, type PoolConnection } from "mysql2/promise";
 import { err, errAsync, ok, ResultAsync } from "neverthrow";
 import { type AppError, buildError, ErrorCode } from "../domain/errors";
-import { getServerConnectionEnv } from "../env";
+import { env, getServerConnectionEnv } from "../env";
 import { checkoutBranch } from "./branch";
 
 const PROTECTED_TABLES = ["plan", "project", "task", "edge", "event"];
 const destructivePattern =
   /\b(DELETE\s+FROM|DROP\s+TABLE|TRUNCATE\s+TABLE?)\s+[`]?(\w+)[`]?/i;
 
-const doltPath = () => process.env.DOLT_PATH || "dolt";
+const doltPath = () => env.DOLT_PATH;
+
+const DOLT_EXECA_TIMEOUT_MS = env.DOLT_EXECA_TIMEOUT_MS;
 
 /**
  * Per-repo semaphore state for the execa path.
@@ -315,6 +317,7 @@ export function doltSql(
           ["--data-dir", repoPath, "sql", "-q", query, "-r", "json"],
           {
             cwd: repoPath,
+            timeout: DOLT_EXECA_TIMEOUT_MS,
             env: {
               ...process.env,
               DOLT_READ_ONLY: "false",
@@ -327,12 +330,21 @@ export function doltSql(
         if (
           e &&
           typeof e === "object" &&
-          (e as AppError).code !== undefined &&
-          (e as AppError).message
+          "code" in e &&
+          "message" in e &&
+          Object.values(ErrorCode).includes((e as AppError).code)
         ) {
           return e as AppError;
         }
-        const code = (e as NodeJS.ErrnoException).code;
+        const err = e as NodeJS.ErrnoException & { timedOut?: boolean };
+        if (err?.timedOut) {
+          return buildError(
+            ErrorCode.DB_QUERY_FAILED,
+            `Dolt operation timed out after ${DOLT_EXECA_TIMEOUT_MS / 1000} s`,
+            e,
+          );
+        }
+        const code = err?.code;
         if (code === "ENOENT") {
           return buildError(
             ErrorCode.DB_QUERY_FAILED,
@@ -344,7 +356,8 @@ export function doltSql(
         }
         const isEperm =
           code === "EPERM" ||
-          (e instanceof Error && /operation not permitted/i.test(e.message));
+          (e instanceof Error &&
+            e.message.toLowerCase().includes("operation not permitted"));
         if (isEperm) {
           return buildError(
             ErrorCode.DB_QUERY_FAILED,
