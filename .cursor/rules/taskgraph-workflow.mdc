@@ -8,13 +8,15 @@ alwaysApply: true
 ## Build and dist
 
 - **Integration tests** run the built CLI from `dist/`. After changing anything under `src/`, run `pnpm build` before `pnpm test:integration` if you need tests to see the latest code.
+- **gate:full requires a prior build.** `pnpm gate:full` does not run a build; without one, the build guard exits with a clear message. Run `pnpm build` first. `dist/` is gitignored and is not shared with worktrees.
+- **Worktrees must build first.** When running `pnpm gate:full` from a task worktree, run `pnpm build` in that worktree directory before gate:full; otherwise the suite may run against a missing or stale `dist/`.
 - **On-stop hook:** `.cursor/hooks/rebuild-if-src-changed.js` runs when the agent stops. If there are uncommitted changes under `src/`, it runs `pnpm build` then `bash scripts/cheap-gate.sh` so dist stays in sync and lint/typecheck/affected-tests run. Rely on this at end of session; no need to manually rebuild unless you are about to run integration tests mid-session.
 
 ## Validation pipeline
 
 - **Lint:** `pnpm lint` (biome check), `pnpm lint:fix` (biome check --write).
 - **Typecheck:** `pnpm typecheck` runs typecheck only on **changed** `src/**/*.ts` (from git); `pnpm typecheck:all` runs full `tsc --noEmit`. Default is changed-files so sub-agents and gate stay fast. See `.cursor/rules/changed-files-default.mdc`.
-- **Gate:** `pnpm gate` runs `scripts/cheap-gate.sh` (lint + typecheck on changed files + affected tests). `pnpm gate:full` runs lint + full typecheck + full test suite.
+- **Gate:** `pnpm gate` runs `scripts/cheap-gate.sh` (lint + typecheck on changed files + affected tests). `pnpm gate:full` runs lint + full typecheck + full test suite; it requires a prior build (see Build and dist).
 - **Recommendation:** After making changes, run `pnpm gate` (or `bash scripts/cheap-gate.sh`) to validate before committing.
 
 ## Orientation

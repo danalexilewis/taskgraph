@@ -1,6 +1,7 @@
 /**
  * Integration tests: SDK (TgClient) and CLI --json produce the same output shapes
  * for next, context, and status.
+ * Requires Bun (describe.serial).
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";

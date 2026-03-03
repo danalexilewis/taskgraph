@@ -7,9 +7,13 @@
  */
 import globalSetup from "../__tests__/integration/global-setup";
 
+const SETUP_FAILED_BANNER = "=== [SETUP] FAILED ===";
+
 globalSetup()
   .then(() => process.exit(0))
   .catch((err) => {
+    console.error(""); // ensure banner is on its own line when stdout has content
+    console.error(SETUP_FAILED_BANNER);
     console.error("Integration global setup failed:", err);
     process.exit(1);
   });

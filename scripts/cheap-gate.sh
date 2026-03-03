@@ -44,6 +44,10 @@ else
 fi
 
 if [[ -n "$FULL" ]]; then
+  if [[ ! -f dist/cli/index.js ]]; then
+    echo "gate:full requires a built CLI. Run pnpm build first."
+    exit 1
+  fi
   echo "=== [SETUP] integration golden template ==="
   bun run scripts/run-integration-global-setup.ts
   echo "=== [TEST:full] bun test __tests__ (db and mcp isolated so mock.module applies) ==="

@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { doltSql } from "../../src/db/connection";
 import {
   detectOrphanedTasks,

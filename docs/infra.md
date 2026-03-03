@@ -76,6 +76,7 @@ If the Dolt server is started by a different OS user than the one running `tg`, 
 
 ### Optimising gate:full
 
+- **Build first**: `gate:full` expects `dist/` to exist; it does not run a build. Run `pnpm build` before `pnpm gate:full` or the build guard will fail with a clear message.
 - **Lint + typecheck in parallel**: `gate:full` runs Biome and full typecheck in parallel to reduce wall time.
 - **Test phases**: db/ and mcp/ run first in isolation (mock bleed); then cli, domain, e2e, export, integration, plan-import, skills. These phases are sequential by design; do not parallelise db/mcp/rest or mock isolation breaks.
 - **Faster integration runs**: For the "rest" group you can try `bun test ... --concurrency 4`; see [testing.md](testing.md) and `bunfig.toml`. Some integration tests are serial/flaky under concurrency; if you see flakiness, remove the flag.
@@ -119,6 +120,7 @@ TaskGraph supports an optional **sql-server mode** that replaces the default `do
 | `TG_DOLT_SERVER_PASSWORD` | string (optional) | unset       | MySQL password for the Dolt SQL server (pool mode).                                                                                                                                     |
 | `TG_SKIP_MIGRATE`         | flag (optional)   | unset       | When set, skips `ensureMigrations` in the CLI preAction hook. Intended for test environments where migrations have already been applied. CLI prints a warning when this flag is active. |
 | `TG_ASCII_DASHBOARD`      | flag (optional)   | unset       | When the dashboard looks garbled (box-drawing or symbols as replacement glyphs), set to `1` for ASCII-only borders and symbols. |
+| `TG_GOLDEN_SERVER_PORT`   | number (optional) | `13307`     | Port for the integration-test golden template's `dolt sql-server`. Used by global setup when starting the server and writing `DOLT_SERVER_PORT_FILE`. Set to avoid port conflicts or run multiple suites. |
 
 ## Decisions / gotchas
 
