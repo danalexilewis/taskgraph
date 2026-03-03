@@ -149,7 +149,13 @@ todos:
     if (!context) throw new Error("context not set");
     const { exitCode, stdout } = await runTgCli(`status`, context.tempDir);
     expect(exitCode).toBe(0);
-    expect(stdout).toMatch(/Cycle:|Sprint 1|initiatives|Active Plans/);
+    const out = stdout.trim();
+    if (out.startsWith("{")) {
+      const j = JSON.parse(out) as { activePlans?: Array<{ initiative?: string }> };
+      expect(j.activePlans?.some((p) => p.initiative)).toBeTruthy();
+    } else {
+      expect(stdout).toMatch(/Cycle:|Sprint 1|initiatives|Active Plans/);
+    }
   }, 15000);
 
   it("tg import --initiative <id> assigns new project to that initiative", async () => {
