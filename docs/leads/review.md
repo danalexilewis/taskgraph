@@ -10,7 +10,7 @@ Read-only review lead for code health, system health, and optional risk assessme
 - **Agent files** (workers):
   - `.cursor/agents/investigator.md` — code health and system health investigation
   - Optionally: risk skill or generalPurpose agent for risk assessment
-  - **Assessment specialists** (when scope or user intent matches): adversarial-security-reviewer, risk-preparedness-reviewer, factuality-traceability-reviewer, fairness-equity-auditor, rubric-driven-reviewer (see `.cursor/agents/` and `docs/leads/` for each)
+  - **Assessment specialists** (when scope or user intent matches): adversarial-security-reviewer, risk-preparedness-reviewer, factuality-traceability-reviewer, fairness-equity-auditor, rubric-driven-reviewer (see `.cursor/agents/` and `docs/leads/` for each). For **evolve runs** that surface security/factuality/fairness-sensitive learnings, see `.cursor/skills/evolve/SKILL.md` § Specialist dispatch during or after evolve.
 
 ## Pattern
 

@@ -52,6 +52,20 @@ When the **evolve** skill and the **/review** skill (or a reviewer sub-agent) di
 
 **Who wins:** For safety, security, and high-impact domains, **review (and risk) wins**. For routine implementation learnings where review only suggests different wording or routing, **orchestrator** may merge both views or choose one and note the other in the report. When in doubt, **escalate to the user**.
 
+## Specialist dispatch during or after evolve
+
+When an evolve run surfaces or routes learnings that are **security-, factuality-, or fairness-sensitive**, dispatch the matching specialist **during** (before routing) or **after** (to validate routed learnings) the evolve flow. This ensures high-impact learnings are vetted before they change agent behavior.
+
+| Sensitivity | Specialist | When to dispatch |
+| ----------- | ---------- | ---------------- |
+| **Security** | **adversarial-security-reviewer** | Evolve findings touch CLI, MCP, plan-import, db, or user/agent input handling; or the plan diff introduces or changes code in those areas. Dispatch with the plan diff (or the learnings + target agent snippets) and request VERDICT: PASS / CONCERNS / FAIL. Do not route security-relevant learnings until the specialist passes or concerns are resolved. |
+| **Factuality / docs** | **factuality-traceability-reviewer** | Evolve findings or routed learnings touch `docs/`, critical comments, or domain rules (schema, glossary). Dispatch with the diff + affected docs and request PASS/FAIL with specific inconsistencies. Route learnings only after factuality pass or after fixing noted inconsistencies. |
+| **Fairness / process** | **fairness-equity-auditor** | Evolve is run in a multi-plan or multi-agent context and findings might affect task graph balance (e.g. learnings that change who gets work or how priorities are applied). Dispatch with `tg status --tasks` and `tg status --projects` (and optionally initiative rollup); request structured report (skews, rebalances). Consider rebalancing before applying learnings that affect process fairness. |
+
+- **During evolve:** After the reviewer (research mode) returns findings, if any finding is security/factuality/fairness-sensitive, dispatch the relevant specialist(s) **before** Step 4 (route learnings). Gate routing on specialist verdict (e.g. do not append to agent files until adversarial-security passes or concerns are addressed).
+- **After evolve:** Optionally run the relevant specialist on the **routed learnings** (e.g. the new agent-file entries or doc changes) to validate they do not introduce security, factuality, or fairness issues.
+- **Agent templates and lead docs:** `.cursor/agents/adversarial-security-reviewer.md`, `factuality-traceability-reviewer.md`, `fairness-equity-auditor.md`; lead docs in `docs/leads/`. Use the same readonly dispatch pattern as in the /review skill.
+
 ## Decision tree
 
 ```mermaid

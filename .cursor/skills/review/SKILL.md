@@ -176,6 +176,6 @@ Resolve conflicts (e.g. one agent says "tests adequate", another "gaps in X") by
 - **Lead doc**: [docs/leads/review.md](../../docs/leads/review.md)
 - **Risk**: `.cursor/skills/risk/SKILL.md`, `.cursor/skills/risk/CODE_RISK_ASSESSMENT.md`
 - **Investigator**: `.cursor/agents/investigator.md`
-- **Assessment specialists**: `.cursor/agents/adversarial-security-reviewer.md`, `risk-preparedness-reviewer.md`, `factuality-traceability-reviewer.md`, `fairness-equity-auditor.md`, `rubric-driven-reviewer.md`; lead docs in `docs/leads/`
+- **Assessment specialists**: `.cursor/agents/adversarial-security-reviewer.md`, `risk-preparedness-reviewer.md`, `factuality-traceability-reviewer.md`, `fairness-equity-auditor.md`, `rubric-driven-reviewer.md`; lead docs in `docs/leads/`. For **when to dispatch specialists during or after /evolve** (security/factuality/fairness-sensitive learnings), see `.cursor/skills/evolve/SKILL.md` § Specialist dispatch during or after evolve.
 - **Proposal**: [reports/26-03-02_assessment_specialists_proposal.md](../../reports/26-03-02_assessment_specialists_proposal.md)
 - **Dispatch**: `.cursor/rules/subagent-dispatch.mdc` (use readonly and parallel batch in one turn)
