@@ -224,7 +224,7 @@ For now, Dolt's event table is the primary analytics store. OTLP integration is 
 
 ## Productivity benchmark
 
-A custom benchmark suite for productivity and CLI timing lives in [.benchmark/](.benchmark/README.md). It holds problem definitions, runner scripts, and (gitignored) results.
+A custom benchmark suite for productivity and CLI timing lives in [.benchmark/](.benchmark/README.md). It holds problem definitions, runner scripts, and (gitignored) results. Used for custom productivity runs (Option C).
 
 **How to run:** use the benchmark runner to time one or more commands, e.g.:
 
