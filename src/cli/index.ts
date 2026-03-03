@@ -13,6 +13,7 @@ import { doneCommand } from "./done";
 import { edgeCommand } from "./edge";
 import { evolveCommand } from "./evolve-health";
 import { exportCommand } from "./export";
+import { healthCommand } from "./health";
 import { gateCommand } from "./gate";
 import { importCommand } from "./import";
 import { initCommand } from "./init";
@@ -36,7 +37,7 @@ import { readConfig, rootOpts } from "./utils";
 import { worktreeCommand } from "./worktree";
 
 /** Commands that create or scaffold; skip auto-migrate (no config or own migration path). */
-const SKIP_MIGRATE_COMMANDS = new Set(["init", "setup", "server"]);
+const SKIP_MIGRATE_COMMANDS = new Set(["init", "setup", "server", "health"]);
 
 const MIGRATION_CHECK_TIMEOUT_MS = 60_000;
 
@@ -133,6 +134,7 @@ export function createProgram(): Command {
   statsCommand(program);
   exportCommand(program);
   gateCommand(program);
+  healthCommand(program);
   portfolioCommand(program);
   recoverCommand(program);
   importCommand(program);
