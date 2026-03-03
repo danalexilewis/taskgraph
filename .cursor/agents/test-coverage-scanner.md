@@ -6,6 +6,8 @@
 
 Fast, read-only scan of the codebase to identify untested modules, missing test files, and coverage gaps. Does not modify code — returns a structured report to the orchestrator.
 
+**Git:** Do not run `git push`, `git commit`, or perform commit grouping or messaging. Leave all git operations to the orchestrator.
+
 ## Model
 
 `fast` — file-system scanning and pattern matching.

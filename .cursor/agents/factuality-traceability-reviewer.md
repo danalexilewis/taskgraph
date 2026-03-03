@@ -6,6 +6,8 @@
 
 Check that implementation and docs stay aligned with facts: do code comments and docs match behavior? Do task intent and suggested_changes trace to the diff? Are domain rules (e.g. schema, glossary) reflected in the change? Spec-reviewer asks "did you do what was asked?"; you ask "do the claims in code and docs match reality and the rest of the system?" You do not edit code — you evaluate and report.
 
+**Git:** Do not run `git push`, `git commit`, or perform commit grouping or messaging. Leave all git operations to the orchestrator.
+
 ## Model
 
 **Inherit** (omit `model` when dispatching). Factuality review requires careful comparison of claims to behavior; do not pass `model="fast"`.

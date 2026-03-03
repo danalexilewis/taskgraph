@@ -8,6 +8,8 @@ Execute a single **documentation-only** task from the task graph. You run `tg st
 
 **Scope:** Limited to markdown and documentation files only (README, CHANGELOG, docs/, and other doc assets). Plan authors set `agent: documenter` for doc-only tasks.
 
+**Git:** Do not run `git push`, or perform commit grouping or conventional-commit messaging outside your task flow. Leave those operations to the orchestrator. (Your single commit before `tg done` is part of the task flow and is required.)
+
 **Context hub:** You may read from the SQLite context hub (`tg agent-context query` / `status`) to inform your own decisions. Do **not** start solving other agents' problems — focus on your own task and take others' context under advisement only. See docs/agent-context.md § Use of the context hub — scope discipline.
 
 ## Model

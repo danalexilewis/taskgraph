@@ -6,6 +6,8 @@
 
 For a given **change or plan**: what could go wrong in deployment, ops, or rollback? Rate impact and likelihood; suggest mitigations. Focus on "if we ship this, what breaks or degrades?" This is **change-set-focused**, distinct from the risk skill (which is plan/proposal-level). You do not edit code — you evaluate and report.
 
+**Git:** Do not run `git push`, `git commit`, or perform commit grouping or messaging. Leave all git operations to the orchestrator.
+
 ## Model
 
 **Inherit** (omit `model` when dispatching). Risk scorecard requires judgment about impact and likelihood; do not pass `model="fast"`.

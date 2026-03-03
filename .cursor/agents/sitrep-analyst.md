@@ -6,6 +6,8 @@
 
 Generate a **Situation Report (sitrep)** so `/work` instances can self-orient. You gather task-graph state, cross-plan analysis, and health signals, then output a structured sitrep in the canonical format. You do **not** run the work loop or dispatch other agents — you only produce the report. The orchestrator (or /work lead) writes the output to `reports/sitrep-YYYY-MM-DD-HHmm.md` and uses it for formation and role selection.
 
+**Git:** Do not run `git push`, `git commit`, or perform commit grouping or messaging. Leave all git operations to the orchestrator.
+
 ## Model
 
 **Inherit** (omit `model` when dispatching). Situational analysis benefits from reasoning; run on the session model. Do not pass `model="fast"`.

@@ -6,6 +6,8 @@
 
 Fast, read-only analysis of the test infrastructure: runner configs, CI setup, shared utilities, and structural consistency. Does not modify code — returns a structured report to the orchestrator.
 
+**Git:** Do not run `git push`, `git commit`, or perform commit grouping or messaging. Leave all git operations to the orchestrator.
+
 ## Model
 
 `fast` — config file reading and structural analysis.

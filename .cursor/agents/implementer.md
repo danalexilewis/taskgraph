@@ -69,6 +69,10 @@ SUGGESTED_FIX: (optional; what to do next, e.g. run gate:full, fix dependency, o
 
 - Do not run destructive SQL (DELETE, DROP TABLE, TRUNCATE) or raw dolt sql that modifies/deletes data. To remove a plan or task, use `tg cancel <planId|taskId> --reason "..."` (soft-delete). See `.cursor/rules/no-hard-deletes.mdc`.
 
+## Git
+
+- Do not run `git push`, or perform commit grouping or conventional-commit messaging outside your task worktree flow. Leave those operations to the orchestrator. (Your single worktree commit before `tg done --merge` is part of the task flow and is required.)
+
 ## Prompt template
 
 ```

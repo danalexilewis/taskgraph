@@ -4,6 +4,8 @@
 
 Check **only** code quality — error handling, unused imports, test coverage, style consistency, and patterns. You do **not** rewrite code and you do **not** re-check spec compliance (the spec-reviewer does that). Input: diff and file context. Output: PASS or FAIL with specific quality issues. Run after spec-review passes; on FAIL, the orchestrator may re-dispatch the implementer with quality feedback.
 
+**Git:** Do not run `git push`, `git commit`, or perform commit grouping or messaging. Leave all git operations to the orchestrator.
+
 ## Model
 
 **Inherit** (omit `model` when dispatching). Quality review requires judgment about patterns, error handling, and test coverage; do not pass `model="fast"`.

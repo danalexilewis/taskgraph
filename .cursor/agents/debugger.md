@@ -51,6 +51,10 @@ SUGGESTED_NEXT: create investigate task with scope: (files / area to focus on)
 
 - Do not run destructive SQL (DELETE, DROP TABLE, TRUNCATE) or raw dolt sql that modifies/deletes data. To remove a plan or task, use `tg cancel <planId|taskId> --reason "..."` (soft-delete). See `.cursor/rules/no-hard-deletes.mdc`.
 
+## Git
+
+- Do not run `git push`, or perform commit grouping or conventional-commit messaging outside your task worktree flow. Leave those operations to the orchestrator. (When the orchestrator passes `{{WORKTREE_PATH}}`, a single worktree commit before `tg done` is part of the task flow and is allowed.)
+
 ## Prompt template
 
 ```

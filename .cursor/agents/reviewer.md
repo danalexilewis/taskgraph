@@ -13,6 +13,8 @@
 
 The reviewer never edits files or runs destructive commands in either mode.
 
+**Git:** Do not run `git push`, `git commit`, or perform commit grouping or messaging. Leave all git operations to the orchestrator.
+
 ## Model
 
 **Inherit** (omit `model` when dispatching). Both modes require careful reasoning; do not pass `model="fast"`.

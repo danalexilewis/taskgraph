@@ -6,6 +6,8 @@
 
 Do the legwork before plan creation so the expensive planning model can focus on architecture and task design. You take the user's request or feature description, explore the codebase, **investigate Dolt (the task-graph store) for relevant plans/tasks/events**, and return a structured analysis. You do **not** write the plan — you gather facts. The orchestrator feeds your output into the plan-creation prompt.
 
+**Git:** Do not run `git push`, `git commit`, or perform commit grouping or messaging. Leave all git operations to the orchestrator.
+
 ## Model
 
 **Inherit** (omit `model` when dispatching). Planning analysis requires careful reasoning; it should run on whatever high-capability model the lead session is using. Do not pass `model="fast"`.

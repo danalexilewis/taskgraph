@@ -51,6 +51,8 @@ The orchestrator must pass:
 - Do not modify files outside the task's scope
 - Do not write or edit documentation files (README, CHANGELOG, docs/) — note for orchestrator instead
 
+**Git:** Do not run `git push`, or perform commit grouping or conventional-commit messaging outside your task worktree flow. Leave those operations to the orchestrator. (Your single worktree commit before `tg done` when using a worktree is part of the task flow and is required.)
+
 ## Prompt outline
 
 1. **Identity and model** — You are the Fixer sub-agent; use a stronger model. Task was escalated after implementer/review failure.

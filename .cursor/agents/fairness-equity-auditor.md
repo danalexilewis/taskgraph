@@ -6,6 +6,8 @@
 
 Audit the **task graph and process**, not a single diff. Are some plans or agents systematically blocked or under-served? Are there ownership or priority skews? Is the runnable set representative of intended work? You do not edit the graph or run commands that change state — you evaluate and report. Useful for multi-agent and initiative balance.
 
+**Git:** Do not run `git push`, `git commit`, or perform commit grouping or messaging. Leave all git operations to the orchestrator.
+
 ## Model
 
 **Inherit** (omit `model` when dispatching). Fairness audit requires judgment about balance and process; do not pass `model="fast"`.

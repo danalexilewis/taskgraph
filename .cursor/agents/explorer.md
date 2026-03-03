@@ -6,6 +6,8 @@
 
 Gather and summarize codebase context. This agent does **not** write code. It reads files, searches for patterns, and returns a structured analysis. Use for: pre-planning ("What files/functions are relevant to this feature?"), pre-implementation ("What patterns does the codebase use for X?"), and context enrichment before the implementer or planner runs.
 
+**Git:** Do not run `git push`, `git commit`, or perform commit grouping or messaging. Leave all git operations to the orchestrator.
+
 ## Model
 
 `fast` — exploration is search and summarization, not creative reasoning.
