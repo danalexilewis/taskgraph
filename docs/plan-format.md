@@ -25,6 +25,52 @@ All new fields are **optional**. Existing plans without these fields continue to
 
 ---
 
+## Single-project vs multi-project
+
+- **Single-project (default):** If the frontmatter does **not** contain a top-level `projects` key, the file is treated as a single plan. All existing behavior applies: `name`, `overview`, `todos`, and optional plan-level fields describe one project. This is the current behavior and remains unchanged.
+- **Multi-project:** If the frontmatter contains a top-level `projects` array, the file describes multiple projects (e.g. for strategic or initiative-level plans). See [Multi-project plan format](#multi-project-plan-format) below.
+
+---
+
+## Multi-project plan format
+
+When a plan file represents **multiple projects** (e.g. an initiative broken into several deliverables), use a top-level `projects` array. Each element has the same shape as a single-project plan: `name`, `overview`, `todos`, and optionally `fileTree`, `risks`, `tests`, and other plan-level fields per project.
+
+| Level | Field | Description |
+| ----- | ----- | ----------- |
+| File (top-level) | `initiative` | Optional. Initiative ID or title; applied to all projects created from this file when supported by the importer. |
+| File (top-level) | `projects` | Array of project objects. When present, the file is multi-project; when absent, the file is single-project. |
+| Per project | `name` | Project title (required). |
+| Per project | `overview` | Brief description (required). |
+| Per project | `todos` | Array of task objects (required). Same structure as single-project todos. |
+| Per project | `fileTree`, `risks`, `tests`, … | Optional. Same as in single-project frontmatter; apply to that project only. |
+
+Example (multi-project):
+
+```yaml
+---
+initiative: Strategic Initiative Name
+projects:
+  - name: Project A
+    overview: First deliverable.
+    todos:
+      - id: task-a1
+        content: Do A1
+        status: pending
+  - name: Project B
+    overview: Second deliverable.
+    todos:
+      - id: task-b1
+        content: Do B1
+        blockedBy: []
+        status: pending
+---
+```
+
+**Backward compatibility:** Absence of the `projects` key means single-project. Existing plan files and the importer’s single-project path are unchanged.
+
+---
+
 ## YAML Frontmatter
 
 ### Required and Existing Fields

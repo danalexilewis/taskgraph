@@ -48,6 +48,17 @@ isProject: false
 | `domain` | Single domain slug or array of slugs → `docs/<domain>.md` (stored in `task_domain`) |
 | `skill` | Single skill slug or array of slugs → `docs/skills/<skill>.md` (stored in `task_skill`) |
 
+## Multi-project file import behavior
+
+When the plan file uses the **multi-project format** (top-level `projects` array in Cursor frontmatter), import behaves as follows:
+
+- **N project rows:** The importer creates or updates one **project** row per element in `projects`. Each project gets its `name` and `overview` (and optional plan-level fields such as `fileTree`, `risks`, `tests`) from that element.
+- **Initiative:** If the file has a top-level `initiative` (ID or title), or the user passes `--initiative`, the importer assigns `project.initiative_id` for each created/updated project when the initiative can be resolved (e.g. single row match by ID or unique title).
+- **Tasks per project:** Tasks from each project’s `todos` are upserted with the **correct plan_id** for that project. Task `blockedBy` and edges are scoped to the same project; cross-project dependencies are not represented in the imported edges.
+- **Backward compatibility:** If the file has **no** `projects` key, import treats it as a single plan (one project). Existing single-project behavior is unchanged: one project created or matched by `--plan`, all todos upserted to that project.
+
+Implementation note: multi-project parsing and import are added in stages; see the Strategic Planning Implementation plan. Until the parser and importer support the `projects` array, use one plan file per project and link them to an initiative via `tg initiative assign-project` after import.
+
 ## Legacy Format (Markdown Conventions)
 
 Markdown plan files (`.md`) follow a lightweight convention to define plans, tasks, and their relationships. These conventions are designed to be human-readable while providing enough structure for automated parsing.
