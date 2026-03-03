@@ -69,6 +69,22 @@ The task graph lives in a Dolt repository (`.taskgraph/dolt/` by default). Dolt 
 - **Remote config (planned)**: Config may gain an optional `remoteUrl` (or similar) to designate the default Dolt remote for sync. Until then, remotes are configured only via Dolt in `.taskgraph/dolt/`.
 - **Multi-machine workflow**: On a new machine, clone the project (or copy it) so `.taskgraph/dolt/` exists; if the graph is in a shared remote, run `dolt pull` from the Dolt repo to get latest. Run `tg` commands as usual; worktrees and branch-per-agent work per machine. Push changes from the Dolt repo when you want to share them.
 
+### Dolt I/O and agents
+
+How the CLI and agents interact with Dolt for reads and writes:
+
+1. **Execa path vs server path**  
+   **Execa path** (default): the CLI runs `dolt sql` via execa per repo, so only one Dolt SQL invocation runs at a time (serialized). **Server path**: when `TG_DOLT_SERVER_PORT` (and `TG_DOLT_SERVER_DATABASE`) are set, the CLI uses a mysql2 connection pool to a running `dolt sql-server`; multiple queries can run concurrently. Use the server path for lower latency and higher throughput (e.g. integration tests, dashboards). See [infra.md § Dolt sql-server mode](infra.md#dolt-sql-server-mode).
+
+2. **Read cache**  
+   Commands such as `tg status`, `tg dashboard`, and (when enabled) `tg next`, `tg context`, and `tg show` use `cachedQuery()` / status cache with a short TTL (e.g. 2.5 s). The cache is **process-scoped** (in-memory, per CLI process). This reduces Dolt read load when many agents or UIs poll; reads may be slightly stale for up to the TTL.
+
+3. **Write queue and eventual consistency**  
+   When the write queue is used, **write commands** (e.g. `tg start`, `tg done`, `tg note`) **enqueue** the operation and return immediately. A separate **drain** process (`tg drain`) applies queued operations to Dolt. Visibility of those writes in `tg status`, `tg next`, and `tg context` is **eventual** — typically within a few seconds after the drain process runs.
+
+4. **Queue location and writer**  
+   The write queue is stored in `.taskgraph/queue.db`. Run `tg drain` (from the project root) to process the queue and apply pending writes to the Dolt repository. Without a running drain process, queued writes are not applied until you run `tg drain` manually or via a scheduler.
+
 ## Data Flow and Error Handling
 
 The system employs a bottom-up data flow with `neverthrow` Result types for explicit error handling.

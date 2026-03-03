@@ -417,6 +417,21 @@ tg worktree list
 
 When running **parallel implementers**, use `tg start --worktree` so each task gets an isolated worktree. **Per-plan model:** when the plan has a `hash_id`, all task worktrees for that plan share a common plan branch (`plan-<hash_id>`) and branch from it rather than from `main`. Multiple tasks can run in parallel, each on its own task branch; `tg done --merge` accumulates their work on the plan branch. **Worktrunk (wt) is the standard backend** for sub-agent work: set `"useWorktrunk": true` in `.taskgraph/config.json` or ensure `wt` is on PATH (auto-detect). With Worktrunk, worktrees are wt-managed (e.g. `<repo>.tg-<hash_id>`); with raw git, worktrees live at `.taskgraph/worktrees/<taskId>/` on branch `tg/<taskId>` or `tg-<hash_id>`. The **started event body** stores `worktree_path`, `worktree_branch`, `worktree_repo_root`, and (when a plan branch was used) `plan_branch` and `plan_worktree_path`. The **orchestrator** must pass the worktree path (e.g. from `tg worktree list --json`) to implementers as **WORKTREE_PATH** so they run all work and `tg done` from that directory. When the task is complete, run `tg done --evidence "..."`; add `--merge` to merge the task worktree branch into the plan branch (or `main` as fallback). The plan worktree is not removed by `tg done`. **Worktrunk remove gotcha:** `wt remove <branch> -C <repoRoot>` can fail with "No branch named" when the repo path differs from the path used at create. Reliable fix: run `wt remove` with **no branch argument** and **cwd = worktree path** (the path to the worktree to remove). The CLI passes `worktreePathOverride` from `tg done` into `removeWorktree()` and uses it for worktrunk. See `.cursor/rules/subagent-dispatch.mdc` and [multi-agent.md](multi-agent.md).
 
+### `tg drain`
+
+Processes the write queue and applies pending write operations to the Dolt repository. The queue is stored at `.taskgraph/queue.db`. When the CLI is configured to use the queue (write commands enqueue instead of writing directly to Dolt), **write commands** such as `tg start`, `tg done`, and `tg note` return immediately; a separate process must run `tg drain` to apply those operations to Dolt. Visibility of writes in `tg status`, `tg next`, and `tg context` is **eventual** (typically within a few seconds after drain runs). Run `tg drain` from the project root (directory containing `.taskgraph/`). See [architecture.md § Dolt I/O and agents](architecture.md#dolt-io-and-agents).
+
+```bash
+tg drain
+```
+
+**Example:**
+
+```bash
+tg drain
+# Processes queued writes and applies them to .taskgraph/dolt/
+```
+
 ### `tg gate create <name>`
 
 Creates an external gate and blocks the given task until the gate is resolved (e.g., human approval, CI pass, webhook). Gates represent dependencies on conditions _outside_ the task graph; use `tg block` for task-on-task dependencies.

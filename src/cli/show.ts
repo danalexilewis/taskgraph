@@ -1,8 +1,9 @@
 import type { Command } from "commander";
 import { ResultAsync } from "neverthrow";
-import { query } from "../db/query";
+import { cachedQuery } from "../db/query";
 import { type AppError, buildError, ErrorCode } from "../domain/errors";
 import type { Edge, Event, Task, TaskStatus } from "../domain/types";
+import { getStatusCache, statusCacheTtlMs } from "./status-cache";
 import { type Config, readConfig, resolveTaskId } from "./utils";
 
 export function showCommand(program: Command) {
@@ -13,7 +14,11 @@ export function showCommand(program: Command) {
     .action(async (taskId, _options, cmd) => {
       const result = await readConfig().asyncAndThen((config: Config) =>
         resolveTaskId(taskId, config.doltRepoPath).andThen((resolved) => {
-          const q = query(config.doltRepoPath);
+          const q = cachedQuery(
+            config.doltRepoPath,
+            getStatusCache(),
+            statusCacheTtlMs,
+          );
           return ResultAsync.fromPromise(
             (async () => {
               const taskDetailQueryResult = await q.raw<

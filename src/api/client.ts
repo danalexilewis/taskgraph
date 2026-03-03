@@ -2,11 +2,12 @@ import { errAsync, ok, ResultAsync } from "neverthrow";
 import { recoverStaleTasks } from "../cli/recover";
 import type { StatusOptions } from "../cli/status";
 import { fetchStatusData } from "../cli/status";
+import { getStatusCache, statusCacheTtlMs } from "../cli/status-cache";
 import { resolveTaskId } from "../cli/utils";
 import type { Config } from "../config";
 import { readConfig } from "../config";
 import { sqlEscape } from "../db/escape";
-import { query } from "../db/query";
+import { cachedQuery } from "../db/query";
 import { type AppError, buildError, ErrorCode } from "../domain/errors";
 import {
   type ContextOutput,
@@ -22,7 +23,11 @@ async function runContextChain(
   const resolved = await resolveTaskId(taskId, config.doltRepoPath);
   if (resolved.isErr()) throw resolved.error;
   const taskIdResolved = resolved.value;
-  const q = query(config.doltRepoPath);
+  const q = cachedQuery(
+    config.doltRepoPath,
+    getStatusCache(),
+    statusCacheTtlMs,
+  );
 
   const taskRows = await q.select<{
     task_id: string;
@@ -210,7 +215,11 @@ export class TgClient {
     if (configResult.isErr()) return errAsync(configResult.error);
 
     const config = configResult.value;
-    const q = query(config.doltRepoPath);
+    const q = cachedQuery(
+      config.doltRepoPath,
+      getStatusCache(),
+      statusCacheTtlMs,
+    );
 
     return recoverStaleTasks(config.doltRepoPath, 2).andThen(() => {
       const limit = Math.max(1, options.limit ?? 10);
