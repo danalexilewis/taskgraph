@@ -64,6 +64,8 @@ The CLI emits the following error messages when worktree/Worktrunk operations fa
 | `Plan branch X exists but could not find worktree path` | Plan branch in DB but no worktree on disk; `wt list` missing entry. | Seen in `tg start` when resolving plan worktree. |
 | `Worktrunk requested but not available` | `wt` not on PATH; `useWorktrunk: true` but `resolveBackendFromConfig` threw. | Backend resolution before any `wt` call. |
 
+**Retry heuristic (plan/task branch create):** The CLI retries with `wt switch` (no `--create`) only when the underlying cause indicates the branch already exists. It inspects `AppError.cause` (e.g. `cause.stderr` or `cause.message` from the `wt` process) and the wrapper `message` for substring matches: `already exists`, `branch exists`. It does **not** retry on generic "worktree create failed" alone (e.g. permissions, PATH, or other create failures). When `wt` output or exit behaviour changes, update the condition in `createPlanBranchAndWorktree` (and this list) to match.
+
 ## CLI Additions
 
 | Command                                                | Purpose                                                                                          |
