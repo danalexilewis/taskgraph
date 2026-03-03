@@ -2,6 +2,7 @@ import execa from "execa";
 import { createPool, type Pool, type PoolConnection } from "mysql2/promise";
 import { err, errAsync, ok, ResultAsync } from "neverthrow";
 import { type AppError, buildError, ErrorCode } from "../domain/errors";
+import { getServerConnectionEnv } from "../env";
 import { checkoutBranch } from "./branch";
 
 const PROTECTED_TABLES = ["plan", "project", "task", "edge", "event"];
@@ -253,7 +254,8 @@ export function doltSql(
   options?: DoltSqlOptions,
   // biome-ignore lint/suspicious/noExplicitAny: dolt JSON rows untyped; callers cast
 ): ResultAsync<any[], AppError> {
-  const port = process.env[SERVER_PORT_ENV];
+  const serverEnv = getServerConnectionEnv();
+  const port = serverEnv.TG_DOLT_SERVER_PORT;
   if (port) {
     const pool = getServerPool();
     if (pool) {
@@ -263,7 +265,34 @@ export function doltSql(
         }
         return doltSqlServer(query, pool);
       };
-      return runServer();
+      return runServer().orElse((e) => {
+        const cause =
+          e && typeof e === "object" && "cause" in e
+            ? (e as AppError).cause
+            : e;
+        const code =
+          cause && typeof cause === "object" && "code" in cause
+            ? (cause as NodeJS.ErrnoException).code
+            : undefined;
+        if (code === "ECONNREFUSED" || code === "ETIMEDOUT") {
+          const host = serverEnv.TG_DOLT_SERVER_HOST;
+          const database = serverEnv.TG_DOLT_SERVER_DATABASE ?? "";
+          console.error(
+            `[tg] Dolt SQL server unreachable at ${host}:${port}; falling back to execa.`,
+          );
+          delete process.env.TG_DOLT_SERVER_PORT;
+          delete process.env.TG_DOLT_SERVER_DATABASE;
+          return ResultAsync.fromPromise(
+            closeServerPool(port, host, database),
+            () => e,
+          ).andThen(() =>
+            options?.branch
+              ? checkoutBranch(repoPath, options.branch).andThen(runQuery)
+              : runQuery(),
+          );
+        }
+        return errAsync(e);
+      });
     }
     // Port set but pool null (e.g. TG_DOLT_SERVER_DATABASE empty) -> fall back to execa path
   }

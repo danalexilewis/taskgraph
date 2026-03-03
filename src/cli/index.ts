@@ -73,6 +73,11 @@ export function createProgram(): Command {
       try {
         await probePort(Number(process.env.TG_DOLT_SERVER_PORT), 500);
       } catch {
+        const host = process.env.TG_DOLT_SERVER_HOST ?? "127.0.0.1";
+        const port = process.env.TG_DOLT_SERVER_PORT;
+        console.error(
+          `[tg] Dolt SQL server unreachable at ${host}:${port}; falling back to execa.`,
+        );
         delete process.env.TG_DOLT_SERVER_PORT;
         delete process.env.TG_DOLT_SERVER_DATABASE;
       }
