@@ -214,6 +214,7 @@ describe.skipIf(!wtAvailable)("Worktree with Worktrunk backend", () => {
   let planId: string;
   let taskId: string;
   let taskId2: string;
+  let taskId3: string;
 
   beforeAll(async () => {
     context = await setupIntegrationTest();
@@ -242,6 +243,9 @@ todos:
     status: pending
   - id: wt-2
     content: "Worktrunk task 2"
+    status: pending
+  - id: wt-3
+    content: "Worktrunk task 3"
     status: pending
 ---
 `;
@@ -272,10 +276,13 @@ todos:
     }>;
     const first = nextTasks.find((t) => t.title === "Worktrunk task 1");
     const second = nextTasks.find((t) => t.title === "Worktrunk task 2");
+    const third = nextTasks.find((t) => t.title === "Worktrunk task 3");
     expect(first).toBeDefined();
     expect(second).toBeDefined();
+    expect(third).toBeDefined();
     taskId = first?.task_id;
     taskId2 = second?.task_id;
+    taskId3 = third?.task_id;
   }, 60000);
 
   afterAll(async () => {
@@ -342,6 +349,53 @@ todos:
     list = wtListJson(tempDir);
     const branchAfter = list.find((e) => e.branch?.startsWith("tg-"));
     expect(branchAfter).toBeUndefined();
+  }, 30000);
+
+  it("copy-ignored: after start, worktree contains copied ignored content when source has it", async () => {
+    if (!context) throw new Error("Context not initialized");
+    const tempDir = context.tempDir;
+
+    const gitignorePath = path.join(tempDir, ".gitignore");
+    const existing = fs.readFileSync(gitignorePath, "utf-8");
+    if (!existing.includes("test-ignored")) {
+      fs.writeFileSync(gitignorePath, existing.trimEnd() + "\ntest-ignored\n");
+    }
+    const ignoredDir = path.join(tempDir, "test-ignored");
+    fs.mkdirSync(ignoredDir, { recursive: true });
+    fs.writeFileSync(path.join(ignoredDir, "stub.txt"), "copied");
+
+    const { exitCode: startCode, stdout: startStdout } = await runTgCli(
+      `start ${taskId3} --agent implementer-1 --worktree --no-commit --json`,
+      tempDir,
+    );
+    expect(startCode).toBe(0);
+    const startResults = JSON.parse(startStdout) as Array<{
+      id: string;
+      status: string;
+      worktree_path?: string;
+    }>;
+    expect(startResults.length).toBe(1);
+    expect(startResults[0].status).toBe("doing");
+    expect(startResults[0].worktree_path).toBeDefined();
+    expect(typeof startResults[0].worktree_path).toBe("string");
+    expect((startResults[0].worktree_path as string).length).toBeGreaterThan(0);
+    const worktreePath = path.isAbsolute(startResults[0].worktree_path as string)
+      ? (startResults[0].worktree_path as string)
+      : path.resolve(tempDir, startResults[0].worktree_path as string);
+
+    const copiedStub = path.join(worktreePath, "test-ignored", "stub.txt");
+    expect(fs.existsSync(copiedStub)).toBe(true);
+    expect(fs.readFileSync(copiedStub, "utf-8")).toBe("copied");
+
+    const doneResult = await runTgCli(
+      `done ${taskId3} --evidence "copy-ignored test" --no-commit`,
+      tempDir,
+    ).catch((e) => ({ stdout: "", stderr: String(e), exitCode: 1 }));
+    if (doneResult.exitCode !== 0) {
+      throw new Error(
+        `tg done failed: exitCode=${doneResult.exitCode}\nstderr: ${doneResult.stderr}`,
+      );
+    }
   }, 30000);
 
   it("tg start --worktree then tg done --merge merges and removes via wt", async () => {
