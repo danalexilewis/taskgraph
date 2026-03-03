@@ -5,6 +5,8 @@ description: Clean up worktrees, stale branches, and orphaned directories after 
 
 # Clean Up Shop
 
+**You** (the lead) do the cleanup. Do not dispatch sub-agents.
+
 Post-session housekeeping: return the main checkout to `main`, merge completed work, remove worktree directories, and delete merged branches.
 
 ## Decision map

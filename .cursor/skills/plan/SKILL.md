@@ -27,6 +27,8 @@ The analyst gathers facts; the orchestrator owns architecture, dependencies, and
 - **Propagation**: Planner-analyst MUST use readonly=true, subagent_type="explore". Do NOT pass model="fast" — analyst uses the session model (Sonnet) for reasoning quality.
 - **Rule**: Analyst does not write files. Only the orchestrator writes the plan.
 
+- **Commits:** You (the lead) perform any git commits; do not dispatch sub-agents to commit.
+
 ## Plan mode: Tactical vs Strategic
 
 Classify the **plan mode** first. It determines whether the product analyst runs and which checklist applies.

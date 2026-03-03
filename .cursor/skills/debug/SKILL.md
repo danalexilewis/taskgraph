@@ -32,6 +32,8 @@ Use this skill when root cause is unclear: failing test with unknown cause, user
 - **Propagation**: Investigator readonly=true; implementer may edit only for the one-change-under-test in Phase 3–4.
 - **Rule**: One change at a time when testing hypotheses; create failing test first in Phase 4, then implement fix.
 
+- **Commits:** You (the lead) perform any git commits; do not dispatch sub-agents to commit.
+
 ## Decision tree
 
 ```mermaid

@@ -5,6 +5,8 @@ description: Reviews priority of active work by examining active projects and as
 
 # Reprioritise
 
+**You** (the lead) do the work. Do not dispatch sub-agents.
+
 **Lead documentation:** See [docs/leads/reprioritise.md](../../docs/leads/reprioritise.md).
 
 When this skill is invoked, run reprioritise: review which projects are active, decide if that mix is right, produce a linear priority order, and ensure enough runnable work (Ready tasks).

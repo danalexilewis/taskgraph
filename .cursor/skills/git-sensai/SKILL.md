@@ -31,6 +31,8 @@ Use the tables in `knowledge.md` as the checklist: read the listed docs (or the 
 
 If the request is about pruning, dead branches, or worktree order → use **Pruner**. Otherwise pick or define the mode that fits.
 
+**Commits:** You (the lead) perform any git commits; do not dispatch sub-agents to commit.
+
 ---
 
 ## Pruner mode

@@ -23,6 +23,8 @@ description: Performance audit skill that dispatches a Performance Architect lea
 
 **All agents are read-only.** No file edits, no DB mutations.
 
+**Commits:** You (the lead) perform any git commits; do not dispatch sub-agents to commit.
+
 ## Decision tree
 
 ```mermaid

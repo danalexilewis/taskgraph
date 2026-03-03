@@ -5,6 +5,8 @@ description: Enrich the task graph with cross-plan and cross-project edges and n
 
 # Meta Skill
 
+**You** (the lead) do the work. Do not dispatch sub-agents.
+
 **Lead documentation:** See [docs/leads/meta.md](../../docs/leads/meta.md).
 
 Describes how to enrich the task graph with **cross-plan edges** and **task notes**: propose relationships and notes from cross-plan (or cross-project) analysis, then write to the graph only after user approval.

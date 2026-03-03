@@ -5,6 +5,8 @@ description: Write a structured report from the immediate conversation context â
 
 # Report
 
+**You** (the lead) do the work. Do not dispatch sub-agents.
+
 **Type:** Utility skill (procedural, no agentic lead or sub-agents).
 
 ## When to use

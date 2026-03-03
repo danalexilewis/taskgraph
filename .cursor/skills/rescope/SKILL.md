@@ -42,6 +42,8 @@ Clarifies **desired functionality** when work has shipped but behavior is not wh
 - **Propagation**: All sub-agents read-only. No implementer in this skill.
 - **Constraint**: Stay in PM role. Do not write code.
 
+- **Commits:** You (the lead) perform any git commits; do not dispatch sub-agents to commit.
+
 ## Decision tree
 
 ```mermaid

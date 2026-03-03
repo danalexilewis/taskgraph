@@ -33,6 +33,8 @@ When this skill is invoked, enter an autonomous execution loop. Maintain a stead
   | reviewer / spec-reviewer / quality-reviewer | read-only  |
   | fixer                                       | read-write |
 
+- **Commits:** You (the lead) perform any git commits; do not dispatch sub-agents to commit.
+
 ## Decision tree
 
 Breadcrumb check is the **first** step when no plan is specified. The diagram starts with plan vs no-plan; when no plan, the next step is always "Check sitrep breadcrumb".

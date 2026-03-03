@@ -31,6 +31,8 @@ Orchestrates a comprehensive review of the project's testing approach by dispatc
   | test-infra-mapper     | read-only  | 1 (scanning)                  |
   | implementer           | read-write | Plan execution (after import) |
 
+- **Commits:** You (the lead) perform any git commits; do not dispatch sub-agents to commit.
+
 ## Decision tree
 
 ```mermaid

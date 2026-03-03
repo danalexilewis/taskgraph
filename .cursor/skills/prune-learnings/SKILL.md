@@ -5,6 +5,8 @@ description: Periodic audit to prune stale or duplicate learnings from .cursor/m
 
 # Prune Learnings — Periodic Audit
 
+**You** (the lead) do the audit and pruning. Do not dispatch sub-agents.
+
 Audit and prune stale or duplicate learnings from the three learnings surfaces so they stay lean and high-signal. Any agent can execute this skill.
 
 ## Scope

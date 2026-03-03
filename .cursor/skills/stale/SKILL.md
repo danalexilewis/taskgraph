@@ -68,3 +68,5 @@ Return a short report: STATUS (FIXED | PARTIAL | ESCALATE), ROOT_CAUSE (why it w
 - Only **doing** tasks can be stale (started > threshold ago). Todo/blocked/done are not in `stale_tasks`.
 - "No agent assigned" means `owner` is null or empty. Tasks with an owner (e.g. "implementer", "human") are **not** dispatched for this skill; they are assumed to have someone responsible.
 - Investigator count: one per stale unassigned task; dispatch all in the same turn for parallelism.
+
+**Commits:** You (the lead) perform any git commits; do not dispatch sub-agents to commit.

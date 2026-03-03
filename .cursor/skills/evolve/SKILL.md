@@ -27,6 +27,8 @@ Review completed plan execution history (task diffs on the plan branch) to ident
 - **Lead:** read-write (appends to agent Learnings sections, optionally updates docs/skills)
 - **Sub-agent (reviewer):** read-only
 
+- **Commits:** You (the lead) perform any git commits; do not dispatch sub-agents to commit.
+
 ## Inputs
 
 - **Primary (required):** Plan diff (from plan branch or fallback) and follow-up fix task notes.

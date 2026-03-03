@@ -53,6 +53,8 @@ This skill is **read-only**: no file edits, no database writes, no destructive c
 - **Propagation**: All sub-agents MUST use readonly=true.
 - **Rule**: No file edits, no `tg start`/`tg done`, no DB writes, no destructive commands.
 
+- **Commits:** You (the lead) perform any git commits; do not dispatch sub-agents to commit.
+
 ## Decision tree
 
 ```mermaid

@@ -24,6 +24,8 @@ description: Runs a quick high-level investigation from the end of the chat (sum
 - **Propagation**: All sub-agents MUST use readonly=true.
 - **Rule**: No file edits, no destructive commands. Reviewer gathers evidence only.
 
+- **Commits:** You (the lead) perform any git commits; do not dispatch sub-agents to commit.
+
 ## Decision tree
 
 ```mermaid
