@@ -59,6 +59,7 @@
     "@clack/prompts": "^1.0.1",
     "@modelcontextprotocol/sdk": "^1.27.0",
     "@opentui/core": "^0.1.84",
+    "@t3-oss/env-core": "^0.13.10",
     "ansi-diff": "^1.2.0",
     "boxen": "^5.1.0",
     "chalk": "^4.1.2",
