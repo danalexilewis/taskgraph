@@ -1,6 +1,5 @@
 import type { Command } from "commander";
-import { errAsync, okAsync, type ResultAsync } from "neverthrow";
-import type { Config } from "../config";
+import { errAsync, okAsync, ResultAsync } from "neverthrow";
 import { doltSql } from "../db/connection";
 import { sqlEscape } from "../db/escape";
 import { query } from "../db/query";
@@ -52,63 +51,48 @@ export function resolveTaskId(
   );
 }
 
+export type ResolveTaskIdsBatchResult = {
+  resolved: { inputId: string; taskId: string }[];
+  errors: Map<string, string>;
+};
+
 /**
- * Resolves an array of user-supplied IDs (short hash_id or full UUID) to task_id list with per-ID errors.
- * UUIDs pass through; hash_ids are resolved via a single SELECT. Validates 1:1 (missing or duplicate hash_id → error for that ID).
- * Returns { resolved, errors } so the caller can build results.
+ * Resolve multiple task identifiers to full UUIDs. Runs resolveTaskId for each;
+ * returns resolved list and per-input errors (no batch-level failure).
  */
 export function resolveTaskIdsBatch(
-  config: Config,
   ids: string[],
-): ResultAsync<
-  { resolved: Map<string, string>; errors: Map<string, string> },
-  AppError
-> {
-  const resolved = new Map<string, string>();
-  const errors = new Map<string, string>();
-  const invalidMessage =
-    "Task ID must be a UUID or a hash id (tg-XXXXXX)";
-
-  for (const id of ids) {
-    if (UUID_REGEX.test(id)) {
-      resolved.set(id, id);
-    } else if (!isHashId(id)) {
-      errors.set(id, invalidMessage);
+  repoPath: string,
+): ResultAsync<ResolveTaskIdsBatchResult, AppError> {
+  if (ids.length === 0) {
+    return okAsync({ resolved: [], errors: new Map() });
+  }
+  type SettledItem =
+    | { inputId: string; taskId: string; error: null }
+    | { inputId: string; taskId: null; error: string };
+  const run = async (): Promise<ResolveTaskIdsBatchResult> => {
+    const settled: SettledItem[] = await Promise.all(
+      ids.map(async (inputId): Promise<SettledItem> => {
+        const r = await resolveTaskId(inputId, repoPath);
+        return r.match(
+          (taskId) => ({ inputId, taskId, error: null } as SettledItem),
+          (e) => ({ inputId, taskId: null, error: e.message } as SettledItem),
+        );
+      }),
+    );
+    const resolved = settled
+      .filter((x): x is { inputId: string; taskId: string; error: null } => x.error === null)
+      .map((x) => ({ inputId: x.inputId, taskId: x.taskId }));
+    const errors = new Map<string, string>();
+    for (const x of settled) {
+      if (x.error != null) errors.set(x.inputId, x.error);
     }
-  }
-
-  const hashIdInputs = ids.filter(isHashId);
-  const uniqueHashIds = [...new Set(hashIdInputs)];
-  if (uniqueHashIds.length === 0) {
-    return okAsync({ resolved, errors });
-  }
-
-  const idList = uniqueHashIds.map((id) => `'${sqlEscape(id)}'`).join(",");
-  const sql = `SELECT \`hash_id\`, \`task_id\` FROM \`task\` WHERE \`hash_id\` IN (${idList})`;
-  const repoPath = config.doltRepoPath;
-  const q = query(repoPath);
-
-  return q
-    .raw<{ hash_id: string; task_id: string }>(sql)
-    .map((rows) => {
-      const hashIdToTaskIds = new Map<string, string[]>();
-      for (const r of rows) {
-        const arr = hashIdToTaskIds.get(r.hash_id) ?? [];
-        arr.push(r.task_id);
-        hashIdToTaskIds.set(r.hash_id, arr);
-      }
-      for (const id of hashIdInputs) {
-        const arr = hashIdToTaskIds.get(id);
-        if (!arr || arr.length === 0) {
-          errors.set(id, `No task found with hash_id '${id}'`);
-        } else if (arr.length > 1) {
-          errors.set(id, `Multiple tasks matched hash_id '${id}'`);
-        } else {
-          resolved.set(id, arr[0]);
-        }
-      }
-      return { resolved, errors };
-    });
+    return { resolved, errors };
+  };
+  return ResultAsync.fromPromise(
+    run(),
+    (e) => buildError(ErrorCode.UNKNOWN_ERROR, (e as Error).message),
+  );
 }
 
 /**
@@ -254,6 +238,17 @@ export function parseIdList(raw: string[]): string[] {
       .map((t) => t.trim())
       .filter(Boolean),
   );
+}
+
+/**
+ * Format an error cause for CLI stderr: one short line, no stack.
+ * Use when surfacing AppError.cause so implementers see the underlying failure.
+ */
+export function formatCauseForCLI(cause: unknown): string {
+  if (cause instanceof Error) {
+    return ` Cause: ${cause.message ?? String(cause)}`;
+  }
+  return ` Cause: ${String(cause)}`;
 }
 
 /** Walk to root command to access global options like --json */

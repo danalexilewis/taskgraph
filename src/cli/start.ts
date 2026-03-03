@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import type { Command } from "commander";
-import { err, errAsync, okAsync, type ResultAsync } from "neverthrow";
+import { err, errAsync, okAsync, ResultAsync } from "neverthrow";
 import { v4 as uuidv4 } from "uuid";
 import { checkoutBranch, createBranch } from "../db/branch";
 import { doltCommit } from "../db/commit";
@@ -11,7 +11,14 @@ import { type AppError, buildError, ErrorCode } from "../domain/errors";
 import { checkRunnable, checkValidTransition } from "../domain/invariants";
 import type { TaskStatus } from "../domain/types";
 import { getStatusCache } from "./status-cache";
-import { type Config, parseIdList, readConfig, resolveTaskId } from "./utils";
+import {
+  type Config,
+  formatCauseForCLI,
+  parseIdList,
+  readConfig,
+  resolveTaskId,
+  resolveTaskIdsBatch,
+} from "./utils";
 import {
   createPlanBranchAndWorktree,
   createWorktree,
@@ -20,6 +27,232 @@ import {
 } from "./worktree";
 
 const PLAN_BRANCH_PREFIX = "plan-";
+
+type TaskRowForStart = {
+  task_id: string;
+  status: TaskStatus;
+  hash_id: string | null;
+  plan_id: string;
+};
+
+/**
+ * Load task rows (task_id, status, hash_id, plan_id) for the given task IDs in one query.
+ * Returns a Map from task_id to row for use in batch start.
+ */
+function loadTasksByIds(
+  doltRepoPath: string,
+  taskIds: string[],
+): ResultAsync<Map<string, TaskRowForStart>, AppError> {
+  if (taskIds.length === 0) return okAsync(new Map());
+  const idList = taskIds.map((id) => `'${sqlEscape(id)}'`).join(",");
+  const sql = `SELECT task_id, status, hash_id, plan_id FROM \`task\` WHERE task_id IN (${idList})`;
+  return doltSql(sql, doltRepoPath).map((rows: TaskRowForStart[]) => {
+    const map = new Map<string, TaskRowForStart>();
+    for (const row of rows) map.set(row.task_id, row);
+    return map;
+  });
+}
+
+/**
+ * Batch fetch unmet blocker count per task_id (one raw query).
+ * Used to validate runnable for multiple todo tasks without N queries.
+ */
+function batchBlockerCount(
+  repoPath: string,
+  taskIds: string[],
+): ResultAsync<Map<string, number>, AppError> {
+  if (taskIds.length === 0) return okAsync(new Map());
+  const idList = taskIds.map((id) => `'${sqlEscape(id)}'`).join(",");
+  const sql = `
+    SELECT e.to_task_id AS task_id, COUNT(*) AS unmet_count
+    FROM \`edge\` e
+    JOIN \`task\` bt ON e.from_task_id = bt.task_id
+    WHERE e.to_task_id IN (${idList})
+      AND e.type = 'blocks'
+      AND bt.status NOT IN ('done','canceled')
+    GROUP BY e.to_task_id
+  `;
+  return query(repoPath)
+    .raw<{ task_id: string; unmet_count: number }>(sql)
+    .map((rows) => {
+      const map = new Map<string, number>();
+      for (const r of rows) map.set(r.task_id, Number(r.unmet_count ?? 0));
+      return map;
+    });
+}
+
+type StartedBody = { agent?: string };
+
+/**
+ * Batch fetch latest started event body per task_id (one raw query).
+ * Used when status=doing and !force to determine claimant without N queries.
+ */
+function batchClaimCheck(
+  repoPath: string,
+  taskIds: string[],
+): ResultAsync<Map<string, StartedBody | null>, AppError> {
+  if (taskIds.length === 0) return okAsync(new Map());
+  const idList = taskIds.map((id) => `'${sqlEscape(id)}'`).join(",");
+  const sql = `
+    SELECT e.task_id, e.body
+    FROM \`event\` e
+    INNER JOIN (
+      SELECT task_id, MAX(created_at) AS max_created
+      FROM \`event\`
+      WHERE kind = 'started' AND task_id IN (${idList})
+      GROUP BY task_id
+    ) m ON e.task_id = m.task_id AND e.kind = 'started' AND e.created_at = m.max_created
+    WHERE e.task_id IN (${idList})
+  `;
+  return query(repoPath)
+    .raw<{ task_id: string; body: string | object }>(sql)
+    .map((rows) => {
+      const map = new Map<string, StartedBody | null>();
+      for (const r of rows) {
+        const raw = r.body;
+        const parsed: StartedBody | null =
+          raw != null
+            ? typeof raw === "string"
+              ? (JSON.parse(raw) as StartedBody)
+              : (raw as StartedBody)
+            : null;
+        if (!map.has(r.task_id)) map.set(r.task_id, parsed);
+      }
+      for (const id of taskIds) if (!map.has(id)) map.set(id, null);
+      return map;
+    });
+}
+
+export type BatchValidateResult = {
+  validIds: string[];
+  errors: Map<string, string>;
+};
+
+/**
+ * Given batch-loaded task rows, determine which task_ids are valid to start:
+ * runnable (todo with zero unmet blockers), or doing+force. For doing+!force,
+ * treat as invalid if already claimed (batch claim check). Returns validIds and
+ * per-task errors map for the batch path.
+ */
+export function validateBatchStart(
+  repoPath: string,
+  taskRowMap: Map<string, TaskRowForStart>,
+  force: boolean,
+): ResultAsync<BatchValidateResult, AppError> {
+  const taskIds = Array.from(taskRowMap.keys());
+  if (taskIds.length === 0) {
+    return okAsync({ validIds: [], errors: new Map() });
+  }
+
+  const doingIds: string[] = [];
+  const todoIds: string[] = [];
+  const errors = new Map<string, string>();
+
+  for (const taskId of taskIds) {
+    const row = taskRowMap.get(taskId);
+    if (!row) continue;
+    const status = row.status;
+    if (status === "doing") {
+      if (force) continue;
+      doingIds.push(taskId);
+    } else if (status === "todo") {
+      todoIds.push(taskId);
+    } else {
+      const tr = checkValidTransition(status, "doing");
+      errors.set(
+        taskId,
+        tr.isErr() ? tr.error.message : `Invalid status: ${status}`,
+      );
+    }
+  }
+
+  return ResultAsync.combine([
+    doingIds.length > 0 ? batchClaimCheck(repoPath, doingIds) : okAsync(new Map<string, StartedBody | null>()),
+    todoIds.length > 0 ? batchBlockerCount(repoPath, todoIds) : okAsync(new Map<string, number>()),
+  ] as const).map(([claimMap, blockerCountMap]) => {
+    for (const taskId of doingIds) {
+      const body = claimMap.get(taskId) ?? null;
+      const claimant = body?.agent ?? "unknown";
+      errors.set(
+        taskId,
+        `Task is being worked by ${claimant}. Use --force to override.`,
+      );
+    }
+    for (const taskId of todoIds) {
+      const count = blockerCountMap.get(taskId) ?? 0;
+      if (count > 0) {
+        errors.set(
+          taskId,
+          `Task ${taskId} has ${count} unmet blockers and is not runnable.`,
+        );
+      }
+    }
+    const validIds = taskIds.filter((id) => !errors.has(id));
+    return { validIds, errors };
+  });
+}
+
+/**
+ * Batch DB path: bulk UPDATE task, one INSERT per event, project update, one commit.
+ * For a set of valid task_ids (no worktree, no branch). Caller must have already
+ * validated taskIds (runnable todo or doing+force). On failure no partial commit.
+ */
+export function startMany(
+  config: Config,
+  taskIds: string[],
+  agentName: string,
+  timestamp?: string,
+  noCommit?: boolean,
+): ResultAsync<{ started: string[] }, AppError> {
+  if (taskIds.length === 0) return okAsync({ started: [] });
+
+  const repoPath = config.doltRepoPath;
+  const q = query(repoPath);
+  const currentTimestamp = timestamp ?? now();
+  const idList = taskIds.map((id) => `'${sqlEscape(id)}'`).join(",");
+
+  const planIdsSql = `SELECT DISTINCT plan_id FROM \`task\` WHERE task_id IN (${idList})`;
+
+  return q
+    .raw<{ plan_id: string }>(planIdsSql)
+    .andThen((planRows) => {
+      const planIds = planRows.map((r) => r.plan_id);
+      const planIdList = planIds.map((id) => `'${sqlEscape(id)}'`).join(",");
+
+      return q
+        .raw(
+          `UPDATE \`task\` SET status = 'doing', updated_at = '${sqlEscape(currentTimestamp)}' WHERE task_id IN (${idList})`,
+        )
+        .andThen(() => {
+          const eventInserts = taskIds.map((taskId) =>
+            q.insert("event", {
+              event_id: uuidv4(),
+              task_id: taskId,
+              kind: "started",
+              body: jsonObj({ agent: agentName, timestamp: currentTimestamp }),
+              created_at: currentTimestamp,
+            }),
+          );
+          return ResultAsync.combine(eventInserts);
+        })
+        .andThen(() => {
+          if (planIds.length === 0) return okAsync(undefined as void);
+          return q
+            .raw(
+              `UPDATE \`project\` SET status = 'active', updated_at = '${sqlEscape(currentTimestamp)}' WHERE plan_id IN (${planIdList}) AND status = 'draft'`,
+            )
+            .map(() => undefined);
+        })
+        .andThen(() =>
+          doltCommit(
+            `task: start ${taskIds.length} tasks`,
+            repoPath,
+            noCommit ?? false,
+          ),
+        )
+        .map(() => ({ started: taskIds }));
+    });
+}
 
 function agentBranchName(taskId: string): string {
   return `agent-${taskId.slice(0, 8)}`;
@@ -121,7 +354,11 @@ export function startOne(
   useBranch?: boolean,
   useWorktree?: boolean,
   worktreeRepoPath?: string,
-): ResultAsync<{ task_id: string; status: TaskStatus }, AppError> {
+  preloaded?: TaskRowForStart,
+): ResultAsync<
+  { task_id: string; status: TaskStatus; worktree_path?: string },
+  AppError
+> {
   const currentTimestamp = now();
   const q = query(config.doltRepoPath);
   const branchName = useBranch ? agentBranchName(taskId) : undefined;
@@ -133,17 +370,19 @@ export function startOne(
         )
       : okAsync(undefined);
 
-  return ensureBranch
-    .andThen(() =>
-      q.select<{
+  const loadTaskRow = preloaded
+    ? okAsync([preloaded])
+    : q.select<{
         status: TaskStatus;
         hash_id?: string | null;
         plan_id: string;
       }>("task", {
         columns: ["status", "hash_id", "plan_id"],
         where: { task_id: taskId },
-      }),
-    )
+      });
+
+  return ensureBranch
+    .andThen(() => loadTaskRow)
     .andThen((currentStatusResult) => {
       if (currentStatusResult.length === 0) {
         return err(
@@ -237,9 +476,14 @@ export function startOne(
           plan_worktree_path: w?.plan_worktree_path,
         }));
     })
-    .andThen(
-      ({ worktreeInfo, plan_id: planId, plan_branch, plan_worktree_path }) =>
-        q
+    .andThen((payload) => {
+      const {
+        worktreeInfo,
+        plan_id: planId,
+        plan_branch,
+        plan_worktree_path,
+      } = payload;
+      return q
           .update(
             "task",
             { status: "doing", updated_at: currentTimestamp },
@@ -279,8 +523,12 @@ export function startOne(
           .andThen(() =>
             doltCommit(`task: start ${taskId}`, config.doltRepoPath, noCommit),
           )
-          .map(() => ({ task_id: taskId, status: "doing" as TaskStatus })),
-    );
+          .map(() => ({
+            task_id: taskId,
+            status: "doing" as TaskStatus,
+            worktree_path: worktreeInfo?.worktree_path,
+          }));
+    });
 }
 
 export function startCommand(program: Command) {
@@ -324,32 +572,145 @@ export function startCommand(program: Command) {
         options.branch === true || config.useDoltBranches === true;
 
       type ResultItem =
-        | { id: string; status: TaskStatus }
-        | { id: string; error: string };
+        | { id: string; status: TaskStatus; worktree_path?: string }
+        | { id: string; error: string; cause?: unknown };
       const results: ResultItem[] = [];
 
-      for (const taskId of ids) {
-        const resolvedResult = await resolveTaskId(taskId, config.doltRepoPath);
-        if (resolvedResult.isErr()) {
-          results.push({ id: taskId, error: resolvedResult.error.message });
-          continue;
+      if (ids.length > 1 && !useWorktree && !useBranch) {
+        const resolveBatchResult = await resolveTaskIdsBatch(
+          ids,
+          config.doltRepoPath,
+        );
+        if (resolveBatchResult.isErr()) {
+          const e = resolveBatchResult.error;
+          for (const id of ids) {
+            results.push({
+              id,
+              error: e.message,
+              ...(e.cause != null ? { cause: e.cause } : {}),
+            });
+          }
+        } else {
+          for (const [inputId, msg] of resolveBatchResult.value.errors) {
+            results.push({ id: inputId, error: msg });
+          }
+          const resolved = resolveBatchResult.value.resolved;
+          if (resolved.length > 0) {
+            const loadResult = await loadTasksByIds(
+              config.doltRepoPath,
+              resolved.map((r) => r.taskId),
+            );
+            if (loadResult.isErr()) {
+              const e = loadResult.error;
+              for (const r of resolved) {
+                results.push({
+                  id: r.inputId,
+                  error: e.message,
+                  ...(e.cause != null ? { cause: e.cause } : {}),
+                });
+              }
+            } else {
+              const taskRowMap = loadResult.value;
+              const validateResult = await validateBatchStart(
+                config.doltRepoPath,
+                taskRowMap,
+                force,
+              );
+              if (validateResult.isErr()) {
+                const e = validateResult.error;
+                for (const r of resolved) {
+                  results.push({
+                    id: r.inputId,
+                    error: e.message,
+                    ...(e.cause != null ? { cause: e.cause } : {}),
+                  });
+                }
+              } else {
+                const { validIds, errors: validateErrors } =
+                  validateResult.value;
+                const inputIdByTaskId = new Map(
+                  resolved.map((r) => [r.taskId, r.inputId]),
+                );
+                for (const r of resolved) {
+                  const errMsg = validateErrors.get(r.taskId);
+                  if (errMsg != null) {
+                    results.push({ id: r.inputId, error: errMsg });
+                  }
+                }
+                const startManyResult = await startMany(
+                  config,
+                  validIds,
+                  agentName,
+                  undefined,
+                  noCommit,
+                );
+                if (startManyResult.isErr()) {
+                  const e = startManyResult.error;
+                  for (const taskId of validIds) {
+                    results.push({
+                      id: inputIdByTaskId.get(taskId) ?? taskId,
+                      error: e.message,
+                      ...(e.cause != null ? { cause: e.cause } : {}),
+                    });
+                  }
+                } else {
+                  for (const taskId of startManyResult.value.started) {
+                    results.push({
+                      id: inputIdByTaskId.get(taskId) ?? taskId,
+                      status: "doing",
+                    });
+                  }
+                }
+              }
+            }
+          }
         }
-        const resolved = resolvedResult.value;
-        const result = await startOne(
-          config,
-          resolved,
-          agentName,
-          force,
-          noCommit,
-          useBranch,
-          useWorktree,
-          worktreeRepoPath,
-        );
-        result.match(
-          (data) => results.push({ id: data.task_id, status: data.status }),
-          (error: AppError) =>
-            results.push({ id: taskId, error: error.message }),
-        );
+      } else {
+        const resolvedList: { inputId: string; taskId: string }[] = [];
+        for (const taskId of ids) {
+          const resolvedResult = await resolveTaskId(
+            taskId,
+            config.doltRepoPath,
+          );
+          if (resolvedResult.isErr()) {
+            const e = resolvedResult.error;
+            results.push({
+              id: taskId,
+              error: e.message,
+              ...(e.cause != null ? { cause: e.cause } : {}),
+            });
+            continue;
+          }
+          resolvedList.push({ inputId: taskId, taskId: resolvedResult.value });
+        }
+        for (const { inputId, taskId } of resolvedList) {
+          const result = await startOne(
+            config,
+            taskId,
+            agentName,
+            force,
+            noCommit,
+            useBranch,
+            useWorktree,
+            worktreeRepoPath,
+          );
+          result.match(
+            (data) =>
+              results.push({
+                id: data.task_id,
+                status: data.status,
+                ...(data.worktree_path != null && {
+                  worktree_path: data.worktree_path,
+                }),
+              }),
+            (error: AppError) =>
+              results.push({
+                id: inputId,
+                error: error.message,
+                ...(error.cause != null ? { cause: error.cause } : {}),
+              }),
+          );
+        }
       }
 
       const hasFailure = results.some((r) => "error" in r);
@@ -359,8 +720,14 @@ export function startCommand(program: Command) {
           for (const r of results) {
             if ("error" in r) {
               console.error(`Error starting task ${r.id}: ${r.error}`);
+              if (r.cause != null) {
+                console.error(formatCauseForCLI(r.cause));
+              }
             } else {
               console.log(`Task ${r.id} started.`);
+              if (r.worktree_path) {
+                console.log(`worktree_path: ${r.worktree_path}`);
+              }
             }
           }
         } else {
@@ -368,8 +735,19 @@ export function startCommand(program: Command) {
             JSON.stringify(
               results.map((r) =>
                 "error" in r
-                  ? { id: r.id, error: r.error }
-                  : { id: r.id, status: r.status },
+                  ? {
+                      id: r.id,
+                      error: r.error,
+                      ...(r.cause != null
+                        ? {
+                            cause:
+                              r.cause instanceof Error
+                                ? r.cause.message
+                                : String(r.cause),
+                          }
+                        : {}),
+                    }
+                  : { id: r.id, status: r.status, ...("worktree_path" in r && r.worktree_path != null && { worktree_path: r.worktree_path }) },
               ),
             ),
           );
@@ -380,14 +758,28 @@ export function startCommand(program: Command) {
       if (!cmd.parent?.opts().json) {
         for (const r of results) {
           console.log(`Task ${r.id} started.`);
+          if ("worktree_path" in r && r.worktree_path) {
+            console.log(`worktree_path: ${r.worktree_path}`);
+          }
         }
       } else {
         console.log(
           JSON.stringify(
             results.map((r) =>
               "error" in r
-                ? { id: r.id, error: r.error }
-                : { id: r.id, status: r.status },
+                ? {
+                    id: r.id,
+                    error: r.error,
+                    ...(r.cause != null
+                      ? {
+                          cause:
+                            r.cause instanceof Error
+                              ? r.cause.message
+                              : String(r.cause),
+                        }
+                      : {}),
+                  }
+                : { id: r.id, status: r.status, ...("worktree_path" in r && r.worktree_path != null && { worktree_path: r.worktree_path }) },
             ),
           ),
         );
