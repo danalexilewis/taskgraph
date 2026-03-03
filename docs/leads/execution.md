@@ -38,9 +38,10 @@ When a plan is specified (by context or user), skip Phase 0 and go straight to t
 **Phase 0** (only when no plan specified): Self-orient via sitrep, then enter the loop or another role workflow as above.
 
 1. **Loop:** `tg next` (plan name or multi-plan) -> get runnable tasks.
-2. **Dispatch:** Use **Worktrunk** for worktree isolation when available (config `useWorktrunk: true` or `wt` on PATH). Send up to **5** implementers in parallel (one task per implementer). **Default:** omit `WORKTREE_PATH` — each implementer runs its own `tg start --worktree` and self-starts in its Step 1. **Exception:** pre-start yourself (run `tg start <taskId> --agent <name> --worktree`, then `tg worktree list --json` to get the path) only when you need the started-event data before building prompts — for example, to capture `plan_branch` for injection into subsequent implementer prompts as `{{WORKTREE_PATH}}`.
-3. **Review:** Two-stage — spec-reviewer then quality-reviewer (or reviewer when single-stage).
-4. **Repeat** until no runnable tasks or plan complete.
+2. **Decide:** From context JSON (title, intent, suggested_changes, file_tree), produce an action directive (one sentence) and 1–3 target paths; inject as {{ACTION_DIRECTIVE}} and {{TARGET_PATHS}} into the implementer prompt. When the task is ambiguous or exploratory, the lead may omit ACTION_DIRECTIVE and pass full context (fallback to current behaviour).
+3. **Dispatch:** Use **Worktrunk** for worktree isolation when available (config `useWorktrunk: true` or `wt` on PATH). Send up to **5** implementers in parallel (one task per implementer). **Default:** omit `WORKTREE_PATH` — each implementer runs its own `tg start --worktree` and self-starts in its Step 1. **Exception:** pre-start yourself (run `tg start <taskId> --agent <name> --worktree`, then `tg worktree list --json` to get the path) only when you need the started-event data before building prompts — for example, to capture `plan_branch` for injection into subsequent implementer prompts as `{{WORKTREE_PATH}}`.
+4. **Review:** Two-stage — spec-reviewer then quality-reviewer (or reviewer when single-stage).
+5. **Repeat** until no runnable tasks or plan complete.
 
 Orchestrator coordinates; implementers and reviewers are workers. **Pace:** Move fast; the lead has your back — escalate when stuck.
 
