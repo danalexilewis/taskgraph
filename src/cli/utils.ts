@@ -2,6 +2,7 @@ import type { Command } from "commander";
 import { errAsync, okAsync, type ResultAsync } from "neverthrow";
 import { doltSql } from "../db/connection";
 import { sqlEscape } from "../db/escape";
+import { query } from "../db/query";
 import { type AppError, buildError, ErrorCode } from "../domain/errors";
 import { isHashId } from "../domain/hash-id";
 
@@ -144,6 +145,37 @@ export function getStartedEventWorktree(
       };
     }
     return null;
+  });
+}
+
+/** Row shape for batch task load (task_id, status, hash_id, plan_id). */
+export interface TaskRowForBatch {
+  task_id: string;
+  status: string;
+  hash_id: string | null;
+  plan_id: string;
+}
+
+/**
+ * Loads task rows for a set of task_ids in one query. Returns rows keyed by task_id.
+ * Used by the batch start path to avoid N single-row selects. Read-only.
+ */
+export function loadTasksByIds(
+  repoPath: string,
+  taskIds: string[],
+): ResultAsync<Map<string, TaskRowForBatch>, AppError> {
+  if (taskIds.length === 0) {
+    return okAsync(new Map());
+  }
+  const q = query(repoPath);
+  const idList = taskIds.map((id) => `'${sqlEscape(id)}'`).join(",");
+  const sql = `SELECT task_id, status, hash_id, plan_id FROM \`task\` WHERE task_id IN (${idList})`;
+  return q.raw<TaskRowForBatch>(sql).map((rows) => {
+    const map = new Map<string, TaskRowForBatch>();
+    for (const r of rows) {
+      map.set(r.task_id, r);
+    }
+    return map;
   });
 }
 
