@@ -222,7 +222,8 @@ export function importCommand(program: Command) {
                     insertPayload.risks = JSON.stringify(risks);
                   if (tests != null)
                     insertPayload.tests = JSON.stringify(tests);
-                  insertPayload.is_benchmark = isBenchmark ? 1 : 0;
+                  if (tableName === "project")
+                    insertPayload.is_benchmark = isBenchmark ? 1 : 0;
                 }
                 const insertResult = await q.insert(tableName, insertPayload);
                 if (insertResult.isErr()) throw insertResult.error;
@@ -248,8 +249,9 @@ export function importCommand(program: Command) {
               if (options.format === "cursor") {
                 const planUpdatePayload: Record<string, SqlValue> = {
                   updated_at: currentTimestamp,
-                  is_benchmark: isBenchmark ? 1 : 0,
                 };
+                if (tableName === "project")
+                  planUpdatePayload.is_benchmark = isBenchmark ? 1 : 0;
                 if (fileTree != null) planUpdatePayload.file_tree = fileTree;
                 if (risks != null)
                   planUpdatePayload.risks = JSON.stringify(risks);

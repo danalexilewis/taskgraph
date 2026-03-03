@@ -172,7 +172,9 @@ export function cancelOne(
 export function cancelCommand(program: Command) {
   program
     .command("cancel")
-    .description("Soft-delete a project (abandoned) or task (canceled)")
+    .description(
+      "Soft-delete one or more projects (abandoned) or tasks (canceled); pass multiple IDs to cancel in bulk",
+    )
     .argument(
       "<ids...>",
       "One or more project or task IDs (space- or comma-separated)",
