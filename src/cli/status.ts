@@ -1826,19 +1826,27 @@ function buildMergedActiveNextTable(
   if (maxRows != null && maxRows > 0) {
     rows = rows.slice(0, maxRows);
   }
-  const tableRows =
-    rows.length > 0
-      ? rows
-      : [
-          [
-            sym.emDash,
-            "No tasks being worked on atm",
-            sym.emDash,
-            sym.emDash,
-            sym.emDash,
-            sym.emDash,
-          ],
-        ];
+  const placeholderRow = (): string[] => [
+    sym.emDash,
+    "No tasks being worked on atm",
+    sym.emDash,
+    sym.emDash,
+    sym.emDash,
+    sym.emDash,
+  ];
+  const emptyPlaceholderRow = (): string[] =>
+    [sym.emDash, sym.emDash, sym.emDash, sym.emDash, sym.emDash, sym.emDash];
+  let tableRows: string[][];
+  if (rows.length > 0) {
+    tableRows = [...rows];
+  } else {
+    tableRows = [placeholderRow()];
+  }
+  if (maxRows != null && maxRows > 0) {
+    while (tableRows.length < maxRows) {
+      tableRows.push(emptyPlaceholderRow());
+    }
+  }
   return {
     headers: ["Id", "Task", "Project", "Stale", "Status", "Agent"],
     rows: tableRows,
@@ -1852,7 +1860,8 @@ function buildMergedActiveNextTable(
 /**
  * Active tasks section: only tasks in "doing" (no todos). Table headers: Id, Task, Project, Stale, Status, Agent.
  * When there are no doing tasks, shows a single placeholder row: "No tasks being worked on atm".
- * Stale column: yellow ▲ for doing tasks started >2h ago. When maxRows is set (dashboard), slice to that many rows.
+ * Stale column: yellow ▲ for doing tasks started >2h ago. When maxRows is set (dashboard), table is padded to
+ * exactly maxRows rows (placeholder rows with emDash) so in-place updates keep fixed section height.
  */
 export function getMergedActiveNextContent(
   d: StatusData,
