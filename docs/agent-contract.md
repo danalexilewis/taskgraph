@@ -45,7 +45,7 @@ tg show <taskId>
     `
     The agent should restate: - `intent`: The goal or purpose of the task. - `scope_in`: What is explicitly part of this task. - `scope_out`: What is explicitly _not_ part of this task. - `acceptance`: The criteria that must be met for the task to be considered complete.
 
-3.  **Start Task**: Mark the selected task as `doing` to indicate active work has commenced. When multiple agents may be active, pass `--agent <name>` for visibility.
+3.  **Start Task**: Mark the selected task as `doing` to indicate active work has commenced. When multiple agents may be active, pass `--agent <name>` for visibility. **Register work with tg:** So other agents and devs can see what is in progress, always ensure the work is in the task graph: if it already has a task, run `tg start`; if not (ad-hoc work), create a task with `tg task new "Title" --plan <planId>` then `tg start` it. Devs can add tasks to tg whenever they want to signify meaningful work.
     `bash
 tg start <taskId> [--agent <name>]
     `

@@ -73,6 +73,7 @@ The agent system is documented in [AGENT.md](../AGENT.md) (canonical contract), 
 - [Testing](testing.md)
 - [Error Handling](error-handling.md)
 - [Infra](infra.md) — build, validation, publishing
+- [Re-import and backfill](reimport-and-backfill.md) — procedure after DB restore: re-import plans, backfill task timestamps from git
 - [Recommended packages](recommended-packages.md)
 - [Skill guides](skills/README.md) — taskgraph-lifecycle-execution, dolt-schema-migration, cli-command-implementation, and more
 
