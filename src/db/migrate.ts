@@ -38,6 +38,7 @@ export const MIGRATION_CHAIN = [
   "applyPlanWorktreeMigration",
   "applyIndexMigration",
   "applyEventKindIndex",
+  "applyTaskFootprintMigration",
   "applyIsBenchmarkMigration",
   "applyEvolveRunQualityMigration",
   "applyLearningRecurrenceMigration",
@@ -1011,6 +1012,32 @@ export function applyEventKindIndex(
   });
 }
 
+/** Add started_at and ended_at columns to task table if missing (idempotent). */
+export function applyTaskFootprintMigration(
+  repoPath: string,
+  noCommit: boolean = false,
+  cache?: QueryCache,
+): ResultAsync<void, AppError> {
+  return taskColumnExists(repoPath, "started_at", cache).andThen((hasCol) => {
+    if (hasCol) return ResultAsync.fromSafePromise(Promise.resolve());
+    const alter =
+      "ALTER TABLE `task` ADD COLUMN `started_at` DATETIME NULL, ADD COLUMN `ended_at` DATETIME NULL";
+    return doltSql(alter, repoPath)
+      .map(() => {
+        cache?.clear();
+        return undefined;
+      })
+      .andThen(() =>
+        doltCommit(
+          "db: add task footprint columns started_at, ended_at",
+          repoPath,
+          noCommit,
+        ),
+      )
+      .map(() => undefined);
+  });
+}
+
 /** Add is_benchmark column to project and task tables (idempotent). */
 export function applyIsBenchmarkMigration(
   repoPath: string,
@@ -1175,6 +1202,7 @@ export function ensureMigrations(
       .andThen(() => applyPlanWorktreeMigration(repoPath, noCommit, cache))
       .andThen(() => applyIndexMigration(repoPath, noCommit, cache))
       .andThen(() => applyEventKindIndex(repoPath, noCommit, cache))
+      .andThen(() => applyTaskFootprintMigration(repoPath, noCommit, cache))
       .andThen(() => applyIsBenchmarkMigration(repoPath, noCommit, cache))
       .andThen(() => applyEvolveRunQualityMigration(repoPath, noCommit, cache))
       .andThen(() =>
