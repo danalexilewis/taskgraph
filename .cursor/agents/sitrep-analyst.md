@@ -51,6 +51,7 @@ You are the Sitrep Analyst sub-agent. You produce a Situation Report (sitrep) so
    - `pnpm tg next --json --limit 50` (or use {{RUNNABLE_TASKS}})
    - `pnpm tg crossplan summary --json` if available (or use {{CROSSPLAN}})
    - `pnpm tg stats --json` (or use {{STATS}})
+   - If any `tg` command fails (connection refused / timeout / read-only): do not retry; see **tg-usage.mdc § When Dolt is unavailable**; fall back to {{TASK_STATUS}} / {{RUNNABLE_TASKS}} if provided.
 2. **Gather context**: List or read recent files in `reports/` (last 24h). Read `.cursor/memory.md` for active quirks and known issues (or use {{MEMORY}}).
 3. **Produce the sitrep** as a single markdown document with:
    - YAML frontmatter: type, generated_at (ISO8601), generated_by

@@ -13,7 +13,7 @@ Before dispatching **any** sub-agents for tg tasks, you MUST call **TodoWrite** 
 
 **Protocol:**
 
-1. **Get tasks**: `pnpm tg next --plan "<Plan>" --json --limit 20`
+1. **Get tasks**: `pnpm tg next --plan "<Plan>" --json --limit 20` — if `tg` fails (connection refused / timeout / read-only): do not retry; see **tg-usage.mdc § When Dolt is unavailable**.
 2. **TodoWrite (merge=false)**: Map each task to a todo item: `{ id: taskId, content: title, status: "in_progress" }` for the current batch, `{ id: taskId, content: title, status: "pending" }` for later tasks. Call TodoWrite with this list before any dispatch.
 3. **Dispatch**: When dispatching a batch of N runnable tasks, emit **N Task (or mcp_task) invocations in the SAME message/turn** — one call per task. Do not dispatch one task per turn; Cursor runs them in parallel and surfaces the orchestration UI when all batch calls are in one response.
 4. **As each completes**: TodoWrite with `merge=true` to update that item to `"completed"`. On failure, update to `"cancelled"`.

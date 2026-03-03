@@ -38,6 +38,10 @@ Use the `tg` CLI (e.g. `pnpm tg` or `npx tg`) to manage plans and tasks.
 
 - `tg export markdown --plan <planId>` — writes to `exports/<planId>.md`.
 
+## When Dolt is unavailable
+
+If any `tg` command fails with connection refused, timeout, or "database is read only", assume Dolt is down for this session. Do not retry other `tg` commands. Work from the context provided in your prompt. If blocked, add a `tg note` (when tg recovers) and escalate rather than retrying.
+
 ## Recovery
 
 - Task already done but still `todo` or `doing`: `tg done <taskId> --force --evidence "completed previously"` then `tg status --tasks` to verify.

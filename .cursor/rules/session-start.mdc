@@ -20,6 +20,8 @@ pnpm tg status --tasks
 pnpm tg status --tasks
 ```
 
+If `tg` fails (connection refused / timeout / read-only): do not retry; see **tg-usage.mdc § When Dolt is unavailable**.
+
 Full task list surfaces:
 
 - All active tasks (todo, doing, blocked) with plan and owner
